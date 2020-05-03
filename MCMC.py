@@ -172,6 +172,7 @@ def valid(R, C):
 def random_partition(n, C, seed=None):
     if seed is not None:
         np.random.seed(int(seed))
+    inpart = list(range(n))
     while(True):
         R = list()
         U = list(range(n))
@@ -216,7 +217,7 @@ def R_basic_move(**kwargs):
     R_prime = list()
     if j < m:
         R_prime = [R[i] for i in range(j-1)] + [R[j-1].union(R[j])] + [R[i] for i in range(min(m, j+1), m)]
-        return R_prime, q, q
+        return R_prime, q, q, R[j].union(R[min(m-1, j+1)])
 
     sum_binoms = [sum(sum_binoms[:i]) for i in range(1, len(sum_binoms)+1)]
     i_star = [m-1 + sum_binoms[i] for i in range(len(sum_binoms)) if m-1 + sum_binoms[i] < j]
@@ -234,7 +235,7 @@ def R_basic_move(**kwargs):
     R_prime = [R[i] for i in range(i_star)] + [set(nodes)]
     R_prime += [R[i_star].difference(nodes)] + [R[i] for i in range(min(m, i_star+1), m)]
 
-    return tuple(R_prime), q, q
+    return tuple(R_prime), q, q, R[i_star].difference(nodes).union(R[min(m-1, i_star+1)])
 
 
 def R_swap_any(**kwargs):
@@ -243,6 +244,7 @@ def R_swap_any(**kwargs):
         return len(R) > 1
 
     R = kwargs["R"]
+    m = len(R)
 
     if "validate" in kwargs and kwargs["validate"] is True:
         return valid()
@@ -261,7 +263,7 @@ def R_swap_any(**kwargs):
 
     q = 1/(comb(len(R), 2)*len(R[j])*len(R[k]))
 
-    return tuple(R_prime), q, q
+    return tuple(R_prime), q, q, {v_j, v_k}.union(*R[min(j, k)+1:min(max(j, k)+2, m+1)])
 
 
 def log_minus_exp(p1, p2):
@@ -357,28 +359,44 @@ def MCMC(iterations, scores, C, a, seed=None):
     if seed is not None:
         np.random.seed(seed)
 
-    R_score_dict = dict()
-
     cache_scores = dict()
     cache_psets = dict()
     cache_scores["new"] = 0
     cache_scores["cache"] = 0
 
-    def pi(R):
-        prob_sum = sum([scores[v][0] for v in R[0]])
-        for i in range(1, len(R)):
+    def pi(R, R_node_scores=None, rescore=None):
+
+        inpart = [0] * sum(len(R[i]) for i in range(len(R)))
+        for i in range(len(R)):
             for v in R[i]:
+                inpart[v] = i
 
-                score_U_cap_C = a[v][bitmap([C[v].index(u) for u in [u for R_j in R[:i] for u in R_j if u in C[v]]])]
-                score_U_minus_T_cap_C = a[v][bitmap([C[v].index(u) for u in [u for R_j in R[:i-1] for u in R_j if u in C[v]]])]
+        if R_node_scores is None:
+            R_node_scores = [0] * len(inpart)
+        else:
+            # Don't copy whole list, just the nodes to rescore?
+            R_node_scores = list(R_node_scores)
 
-                if score_U_cap_C == score_U_minus_T_cap_C:  # catastrofic cancellation, need to brute forc
+        if rescore is None:
+            rescore = set().union(*R)
+
+        for v in rescore:
+
+            if inpart[v] == 0:
+                R_node_scores[v] = scores[v][0]
+
+            else:
+
+                score_U_cap_C = a[v][bitmap([C[v].index(u) for u in [u for R_j in R[:inpart[v]] for u in R_j if u in C[v]]])]
+                score_U_minus_T_cap_C = a[v][bitmap([C[v].index(u) for u in [u for R_j in R[:inpart[v]-1] for u in R_j if u in C[v]]])]
+
+                if score_U_cap_C == score_U_minus_T_cap_C:  # catastrofic cancellation, need to brute force
                     # R_bm = bitmap(set().union(*R[:i]))
-                    R_bm = tuple(bitmap(R_j) for R_j in R[:i])
+                    R_bm = tuple(bitmap(R_j) for R_j in R[:inpart[v]])
                     if R_bm in cache_scores and v in cache_scores[R_bm]:
                         # print("brute cache")
                         cache_scores["cache"] += 1
-                        prob_sum += cache_scores[R_bm][v][-1]
+                        R_node_scores[v] = cache_scores[R_bm][v][-1]
                     else:
                         # print("brute new")
                         cache_scores["new"] += 1
@@ -388,68 +406,69 @@ def MCMC(iterations, scores, C, a, seed=None):
 
                         v_pset_scores = list()
                         v_psets = list()
-                        for T_sub in subsets([u for u in R[i-1] if u in C[v]], 1, len(R[i-1])):
-                            for U_minus_T_sub in subsets([u for u in R[:i-1] if u in C[v]], 0, sum(len(R[j]) for j in range(i-1))):
+                        for T_sub in subsets([u for u in R[inpart[v]-1] if u in C[v]], 1, len(R[inpart[v]-1])):
+                            for U_minus_T_sub in subsets([u for u in R[:inpart[v]-1] if u in C[v]], 0, sum(len(R[j]) for j in range(inpart[v]-1))):
                                 v_pset_scores.append(scores[v][bitmap(C[v].index(u) for u in T_sub + U_minus_T_sub)])
                                 v_psets.append(bitmap(C[v].index(u) for u in T_sub + U_minus_T_sub))
                         cache_scores[R_bm][v] = v_pset_scores
                         cache_psets[R_bm][v] = v_psets
                         # the individual scores are preserved as they might be needed in DAG sampling
                         cache_scores[R_bm][v].append(np.logaddexp.reduce(v_pset_scores))
-                        prob_sum += cache_scores[R_bm][v][-1]
+                        R_node_scores[v] = cache_scores[R_bm][v][-1]
                 else:
-                    prob_sum += log_minus_exp(score_U_cap_C, score_U_minus_T_cap_C)
-        R_score_dict[tuple(bitmap(Ri) for Ri in R)] = prob_sum
-        return prob_sum
+                    R_node_scores[v] = log_minus_exp(score_U_cap_C, score_U_minus_T_cap_C)
+
+        return R_node_scores
 
 
     stay_prob = 0.01
 
     R_moves = [R_basic_move, R_swap_any]
-    moves = R_moves
+    moves = [R_basic_move, R_swap_any]
     moveprob_counts = np.array([10, 10])
 
     #print("    Creating random start partition")
     R = random_partition(len(C), C, seed)
     Rs = [R]
     #print("    Computing score for the start partition")
-    R_probs = [pi(R)]
+    R_node_scores = pi(R)
+    R_scores = [sum(R_node_scores)]
 
     #print("    Running MCMC in the root-partition space")
     for i in range(iterations-1):
         #print("    iteration {}".format(i), end="\r")
         if np.random.rand() < stay_prob:
             Rs.append(Rs[-1])
-            R_probs.append(R_probs[-1])
+            R_scores.append(R_scores[-1])
 
         else:
 
             move = np.random.choice(moves, p=moveprob_counts/sum(moveprob_counts))
 
-            R_prime, q, q_rev = move(R=Rs[-1])
+            R_prime, q, q_rev, rescore = move(R=Rs[-1])
 
             if not valid(R_prime, C):
                 Rs.append(Rs[-1])
-                R_probs.append(R_probs[-1])
+                R_scores.append(R_scores[-1])
                 continue
 
-            R_prob = R_probs[-1]
-            R_prime_prob = pi(R_prime)
+            R_score = R_scores[-1]
+            R_prime_node_scores = pi(R_prime, R_node_scores=R_node_scores, rescore=rescore)
 
-            acc_prob = np.exp(R_prime_prob - R_prob)*q_rev/q
+            acc_prob = np.exp(sum(R_prime_node_scores) - R_score)*q_rev/q
 
             if np.random.rand() < acc_prob:
                 Rs.append(R_prime)
-                R_probs.append(R_prime_prob)
+                R_scores.append(sum(R_prime_node_scores))
+                R_node_scores = R_prime_node_scores
 
             else:
                 Rs.append(Rs[-1])
-                R_probs.append(R_probs[-1])
+                R_scores.append(R_scores[-1])
 
     #print("brute new {}, brute cache {}".format(cache_scores["new"], cache_scores["cache"]))
-    # DAG, DAG_prob, iterations = sample_DAGs(Rs, C, scores)
-    # return Rs, R_probs, DAG, DAG_prob, cache_scores
-    return Rs, R_probs
+    return Rs, R_scores
+
 
 ### JUST FOR CHECKING RESULTS AGAINST BRUTE FORCE COMPUTATIONS ###
 def possible_psets(U, T, max_indegree):
@@ -492,7 +511,7 @@ def main():
     scores = read_jkl(sys.argv[1])
     #scores_old = read_jkl(sys.argv[1])
 
-    # np.random.seed(1)
+    #np.random.seed(1)
     print("Computing candidates")
     C = candidates_greedy_backward_forward(K, scores=scores)
     prune_scores(C, scores)
@@ -506,15 +525,19 @@ def main():
 
     print("Running MCMC chain")
     t0 = time.process_time()
-    Rs, R_probs = MCMC(50000, scores, C, a)
+    Rs, R_scores = MCMC(50000, scores, C, a)
     t1 = time.process_time() - t0
     print("time {}".format(t1))
     print(Rs[-1])
+
+    #with open("R.trace", "w") as f:
+    #    f.write(str(R_scores))
+
     exit()
 
     # Tutki miksi nämä eroaa, precision juttuja?
-    # print("ensimmäinen R", R_probs[0])
-    # print("viimeinen R", R_probs[-1])
+    # print("ensimmäinen R", R_scores[0])
+    # print("viimeinen R", R_scores[-1])
     # print("eka vanhalla metodilla", pi_R(R[0], scores_old, 5))
     # print("vipa vanhalla metodilla", pi_R(R[-1], scores_old, 5))
 
@@ -582,7 +605,7 @@ def main():
 
     # print(DAG_prob)
     with open("R.trace", "w") as f:
-        f.write(str(R_probs))
+        f.write(str(R_scores))
 
     with open("DAG.trace", "w") as f:
         f.write(str(DAG_probs))
