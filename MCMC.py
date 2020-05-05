@@ -35,12 +35,12 @@ def read_jkl(scorepath):
             n_scores -= 1
 
     if min(scores.keys()) == 1:
-        scores = jkl_to_zero_based_indexing(scores)
+        scores = jkl_to_zero_based_ixg(scores)
 
     return scores
 
 
-def jkl_to_zero_based_indexing(jkl):
+def jkl_to_zero_based_ixg(jkl):
     for old_node in sorted(jkl.keys()):
         tmp_dict = dict()
         for pset in jkl[old_node]:
@@ -132,11 +132,11 @@ def prune_scores(C, scores):
         scores[v] = tmp
 
 
-def bitmap(ints, indexin=None):
+def bm(ints, ix=None):
     if type(ints) == int:
         ints = [ints]
-    if indexin is not None:
-        ints = [indexin.index(i) for i in ints]
+    if ix is not None:
+        ints = [ix.index(i) for i in ints]
     bm = 0
     for k in ints:
         bm += 2**k
@@ -154,40 +154,9 @@ def translate_psets_to_bitmaps(C, scores):
     for v in sorted(scores):
         tmp = [-float('inf')]*2**K
         for pset in scores[v]:
-            tmp[bitmap([C[v].index(p) for p in pset])] = scores[v][pset]
+            tmp[bm([C[v].index(p) for p in pset])] = scores[v][pset]
         scores_list.append(tmp)
     return scores_list
-
-
-def valid(R, C):
-    if len(R) == 1:
-        return True
-    for i in range(1, len(R)):
-        for v in R[i]:
-            if len(R[i-1].intersection(C[v])) == 0:
-                return False
-    return True
-
-
-def random_partition(n, C, seed=None):
-    if seed is not None:
-        np.random.seed(int(seed))
-    inpart = list(range(n))
-    while(True):
-        R = list()
-        U = list(range(n))
-        while sum(R) < n:
-            n_nodes = 1
-            while np.random.random() < (n/2-1)/(n-1) and sum(R) + n_nodes < n:
-                n_nodes += 1
-            R.append(n_nodes)
-        for i in range(len(R)):
-            R_i = np.random.choice(U, R[i], replace=False)
-            R[i] = set(R_i)
-            U = [u for u in U if u not in R_i]
-
-        if valid(R, C):
-            return tuple(R)
 
 
 def comb(n, r):
@@ -195,75 +164,6 @@ def comb(n, r):
         return 0
     f = math.factorial
     return f(n) // f(r) // f(n-r)
-
-
-def R_basic_move(**kwargs):
-
-    def valid():
-        return True
-
-    R = kwargs["R"]
-
-    if "validate" in kwargs and kwargs["validate"] is True:
-        return valid()
-
-    m = len(R)
-    sum_binoms = [sum([comb(len(R[i]), c) for c in range(1, len(R[i]))]) for i in range(m)]
-    nbd = m - 1 + sum(sum_binoms)
-    q = 1/nbd
-
-    j = np.random.choice(range(1, nbd+1))
-
-    R_prime = list()
-    if j < m:
-        R_prime = [R[i] for i in range(j-1)] + [R[j-1].union(R[j])] + [R[i] for i in range(min(m, j+1), m)]
-        return R_prime, q, q, R[j].union(R[min(m-1, j+1)])
-
-    sum_binoms = [sum(sum_binoms[:i]) for i in range(1, len(sum_binoms)+1)]
-    i_star = [m-1 + sum_binoms[i] for i in range(len(sum_binoms)) if m-1 + sum_binoms[i] < j]
-    i_star = len(i_star)
-
-    c_star = [comb(len(R[i_star]), c) for c in range(1, len(R[i_star])+1)]
-    c_star = [sum(c_star[:i]) for i in range(1, len(c_star)+1)]
-
-    c_star = [m-1 + sum_binoms[i_star-1] + c_star[i] for i in range(len(c_star))
-              if m-1 + sum_binoms[i_star-1] + c_star[i] < j]
-    c_star = len(c_star)+1
-
-    nodes = np.random.choice(list(R[i_star]), c_star)
-
-    R_prime = [R[i] for i in range(i_star)] + [set(nodes)]
-    R_prime += [R[i_star].difference(nodes)] + [R[i] for i in range(min(m, i_star+1), m)]
-
-    return tuple(R_prime), q, q, R[i_star].difference(nodes).union(R[min(m-1, i_star+1)])
-
-
-def R_swap_any(**kwargs):
-
-    def valid():
-        return len(R) > 1
-
-    R = kwargs["R"]
-    m = len(R)
-
-    if "validate" in kwargs and kwargs["validate"] is True:
-        return valid()
-
-    j, k = np.random.choice(range(len(R)), 2, replace=False)
-    v_j = np.random.choice(list(R[j]))
-    v_k = np.random.choice(list(R[k]))
-    R_prime = list()
-    for i in range(len(R)):
-        if i == j:
-            R_prime.append(R[i].difference({v_j}).union({v_k}))
-        elif i == k:
-            R_prime.append(R[i].difference({v_k}).union({v_j}))
-        else:
-            R_prime.append(R[i])
-
-    q = 1/(comb(len(R), 2)*len(R[j])*len(R[k]))
-
-    return tuple(R_prime), q, q, {v_j, v_k}.union(*R[min(j, k)+1:min(max(j, k)+2, m+1)])
 
 
 def log_minus_exp(p1, p2):
@@ -276,95 +176,178 @@ def parse_DAG(DAG, C):
     return [(i[0],) + tuple(C[i[0]][u] for u in [bm_to_ints(i[1]) if len(i) > 1 else tuple()][0]) for i in sorted(DAG, key=lambda x: x[0])]
 
 
-def sample_DAGs(Rs, C, scores):
-    """Sample DAGs with alias-method random variables
-    """
-    rv = {v: dict() for v in C}
-    for v in C:
-        print(v)
-        for Q in subsets(C[v], 0, len(C[v])):
-            psets = [bitmap([C[v].index(p) for p in pset]) for pset in subsets(Q, 0, len(Q))]
-            probs = np.array([scores[v][pset] for pset in psets])
-            probs -= np.logaddexp.reduce(probs)
-            probs = list(np.exp(probs))  # this will make some very small probabilities disappear
-            rv[v][bitmap(Q)] = drv.DRVInt(psets, probs)
+class DAGR:
 
-    DAG = list()
-    DAG_prob = list()
-    iterations = dict()
-    for ri, R in enumerate(Rs):
-        DAG.append(list())
-        for i in range(len(R)):
-            print("    sampling DAG {}".format(ri), end="\r")
+    def __init__(self, scores, C):
+        self.scores = scores
+        self.C = C
+        self._precompute(scores, C)
+
+    def _precompute(self, scores, C):
+
+        self._f = [[0]*2**len(C[0]) for v in range(len(scores))]
+        for v in self.C:
+            for X in subsets(self.C[v], 0, len(self.C[v])):
+                X_bm = bm(X, ix=self.C[v])
+                self._f[v][X_bm] = [-float("inf")]*2**(len(self.C[v])-len(X))
+                for S in subsets(set(self.C[v]).difference(X), 0, len(self.C[v]) - len(X)):
+                    self._f[v][X_bm][bm(S, ix=sorted(set(self.C[v]).difference(X)))] = scores[v][bm(X + S, ix=self.C[v])]
+                self._f[v][X_bm] = zeta_transform.from_list(self._f[v][X_bm])
+
+    def sample(self, R, score=False):
+        DAG = [(v,) for v in R[0]]
+        for i in range(1, len(R)):
             for v in R[i]:
-                if i == 0:
-                    DAG[-1].append((v,))
-                else:
-                    rv_pset = rv[v][bitmap(set().union(*R[:i]).intersection(C[v]))]
-                    mask = bitmap(C[v].index(u) for u in R[i-1].intersection(C[v]))
+                DAG.append((v, self._sample_pset(v, set().union(*R[:i]), R[i-1])))
+        if score is True:
+            return DAG, sum(self.scores[i[0]][0] if len(i) < 2 else self.scores[i[0]][bm(i[1], ix=self.C[i[0]])] for i in DAG)
+        return DAG
 
-                    R_bm = tuple(bitmap(R_j) for R_j in R[:i])
-                    if (R_bm in cache_scores and v in cache_scores[R_bm]):
-                        pset = np.random.choice(cache_psets[R_bm][v],
-                                                p=np.exp(cache_scores[R_bm][v][:-1] - cache_scores[R_bm][v][-1]))
-                    else:
-                        pset = rv_pset()
+    def _sample_pset(self, v, U, T):
 
-                    it = 1
-                    brute = False
-                    while not pset & mask:
-                        pset = rv_pset()
-                        it += 1
-                        if it == 100:
-                            brute = True
+        def g(X, E, U, T):
 
-                            if not (R_bm in cache_scores and v in cache_scores[R_bm]):
+            X_bm = bm(X, ix=self.C[v])
+            E_bm = bm(E, ix=sorted(set(self.C[v]).difference(X)))
+            U_bm = bm(U.difference(X), ix=sorted(set(self.C[v]).difference(X)))
+            T_bm = bm(T.difference(X), ix=sorted(set(self.C[v]).difference(X)))
 
-                                cache_scores["new"] += 1
+            score_1 = [self._f[v][X_bm][U_bm & ~E_bm] if X.issubset(U.difference(E)) else -float("inf")][0]
+            score_2 = [self._f[v][X_bm][(U_bm & ~E_bm) & ~T_bm] if X.issubset(U.difference(E.union(T))) else -float("inf")][0]
 
-                                if R_bm not in cache_scores:
-                                    cache_scores[R_bm] = dict()
-                                    cache_psets[R_bm] = dict()
+            return log_minus_exp(score_1, score_2)
 
-                                v_pset_scores = list()
-                                v_psets = list()
-                                for T_sub in subsets([u for u in R[i-1] if u in C[v]], 1, len(R[i-1])):
-                                    for U_minus_T_sub in subsets([u for u in R[:i-1] if u in C[v]], 0, sum(len(R[j]) for j in range(i-1))):
-                                        v_pset_scores.append(scores[v][bitmap(C[v].index(u) for u in T_sub + U_minus_T_sub)])
-                                        v_psets.append(bitmap(C[v].index(u) for u in T_sub + U_minus_T_sub))
-                                cache_scores[R_bm][v] = v_pset_scores
-                                cache_scores[R_bm][v].append(np.logaddexp.reduce(v_pset_scores))
-                                cache_psets[R_bm][v] = v_psets
+        U = U.intersection(self.C[v])
+        T = T.intersection(self.C[v])
 
-                            else:
-                                cache_scores["cache"] += 1
-
-                            pset = np.random.choice(cache_psets[R_bm][v],
-                                                    p=np.exp(cache_scores[R_bm][v][:-1] - cache_scores[R_bm][v][-1]))
-                            break
-                    if brute:
-                        brute = False
-
-                    if it not in iterations:
-                        iterations[it] = 1
-                    else:
-                        iterations[it] += 1
-                    DAG[-1].append((v, pset))
-        DAG_prob.append(sum(scores[item[0]][item[1]] if len(item) > 1 else scores[item[0]][0] for item in DAG[-1]))
-    return DAG, DAG_prob, iterations
+        X = set()
+        E = set()
+        for i in U:
+            if -np.random.exponential() < g(X.union({i}), E, U, T) - g(X, E, U, T):
+                X.add(i)
+            else:
+                E.add(i)
+        return X
 
 
-def MCMC(iterations, scores, C, a, seed=None):
+class PartitionMCMC:
 
-    if seed is not None:
-        np.random.seed(seed)
+    def __init__(self, scores, C, temperature=1):
+        self.scores = scores
+        self.n = len(scores)
+        self.C = C
+        self.temp = temperature
+        self.stay_prob = 0.01
+        self._moves = [self._R_basic_move, self._R_swap_any]
+        self._moveprobs = [0.5, 0.5]
+        self.cache_scores = dict()
+        self.cache_psets = dict()
+        self.cache_scores["new"] = 0
+        self.cache_scores["cache"] = 0
+        self._precompute()
+        self.R = self._random_partition()
+        self.R_node_scores = self._pi(self.R)
+        self.R_score = self.temp * sum(self.R_node_scores)
 
-    cache_scores = dict()
-    cache_psets = dict()
-    cache_scores["new"] = 0
-    cache_scores["cache"] = 0
+    def _precompute(self):
+        self.a = [0]*self.n
+        for v in range(self.n):
+            self.a[v] = zeta_transform.from_list(self.scores[v])
 
-    def pi(R, R_node_scores=None, rescore=None):
+    def _valid(self, R):
+        if len(R) == 1:
+            return True
+        for i in range(1, len(R)):
+            for v in R[i]:
+                if len(R[i-1].intersection(self.C[v])) == 0:
+                    return False
+        return True
+
+    def _random_partition(self):
+        while(True):
+            R = list()
+            U = list(range(self.n))
+            while sum(R) < self.n:
+                n_nodes = 1
+                while np.random.random() < (self.n/2-1)/(self.n-1) and sum(R) + n_nodes < self.n:
+                    n_nodes += 1
+                R.append(n_nodes)
+            for i in range(len(R)):
+                R_i = np.random.choice(U, R[i], replace=False)
+                R[i] = set(R_i)
+                U = [u for u in U if u not in R_i]
+
+            if self._valid(R):
+                return tuple(R)
+
+    def _R_basic_move(self, **kwargs):
+
+        def valid():
+            return True
+
+        R = kwargs["R"]
+
+        if "validate" in kwargs and kwargs["validate"] is True:
+            return valid()
+
+        m = len(R)
+        sum_binoms = [sum([comb(len(R[i]), c) for c in range(1, len(R[i]))]) for i in range(m)]
+        nbd = m - 1 + sum(sum_binoms)
+        q = 1/nbd
+
+        j = np.random.choice(range(1, nbd+1))
+
+        R_prime = list()
+        if j < m:
+            R_prime = [R[i] for i in range(j-1)] + [R[j-1].union(R[j])] + [R[i] for i in range(min(m, j+1), m)]
+            return R_prime, q, q, R[j].union(R[min(m-1, j+1)])
+
+        sum_binoms = [sum(sum_binoms[:i]) for i in range(1, len(sum_binoms)+1)]
+        i_star = [m-1 + sum_binoms[i] for i in range(len(sum_binoms)) if m-1 + sum_binoms[i] < j]
+        i_star = len(i_star)
+
+        c_star = [comb(len(R[i_star]), c) for c in range(1, len(R[i_star])+1)]
+        c_star = [sum(c_star[:i]) for i in range(1, len(c_star)+1)]
+
+        c_star = [m-1 + sum_binoms[i_star-1] + c_star[i] for i in range(len(c_star))
+                  if m-1 + sum_binoms[i_star-1] + c_star[i] < j]
+        c_star = len(c_star)+1
+
+        nodes = np.random.choice(list(R[i_star]), c_star)
+
+        R_prime = [R[i] for i in range(i_star)] + [set(nodes)]
+        R_prime += [R[i_star].difference(nodes)] + [R[i] for i in range(min(m, i_star+1), m)]
+
+        return tuple(R_prime), q, q, R[i_star].difference(nodes).union(R[min(m-1, i_star+1)])
+
+    def _R_swap_any(self, **kwargs):
+
+        def valid():
+            return len(R) > 1
+
+        R = kwargs["R"]
+        m = len(R)
+
+        if "validate" in kwargs and kwargs["validate"] is True:
+            return valid()
+
+        j, k = np.random.choice(range(len(R)), 2, replace=False)
+        v_j = np.random.choice(list(R[j]))
+        v_k = np.random.choice(list(R[k]))
+        R_prime = list()
+        for i in range(len(R)):
+            if i == j:
+                R_prime.append(R[i].difference({v_j}).union({v_k}))
+            elif i == k:
+                R_prime.append(R[i].difference({v_k}).union({v_j}))
+            else:
+                R_prime.append(R[i])
+
+        q = 1/(comb(len(R), 2)*len(R[j])*len(R[k]))
+
+        return tuple(R_prime), q, q, {v_j, v_k}.union(*R[min(j, k)+1:min(max(j, k)+2, m+1)])
+
+    def _pi(self, R, R_node_scores=None, rescore=None):
 
         inpart = [0] * sum(len(R[i]) for i in range(len(R)))
         for i in range(len(R)):
@@ -383,133 +366,121 @@ def MCMC(iterations, scores, C, a, seed=None):
         for v in rescore:
 
             if inpart[v] == 0:
-                R_node_scores[v] = scores[v][0]
+                R_node_scores[v] = self.scores[v][0]
 
             else:
 
-                score_U_cap_C = a[v][bitmap([C[v].index(u) for u in [u for R_j in R[:inpart[v]] for u in R_j if u in C[v]]])]
-                score_U_minus_T_cap_C = a[v][bitmap([C[v].index(u) for u in [u for R_j in R[:inpart[v]-1] for u in R_j if u in C[v]]])]
+                score_U_cap_C = self.a[v][bm(set().union(*R[:inpart[v]]).intersection(self.C[v]), ix=self.C[v])]
+                score_U_minus_T_cap_C = self.a[v][bm(set().union(*R[:inpart[v]-1]).intersection(self.C[v]), ix=self.C[v])]
 
                 if score_U_cap_C == score_U_minus_T_cap_C:  # catastrofic cancellation, need to brute force
-                    # R_bm = bitmap(set().union(*R[:i]))
-                    R_bm = tuple(bitmap(R_j) for R_j in R[:inpart[v]])
-                    if R_bm in cache_scores and v in cache_scores[R_bm]:
+                    R_bm = tuple(bm(R_j) for R_j in R[:inpart[v]])
+                    if R_bm in self.cache_scores and v in self.cache_scores[R_bm]:
                         # print("brute cache")
-                        cache_scores["cache"] += 1
-                        R_node_scores[v] = cache_scores[R_bm][v][-1]
+                        self.cache_scores["cache"] += 1
+                        R_node_scores[v] = self.cache_scores[R_bm][v][-1]
                     else:
                         # print("brute new")
-                        cache_scores["new"] += 1
-                        if R_bm not in cache_scores:
-                            cache_scores[R_bm] = dict()
-                            cache_psets[R_bm] = dict()
+                        self.cache_scores["new"] += 1
+                        if R_bm not in self.cache_scores:
+                            self.cache_scores[R_bm] = dict()
+                            self.cache_psets[R_bm] = dict()
 
                         v_pset_scores = list()
                         v_psets = list()
-                        for T_sub in subsets([u for u in R[inpart[v]-1] if u in C[v]], 1, len(R[inpart[v]-1])):
-                            for U_minus_T_sub in subsets([u for u in R[:inpart[v]-1] if u in C[v]], 0, sum(len(R[j]) for j in range(inpart[v]-1))):
-                                v_pset_scores.append(scores[v][bitmap(C[v].index(u) for u in T_sub + U_minus_T_sub)])
-                                v_psets.append(bitmap(C[v].index(u) for u in T_sub + U_minus_T_sub))
-                        cache_scores[R_bm][v] = v_pset_scores
-                        cache_psets[R_bm][v] = v_psets
+                        for T_sub in subsets(R[inpart[v]-1].intersection(self.C[v]), 1, len(R[inpart[v]-1])):
+                            for U_minus_T_sub in subsets(set().union(*R[:inpart[v]-1]).intersection(self.C[v]), 0, sum(len(R[j]) for j in range(inpart[v]-1))):
+                                v_pset_scores.append(self.scores[v][bm(T_sub + U_minus_T_sub, ix=self.C[v])])
+                                v_psets.append(bm(T_sub + U_minus_T_sub, ix=self.C[v]))
+                        self.cache_scores[R_bm][v] = v_pset_scores
+                        self.cache_psets[R_bm][v] = v_psets
                         # the individual scores are preserved as they might be needed in DAG sampling
-                        cache_scores[R_bm][v].append(np.logaddexp.reduce(v_pset_scores))
-                        R_node_scores[v] = cache_scores[R_bm][v][-1]
+                        self.cache_scores[R_bm][v].append(np.logaddexp.reduce(v_pset_scores))
+                        R_node_scores[v] = self.cache_scores[R_bm][v][-1]
                 else:
                     R_node_scores[v] = log_minus_exp(score_U_cap_C, score_U_minus_T_cap_C)
 
         return R_node_scores
 
+    def sample(self):
 
-    stay_prob = 0.01
+        if np.random.rand() > self.stay_prob:
+            move = np.random.choice(self._moves, p=self._moveprobs)
+            R_prime, q, q_rev, rescore = move(R=self.R)
 
-    R_moves = [R_basic_move, R_swap_any]
-    moves = [R_basic_move, R_swap_any]
-    moveprob_counts = np.array([10, 10])
+            if not self._valid(R_prime):
+                return self.R, self.R_score
 
-    #print("    Creating random start partition")
-    R = random_partition(len(C), C, seed)
-    Rs = [R]
-    #print("    Computing score for the start partition")
-    R_node_scores = pi(R)
-    R_scores = [sum(R_node_scores)]
+            R_prime_node_scores = self._pi(R_prime, R_node_scores=self.R_node_scores, rescore=rescore)
 
-    #print("    Running MCMC in the root-partition space")
-    for i in range(iterations-1):
-        #print("    iteration {}".format(i), end="\r")
-        if np.random.rand() < stay_prob:
-            Rs.append(Rs[-1])
-            R_scores.append(R_scores[-1])
+            if np.random.rand() < np.exp(self.temp * sum(R_prime_node_scores) - self.R_score)*q_rev/q:
+                self.R = R_prime
+                self.R_node_scores = R_prime_node_scores
+                self.R_score = self.temp * sum(self.R_node_scores)
 
-        else:
-
-            move = np.random.choice(moves, p=moveprob_counts/sum(moveprob_counts))
-
-            R_prime, q, q_rev, rescore = move(R=Rs[-1])
-
-            if not valid(R_prime, C):
-                Rs.append(Rs[-1])
-                R_scores.append(R_scores[-1])
-                continue
-
-            R_score = R_scores[-1]
-            R_prime_node_scores = pi(R_prime, R_node_scores=R_node_scores, rescore=rescore)
-
-            acc_prob = np.exp(sum(R_prime_node_scores) - R_score)*q_rev/q
-
-            if np.random.rand() < acc_prob:
-                Rs.append(R_prime)
-                R_scores.append(sum(R_prime_node_scores))
-                R_node_scores = R_prime_node_scores
-
-            else:
-                Rs.append(Rs[-1])
-                R_scores.append(R_scores[-1])
-
-    #print("brute new {}, brute cache {}".format(cache_scores["new"], cache_scores["cache"]))
-    return Rs, R_scores
+        return self.R, self.R_score
 
 
-### JUST FOR CHECKING RESULTS AGAINST BRUTE FORCE COMPUTATIONS ###
-def possible_psets(U, T, max_indegree):
-    if not U:
-        yield tuple()
-    for required in subsets(T, 1, max(1, max_indegree)):
-        for additional in subsets(U.difference(T), 0, max_indegree - len(required)):
-            yield tuple(sorted(set(required).union(additional)))
+class MC3:
 
+    def __init__(self, chains):
+        self.chains = chains
+        self.prop_prob = 0.02
 
-def score_v(v, pset, scores):
-    return scores[v][pset]
-
-
-def hat_pi(v, U, T, scores, max_indegree):
-    return np.logaddexp.reduce([score_v(v, pset, scores) for pset in possible_psets(U, T, max_indegree)])
-
-
-def f(U, T, S, scores, max_indegree):
-    hat_pi_sum = 0
-    for v in S:
-        hat_pi_sum += hat_pi(v, U, T, scores, max_indegree)
-    return hat_pi_sum
-
-
-def pi_R(R, scores, max_indegree):
-    f_sum = 0
-    for i in range(len(R)):
-        f_sum += f(set().union(*R[:i]),
-                    [R[i-1] if i-1>-1 else set()][0],
-                    R[i], scores, max_indegree)
-    return f_sum
-###################################################################
+    def sample(self):
+        for c in self.chains:
+            c.sample()
+        if np.random.random() < self.prop_prob:
+            i = np.random.randint(len(self.chains) - 1)
+            ap = sum(self.chains[i+1].R_node_scores)*self.chains[i].temp
+            ap += sum(self.chains[i].R_node_scores)*self.chains[i+1].temp
+            ap -= sum(self.chains[i].R_node_scores)*self.chains[i].temp
+            ap -= sum(self.chains[i+1].R_node_scores)*self.chains[i+1].temp
+            if -np.random.exponential() < ap:
+                R_tmp = self.chains[i].R
+                R_node_scores_tmp = self.chains[i].R_node_scores
+                self.chains[i].R = self.chains[i+1].R
+                self.chains[i].R_node_scores = self.chains[i+1].R_node_scores
+                self.chains[i].R_score = self.chains[i].temp * sum(self.chains[i].R_node_scores)
+                self.chains[i+1].R = R_tmp
+                self.chains[i+1].R_node_scores = R_node_scores_tmp
+                self.chains[i+1].R_score = self.chains[i+1].temp * sum(self.chains[i+1].R_node_scores)
+        return self.chains[-1].R, self.chains[-1].R_score
 
 
 def main():
-
     K = 12
 
     scores = read_jkl(sys.argv[1])
-    #scores_old = read_jkl(sys.argv[1])
+
+    #np.random.seed(1)
+    print("Computing candidates")
+    C = candidates_greedy_backward_forward(K, scores=scores)
+    prune_scores(C, scores)
+    scores = translate_psets_to_bitmaps(C, scores)
+    mcmc = PartitionMCMC(scores, C, temperature=1)
+
+    t0 = time.process_time()
+    for i in range(50000):
+        mcmc.sample()
+    print(time.process_time() - t0)
+
+    exit()
+    t0 = time.process_time()
+    ds = DAGR(scores, C)
+    print(time.process_time() - t0)
+
+    DAGs = list()
+    for i in range(1000):
+        DAGs.append(ds.sample(mcmc.sample()[0], score=True)[1])
+
+    print(DAGs)
+
+
+def main2():
+    K = 12
+
+    scores = read_jkl(sys.argv[1])
 
     #np.random.seed(1)
     print("Computing candidates")
@@ -517,100 +488,25 @@ def main():
     prune_scores(C, scores)
     scores = translate_psets_to_bitmaps(C, scores)
 
-    print("Computing zeta transform")
-    a = [0]*len(scores)
-    for v in range(len(scores)):
-        print("    variable {}".format(v))
-        a[v] = zeta_transform.from_list(scores[v])
+    mcmc = MC3([PartitionMCMC(scores, C, temperature=i/15) for i in range(16)])
 
-    print("Running MCMC chain")
     t0 = time.process_time()
-    Rs, R_scores = MCMC(50000, scores, C, a)
-    t1 = time.process_time() - t0
-    print("time {}".format(t1))
-    print(Rs[-1])
+    for i in range(50000):
+        mcmc.sample()
+    print(time.process_time() - t0)
 
-    #with open("R.trace", "w") as f:
-    #    f.write(str(R_scores))
+    t0 = time.process_time()
+    ds = DAGR(scores, C)
+    print(time.process_time() - t0)
 
-    exit()
-
-    # Tutki miksi nämä eroaa, precision juttuja?
-    # print("ensimmäinen R", R_scores[0])
-    # print("viimeinen R", R_scores[-1])
-    # print("eka vanhalla metodilla", pi_R(R[0], scores_old, 5))
-    # print("vipa vanhalla metodilla", pi_R(R[-1], scores_old, 5))
-
-    print("Sampling DAGs")
-    print("    Constructing data structure for sampling")
-
-    f = [[0]*2**K for v in range(len(C))]
-    for v in C:
-        print("        for variable {}".format(v))
-        for X in subsets(C[v], 0, K):
-            X_bm = bitmap(C[v].index(u) for u in X)
-            f[v][X_bm] = [-float("inf")]*2**(K-len(X))
-            for S in subsets(set(C[v]).difference(X), 0, K - len(X)):
-                f[v][X_bm][bitmap(sorted(set(C[v]).difference(X)).index(u) for u in S)] = scores[v][bitmap(C[v].index(u) for u in X + S)]
-            f[v][X_bm] = zeta_transform.from_list(f[v][X_bm])
-
-
-    def sample_pset(v, U, T, f):
-
-        def g(X, E, U, T):
-
-            X_bm = bitmap(X, indexin=C[v])
-            E_bm = bitmap(E, indexin=sorted(set(C[v]).difference(X)))
-            U_bm = bitmap(U.difference(X), indexin=sorted(set(C[v]).difference(X)))
-            T_bm = bitmap(T.difference(X), indexin=sorted(set(C[v]).difference(X)))
-
-            score_1 = [f[X_bm][U_bm & ~E_bm] if X.issubset(U.difference(E)) else -float("inf")][0]
-            score_2 = [f[X_bm][(U_bm & ~E_bm) & ~T_bm] if X.issubset(U.difference(E.union(T))) else -float("inf")][0]
-
-            return log_minus_exp(score_1, score_2)
-
-        X = set()
-        E = set()
-        for i in U:
-            if -np.random.exponential() < g(X.union({i}), E, U, T) - g(X, E, U, T):
-                X.add(i)
-            else:
-                E.add(i)
-        return X
-
-
+    t0 = time.process_time()
     DAGs = list()
-    for R in Rs:
-        DAGs.append([(v,) for v in R[0]])
+    for i in range(1000):
+        DAGs.append(ds.sample(mcmc.sample()[0], score=True)[1])
+    print(time.process_time() - t0)
 
-    for j, R in enumerate(Rs):
-        print("    Sampling DAG {}".format(j), end="\r")
-        for i in range(1, len(R)):
-            for v in R[i]:
-                DAGs[j].append((v, sample_pset(v,
-                                               set().union(*R[:i]).intersection(C[v]),
-                                               R[i-1].intersection(C[v]),
-                                               f[v])))
+    print(DAGs)
 
-    # print(Rs)
-    # print(DAGs)
-    # exit()
-
-    DAG_probs = list()
-    for DAG in DAGs:
-        DAG_probs.append(sum(scores[v[0]][0] if len(v) < 2 else scores[v[0]][bitmap(v[1], indexin=C[v[0]])] for v in DAG))
-
-    # print(DAG_probs)
-    # exit()
-
-    # print(DAG_prob)
-    with open("R.trace", "w") as f:
-        f.write(str(R_scores))
-
-    with open("DAG.trace", "w") as f:
-        f.write(str(DAG_probs))
-
-    # print("brute new {}, brute cache {}".format(cache_scores["new"], cache_scores["cache"]))
 
 if __name__ == '__main__':
-    main()
+    main2()
