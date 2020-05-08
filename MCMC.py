@@ -133,14 +133,14 @@ def prune_scores(C, scores):
 
 
 def bm(ints, ix=None):
-    if type(ints) == int:
-        ints = [ints]
+    if type(ints) not in [set, tuple]:
+        ints = {int(ints)}
     if ix is not None:
         ints = [ix.index(i) for i in ints]
-    bm = 0
+    bitmap = 0
     for k in ints:
-        bm += 2**k
-    return int(bm)  # without the cast np.int64 might sneak in somehow and break drv
+        bitmap += 2**k
+    return int(bitmap)  # without the cast np.int64 might sneak in somehow and break drv
 
 
 def bm_to_ints(bm):
@@ -154,7 +154,7 @@ def translate_psets_to_bitmaps(C, scores):
     for v in sorted(scores):
         tmp = [-float('inf')]*2**K
         for pset in scores[v]:
-            tmp[bm([C[v].index(p) for p in pset])] = scores[v][pset]
+            tmp[bm(set(pset), ix=C[v])] = scores[v][pset]
         scores_list.append(tmp)
     return scores_list
 
@@ -232,27 +232,32 @@ class DAGR:
 
 class PartitionMCMC:
 
-    def __init__(self, scores, C, temperature=1):
+    def __init__(self, scores, C, sr, temperature=1):
         self.scores = scores
         self.n = len(scores)
         self.C = C
         self.temp = temperature
+        self.sr = sr
         self.stay_prob = 0.01
         self._moves = [self._R_basic_move, self._R_swap_any]
         self._moveprobs = [0.5, 0.5]
-        self.cache_scores = dict()
-        self.cache_psets = dict()
-        self.cache_scores["new"] = 0
-        self.cache_scores["cache"] = 0
+        self.score_cache = dict()
+        self.score_cache["new"] = 0
+        self.score_cache["cache"] = 0
         self._precompute()
         self.R = self._random_partition()
-        self.R_node_scores = self._pi(self.R)
-        self.R_score = self.temp * sum(self.R_node_scores)
+        if self.temp == 0:
+            self.sample = self.sample_temp0
+            self.R_node_scores = self.R_node_scores_temp0
+            self.R_score = 0
+        else:
+            self.R_node_scores = self._pi(self.R)
+            self.R_score = self.temp * sum(self.R_node_scores)
 
     def _precompute(self):
-        self.a = [0]*self.n
+        self._a = [0]*self.n
         for v in range(self.n):
-            self.a[v] = zeta_transform.from_list(self.scores[v])
+            self._a[v] = zeta_transform.from_list(self.scores[v])
 
     def _valid(self, R):
         if len(R) == 1:
@@ -370,35 +375,9 @@ class PartitionMCMC:
 
             else:
 
-                score_U_cap_C = self.a[v][bm(set().union(*R[:inpart[v]]).intersection(self.C[v]), ix=self.C[v])]
-                score_U_minus_T_cap_C = self.a[v][bm(set().union(*R[:inpart[v]-1]).intersection(self.C[v]), ix=self.C[v])]
-
-                if score_U_cap_C == score_U_minus_T_cap_C:  # catastrofic cancellation, need to brute force
-                    R_bm = tuple(bm(R_j) for R_j in R[:inpart[v]])
-                    if R_bm in self.cache_scores and v in self.cache_scores[R_bm]:
-                        # print("brute cache")
-                        self.cache_scores["cache"] += 1
-                        R_node_scores[v] = self.cache_scores[R_bm][v][-1]
-                    else:
-                        # print("brute new")
-                        self.cache_scores["new"] += 1
-                        if R_bm not in self.cache_scores:
-                            self.cache_scores[R_bm] = dict()
-                            self.cache_psets[R_bm] = dict()
-
-                        v_pset_scores = list()
-                        v_psets = list()
-                        for T_sub in subsets(R[inpart[v]-1].intersection(self.C[v]), 1, len(R[inpart[v]-1])):
-                            for U_minus_T_sub in subsets(set().union(*R[:inpart[v]-1]).intersection(self.C[v]), 0, sum(len(R[j]) for j in range(inpart[v]-1))):
-                                v_pset_scores.append(self.scores[v][bm(T_sub + U_minus_T_sub, ix=self.C[v])])
-                                v_psets.append(bm(T_sub + U_minus_T_sub, ix=self.C[v]))
-                        self.cache_scores[R_bm][v] = v_pset_scores
-                        self.cache_psets[R_bm][v] = v_psets
-                        # the individual scores are preserved as they might be needed in DAG sampling
-                        self.cache_scores[R_bm][v].append(np.logaddexp.reduce(v_pset_scores))
-                        R_node_scores[v] = self.cache_scores[R_bm][v][-1]
-                else:
-                    R_node_scores[v] = log_minus_exp(score_U_cap_C, score_U_minus_T_cap_C)
+                R_node_scores[v] = self.sr.psum(v,
+                                                bm(set().union(*R[:inpart[v]]).intersection(self.C[v]), ix=self.C[v]),
+                                                bm(R[inpart[v]-1].intersection(self.C[v]), ix=self.C[v]))
 
         return R_node_scores
 
@@ -420,93 +399,153 @@ class PartitionMCMC:
 
         return self.R, self.R_score
 
+    def sample_temp0(self):
+
+        if np.random.rand() > self.stay_prob:
+            move = np.random.choice(self._moves, p=self._moveprobs)
+            R_prime, q, q_rev, rescore = move(R=self.R)
+
+            if not self._valid(R_prime):
+                return self.R, self.R_score
+
+            if np.random.rand() < q_rev/q:
+                self.R = R_prime
+
+        return self.R, self.R_score
+
+    @property
+    def R_node_scores_temp0(self):
+        return self._pi(self.R)
+
 
 class MC3:
 
     def __init__(self, chains):
         self.chains = chains
-        self.prop_prob = 0.02
 
     def sample(self):
         for c in self.chains:
             c.sample()
-        if np.random.random() < self.prop_prob:
-            i = np.random.randint(len(self.chains) - 1)
-            ap = sum(self.chains[i+1].R_node_scores)*self.chains[i].temp
-            ap += sum(self.chains[i].R_node_scores)*self.chains[i+1].temp
-            ap -= sum(self.chains[i].R_node_scores)*self.chains[i].temp
-            ap -= sum(self.chains[i+1].R_node_scores)*self.chains[i+1].temp
-            if -np.random.exponential() < ap:
-                R_tmp = self.chains[i].R
-                R_node_scores_tmp = self.chains[i].R_node_scores
-                self.chains[i].R = self.chains[i+1].R
-                self.chains[i].R_node_scores = self.chains[i+1].R_node_scores
-                self.chains[i].R_score = self.chains[i].temp * sum(self.chains[i].R_node_scores)
-                self.chains[i+1].R = R_tmp
-                self.chains[i+1].R_node_scores = R_node_scores_tmp
-                self.chains[i+1].R_score = self.chains[i+1].temp * sum(self.chains[i+1].R_node_scores)
+        i = np.random.randint(len(self.chains) - 1)
+        ap = sum(self.chains[i+1].R_node_scores)*self.chains[i].temp
+        ap += sum(self.chains[i].R_node_scores)*self.chains[i+1].temp
+        ap -= sum(self.chains[i].R_node_scores)*self.chains[i].temp
+        ap -= sum(self.chains[i+1].R_node_scores)*self.chains[i+1].temp
+        if -np.random.exponential() < ap:
+            R_tmp = self.chains[i].R
+            R_node_scores_tmp = self.chains[i].R_node_scores
+            self.chains[i].R = self.chains[i+1].R
+            self.chains[i].R_node_scores = self.chains[i+1].R_node_scores
+            self.chains[i].R_score = self.chains[i].temp * sum(self.chains[i].R_node_scores)
+            self.chains[i+1].R = R_tmp
+            self.chains[i+1].R_node_scores = R_node_scores_tmp
+            self.chains[i+1].R_score = self.chains[i+1].temp * sum(self.chains[i+1].R_node_scores)
         return self.chains[-1].R, self.chains[-1].R_score
+
+
+class ScoreR:
+
+    def __init__(self, scores, C):
+        self.brute_n = 0
+        self.cc_n = 0
+        self.scores = scores
+        self.C = C
+        self._precompute_a()
+        self._precompute_psum()
+
+    def _precompute_a(self):
+        self._a = [0]*len(self.scores)
+        for v in range(len(self.scores)):
+            self._a[v] = zeta_transform.from_list(self.scores[v])
+
+    def _precompute_psum(self):
+        self._psum = dict()
+        for v in self.C:
+            for U in subsets(self.C[v], 1, len(self.C[v])):
+                U0 = bm(set(U), ix=self.C[v])
+                for T in subsets(U, 1, len(U)):
+                    T0 = bm(set(T), ix=self.C[v])
+                    if self._cc(v, U0, T0):
+                        self.cc_n += 1
+                        if v not in self._psum:
+                            self._psum[v] = dict()
+                        if U0 not in self._psum[v]:
+                            self._psum[v][U0] = dict()
+                        U1 = bm({u for u in U if u != T[0]}, ix=self.C[v])
+                        T1 = bm({T[0]}, ix=self.C[v])
+                        T2 = bm({t for t in T if t != T[0]}, ix=self.C[v])
+
+                        self._psum[v][U0][T0] = np.logaddexp(self.psum(v, U0, T1),
+                                                             self.psum(v, U1, T2))
+
+    def _cc(self, v, U, T):
+        return self._a[v][U] == self._a[v][U & ~T]
+
+    def psum(self, v, U, T):
+        if T == 0:  # special case for T2 in precompute
+            return -float("inf")
+        if v in self._psum and U in self._psum[v] and T in self._psum[v][U]:
+            return self._psum[v][U][T]
+        else:
+            return self._psum_diff(v, U, T)
+
+    def _psum_diff(self, v, U, T):
+
+        score_U_cap_C = self._a[v][U]
+        score_U_minus_T_cap_C = self._a[v][U & ~T]
+        if score_U_cap_C == score_U_minus_T_cap_C:
+            self.brute_n += 1
+            U_minus_T_list = bm_to_ints(U & ~T)
+            T_list = bm_to_ints(T)
+            s = list()
+            for t in subsets(T_list, 1, len(T_list)):
+                for u in subsets(U_minus_T_list, 0, len(U_minus_T_list)):
+                    s.append(self.scores[v][bm(t) & bm(u)])
+            return np.logaddexp.reduce(s)
+
+        return log_minus_exp(score_U_cap_C, score_U_minus_T_cap_C)
 
 
 def main():
     K = 12
 
+    t0 = time.process_time()
     scores = read_jkl(sys.argv[1])
+    print("reading scores {}".format(time.process_time() - t0))
 
-    #np.random.seed(1)
-    print("Computing candidates")
+    #np.random.seed(2)
+    t0 = time.process_time()
     C = candidates_greedy_backward_forward(K, scores=scores)
+    print("computing candidate parents {}".format(time.process_time() - t0))
+
     prune_scores(C, scores)
     scores = translate_psets_to_bitmaps(C, scores)
-    mcmc = PartitionMCMC(scores, C, temperature=1)
+
+    t0 = time.process_time()
+    sr = ScoreR(scores, C)
+    print("precompute scoresums {}".format(time.process_time() - t0))
+    print("number of brutes {}".format(sr.brute_n))
+    print("number of cc {}".format(sr.cc_n))
+
+    mcmc = MC3([PartitionMCMC(scores, C, sr, temperature=i/15) for i in range(16)])
 
     t0 = time.process_time()
     for i in range(50000):
         mcmc.sample()
-    print(time.process_time() - t0)
-
-    exit()
-    t0 = time.process_time()
-    ds = DAGR(scores, C)
-    print(time.process_time() - t0)
-
-    DAGs = list()
-    for i in range(1000):
-        DAGs.append(ds.sample(mcmc.sample()[0], score=True)[1])
-
-    print(DAGs)
-
-
-def main2():
-    K = 12
-
-    scores = read_jkl(sys.argv[1])
-
-    #np.random.seed(1)
-    print("Computing candidates")
-    C = candidates_greedy_backward_forward(K, scores=scores)
-    prune_scores(C, scores)
-    scores = translate_psets_to_bitmaps(C, scores)
-
-    mcmc = MC3([PartitionMCMC(scores, C, temperature=i/15) for i in range(16)])
-
-    t0 = time.process_time()
-    for i in range(50000):
-        mcmc.sample()
-    print(time.process_time() - t0)
+    print("50k mcmc steps {}".format(time.process_time() - t0))
 
     t0 = time.process_time()
     ds = DAGR(scores, C)
-    print(time.process_time() - t0)
+    print("compute DAG samplers {}".format(time.process_time() - t0))
 
     t0 = time.process_time()
     DAGs = list()
     for i in range(1000):
         DAGs.append(ds.sample(mcmc.sample()[0], score=True)[1])
-    print(time.process_time() - t0)
+    print("sample 1000 DAGs {}".format(time.process_time() - t0))
 
     print(DAGs)
 
 
 if __name__ == '__main__':
-    main2()
+    main()
