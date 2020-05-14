@@ -1,196 +1,26 @@
-import sys
-import math
-from itertools import chain, combinations
-import argparse
-import time
-
 import numpy as np
 
+from utils import subsets, bm, bm_to_ints, log_minus_exp, comb
 import zeta_transform.zeta_transform as zeta_transform
 from scoring import DiscreteData, ContinuousData, BDeu, BGe
-
-def read_jkl(scorepath):
-    scores = dict()
-    with open(scorepath, 'r') as jkl_file:
-        rows = jkl_file.readlines()
-        scores = dict()
-        n_scores = 0
-        for row in rows[1:]:
-
-            if not n_scores:
-                n_scores = int(row.strip().split()[1])
-                current_var = int(row.strip().split()[0])
-                scores[current_var] = dict()
-                continue
-
-            row_list = row.strip().split()
-            prob_sum = float(row_list[0])
-            n_parents = int(row_list[1])
-
-            parents = frozenset()
-            if n_parents > 0:
-                parents = frozenset([int(x) for x in row_list[2:]])
-            scores[current_var][tuple(sorted(tuple(parents)))] = prob_sum
-            n_scores -= 1
-
-    if min(scores.keys()) == 1:
-        scores = jkl_to_zero_based_indexing(scores)
-
-    return scores
-
-
-def jkl_to_zero_based_indexing(jkl):
-    for old_node in sorted(jkl.keys()):
-        tmp_dict = dict()
-        for pset in jkl[old_node]:
-                tmp_dict[tuple(np.array(pset) - 1)] = jkl[old_node][pset]
-        jkl[old_node - 1] = tmp_dict
-        del jkl[old_node]
-    return jkl
-
-
-def write_jkl(scores, fpath):
-    """Assumes the psets are iterables, not bitmaps
-    """
-    with open(fpath, 'w') as f:
-        lines = list()
-        n_vars = len(scores)
-        lines.append(str(n_vars) + "\n")
-        for v in sorted(scores):
-            lines.append("{} {}\n".format(v, len(scores[v])))
-            for pset in sorted(scores[v], key=lambda pset: len(pset)):
-                lines.append("{} {} {}\n".format(scores[v][pset], len(pset), ' '.join([str(p) for p in pset])))
-        f.writelines(lines)
-
-
-def subsets(iterable, fromsize, tosize):
-    s = list(iterable)
-    step = 1 + (fromsize > tosize) * -2
-    return chain.from_iterable(combinations(s, i)
-                               for i in range(fromsize, tosize + step, step))
-
-
-def arg(name, kwargs):
-    if name not in kwargs:
-        return None
-    return kwargs[name]
-
-
-def candidates_rnd(K, **kwargs):
-
-    n = arg("n", kwargs)
-    assert n is not None, "nvars (-n) required for algo == rnd"
-
-    C = dict()
-    for v in range(n):
-        C[v] = tuple(sorted(np.random.choice([u for u in range(n) if u != v], K, replace=False)))
-    return C
-
-
-def candidates_greedy_backward_forward(K, **kwargs):
-
-    scores = arg("scores", kwargs)
-    assert scores is not None, "scorepath (-s) required for algo == greedy-backward-forward"
-
-    def min_max(v):
-        return min([max([(u, scores.local(v, tuple(set(S + (u,)))))
-                         for S in subsets(C[v].difference({u}), 0, len(C[v]) - 1)],
-                        key=lambda item: item[1])
-                    for u in C[v]], key=lambda item: item[1])[0]
-
-    def highest_uncovered(v, U):
-        return max([(u, scores.local(v, tuple(set(S + (u,)))))
-                    for S in subsets(C[v], 0, len(C[v]))
-                    for u in U],
-                   key=lambda item: item[1])[0]
-
-    C = candidates_rnd(K, n=len(scores.score._variables))
-    C = {v: set(C[v]) for v in C}
-    for v in C:
-        C_prev = dict(C)
-        while True:
-            u_hat = min_max(v)
-            C[v] = C[v].difference({u_hat})
-            u_hat = highest_uncovered(v, set(C).difference(C[v]).difference({v}))
-            C[v].add(u_hat)
-            if C == C_prev:
-                break
-            else:
-                C_prev = dict(C)
-        C[v] = tuple(sorted(C[v]))
-
-    return C
-
-
-def prune_scores(C, scores):
-    for v in scores:
-        tmp = dict()
-        for pset in scores[v]:
-            if set(pset).issubset(C[v]):
-                tmp[pset] = scores[v][pset]
-        scores[v] = tmp
-
-
-def bm(ints, ix=None):
-    if type(ints) not in [set, tuple]:
-        ints = {int(ints)}
-    if ix is not None:
-        ints = [ix.index(i) for i in ints]
-    bitmap = 0
-    for k in ints:
-        bitmap += 2**k
-    return int(bitmap)  # without the cast np.int64 might sneak in somehow and break drv
-
-
-def bm_to_ints(bm):
-    return tuple(i for i in range(len(format(bm, 'b')[::-1]))
-                 if format(bm, 'b')[::-1][i] == "1")
-
-
-def translate_psets_to_bitmaps(C, scores):
-    K = len(C[0])
-    scores_list = list()
-    for v in sorted(scores):
-        tmp = [-float('inf')]*2**K
-        for pset in scores[v]:
-            tmp[bm(set(pset), ix=C[v])] = scores[v][pset]
-        scores_list.append(tmp)
-    return scores_list
-
-
-def comb(n, r):
-    if r > n:
-        return 0
-    f = math.factorial
-    return f(n) // f(r) // f(n-r)
-
-
-def log_minus_exp(p1, p2):
-    if p1 == p2 and p1:
-        return -float("inf")
-    return max(p1, p2) + np.log1p(-np.exp(min(p1, p2)-max(p1, p2)))
-
-
-def parse_DAG(DAG, C):
-    return [(i[0],) + tuple(C[i[0]][u] for u in [bm_to_ints(i[1]) if len(i) > 1 else tuple()][0]) for i in sorted(DAG, key=lambda x: x[0])]
 
 
 class DAGR:
 
     def __init__(self, scores, C):
-        self.scores = scores
+        self.scores = scores.scores
         self.C = C
-        self._precompute(scores, C)
+        self._precompute()
 
-    def _precompute(self, scores, C):
+    def _precompute(self):
 
-        self._f = [[0]*2**len(C[0]) for v in range(len(scores))]
+        self._f = [[0]*2**len(self.C[0]) for v in range(len(self.C))]
         for v in self.C:
             for X in subsets(self.C[v], 0, len(self.C[v])):
                 X_bm = bm(X, ix=self.C[v])
                 self._f[v][X_bm] = [-float("inf")]*2**(len(self.C[v])-len(X))
                 for S in subsets(set(self.C[v]).difference(X), 0, len(self.C[v]) - len(X)):
-                    self._f[v][X_bm][bm(S, ix=sorted(set(self.C[v]).difference(X)))] = scores[v][bm(X + S, ix=self.C[v])]
+                    self._f[v][X_bm][bm(S, ix=sorted(set(self.C[v]).difference(X)))] = self.scores[v][bm(X + S, ix=self.C[v])]
                 self._f[v][X_bm] = zeta_transform.from_list(self._f[v][X_bm])
 
     def sample(self, R, score=False):
@@ -231,19 +61,14 @@ class DAGR:
 
 class PartitionMCMC:
 
-    def __init__(self, scores, C, sr, temperature=1):
-        self.scores = scores
-        self.n = len(scores)
+    def __init__(self, C, sr, temperature=1):
+        self.n = len(C)
         self.C = C
         self.temp = temperature
         self.sr = sr
         self.stay_prob = 0.01
         self._moves = [self._R_basic_move, self._R_swap_any]
         self._moveprobs = [0.5, 0.5]
-        self.score_cache = dict()
-        self.score_cache["new"] = 0
-        self.score_cache["cache"] = 0
-        self._precompute()
         self.R = self._random_partition()
         if self.temp == 0:
             self.sample = self._sample_temp0
@@ -253,13 +78,8 @@ class PartitionMCMC:
             self.R_node_scores = self._pi(self.R)
             self.R_score = self.temp * sum(self.R_node_scores)
 
-    def _precompute(self):
-        self._a = [0]*self.n
-        for v in range(self.n):
-            self._a[v] = zeta_transform.from_list(self.scores[v])
-
     def _valid(self, R):
-        if sum(len(R[i]) for i in range(len(R))) != len(self.C):
+        if sum(len(R[i]) for i in range(len(R))) != self.n:
             return False
         if len(R) == 1:
             return True
@@ -298,67 +118,64 @@ class PartitionMCMC:
         def valid():
             return True
 
-        R = kwargs["R"]
-
         if "validate" in kwargs and kwargs["validate"] is True:
             return valid()
 
-        m = len(R)
-        sum_binoms = [sum([comb(len(R[i]), c) for c in range(1, len(R[i]))]) for i in range(m)]
+        m = len(self.R)
+        sum_binoms = [sum([comb(len(self.R[i]), c) for c in range(1, len(self.R[i]))]) for i in range(m)]
         nbd = m - 1 + sum(sum_binoms)
         q = 1/nbd
 
-        j = np.random.choice(range(1, nbd+1))
+        j = np.random.randint(1, nbd+1)
 
         R_prime = list()
         if j < m:
-            R_prime = [R[i] for i in range(j-1)] + [R[j-1].union(R[j])] + [R[i] for i in range(min(m, j+1), m)]
-            return R_prime, q, q, R[j].union(R[min(m-1, j+1)])
+            R_prime = [self.R[i] for i in range(j-1)] + [self.R[j-1].union(self.R[j])] + [self.R[i] for i in range(min(m, j+1), m)]
+            return R_prime, q, q, self.R[j].union(self.R[min(m-1, j+1)])
 
         sum_binoms = [sum(sum_binoms[:i]) for i in range(1, len(sum_binoms)+1)]
         i_star = [m-1 + sum_binoms[i] for i in range(len(sum_binoms)) if m-1 + sum_binoms[i] < j]
         i_star = len(i_star)
 
-        c_star = [comb(len(R[i_star]), c) for c in range(1, len(R[i_star])+1)]
+        c_star = [comb(len(self.R[i_star]), c) for c in range(1, len(self.R[i_star])+1)]
         c_star = [sum(c_star[:i]) for i in range(1, len(c_star)+1)]
 
         c_star = [m-1 + sum_binoms[i_star-1] + c_star[i] for i in range(len(c_star))
                   if m-1 + sum_binoms[i_star-1] + c_star[i] < j]
         c_star = len(c_star)+1
 
-        nodes = np.random.choice(list(R[i_star]), c_star)
+        nodes = np.random.choice(list(self.R[i_star]), c_star)
 
-        R_prime = [R[i] for i in range(i_star)] + [set(nodes)]
-        R_prime += [R[i_star].difference(nodes)] + [R[i] for i in range(min(m, i_star+1), m)]
+        R_prime = [self.R[i] for i in range(i_star)] + [set(nodes)]
+        R_prime += [self.R[i_star].difference(nodes)] + [self.R[i] for i in range(min(m, i_star+1), m)]
 
-        return tuple(R_prime), q, q, R[i_star].difference(nodes).union(R[min(m-1, i_star+1)])
+        return tuple(R_prime), q, q, self.R[i_star].difference(nodes).union(self.R[min(m-1, i_star+1)])
 
     def _R_swap_any(self, **kwargs):
 
         def valid():
-            return len(R) > 1
+            return len(self.R) > 1
 
-        R = kwargs["R"]
-        m = len(R)
+        m = len(self.R)
 
         if "validate" in kwargs and kwargs["validate"] is True:
             return valid()
 
-        j, k = np.random.choice(range(len(R)), 2, replace=False)
-        v_j = np.random.choice(list(R[j]))
-        v_k = np.random.choice(list(R[k]))
+        j, k = np.random.choice(range(len(self.R)), 2, replace=False)
+        v_j = np.random.choice(list(self.R[j]))
+        v_k = np.random.choice(list(self.R[k]))
         R_prime = list()
-        for i in range(len(R)):
+        for i in range(m):
             if i == j:
-                R_prime.append(R[i].difference({v_j}).union({v_k}))
+                R_prime.append(self.R[i].difference({v_j}).union({v_k}))
             elif i == k:
-                R_prime.append(R[i].difference({v_k}).union({v_j}))
+                R_prime.append(self.R[i].difference({v_k}).union({v_j}))
             else:
-                R_prime.append(R[i])
+                R_prime.append(self.R[i])
 
-        q = 1/(comb(len(R), 2)*len(R[j])*len(R[k]))
+        q = 1/(comb(m, 2)*len(self.R[j])*len(self.R[k]))
 
-        return tuple(R_prime), q, q, {v_j, v_k}.union(*R[min(j, k)+1:min(max(j, k)+2, m+1)])
+        return tuple(R_prime), q, q, {v_j, v_k}.union(*self.R[min(j, k)+1:min(max(j, k)+2, m+1)])
 
     def _pi(self, R, R_node_scores=None, rescore=None):
 
@@ -379,7 +196,7 @@ class PartitionMCMC:
         for v in rescore:
 
             if inpart[v] == 0:
-                R_node_scores[v] = self.scores[v][0]
+                R_node_scores[v] = self.sr.psum(v, 0, 0)
 
             else:
 
@@ -403,7 +220,9 @@ class PartitionMCMC:
 
             R_prime_node_scores = self._pi(R_prime, R_node_scores=self.R_node_scores, rescore=rescore)
 
-            if np.random.rand() < np.exp(self.temp * sum(R_prime_node_scores) - self.R_score)*q_rev/q:
+            # make this happen in log space
+            if -np.random.exponential() < self.temp * sum(R_prime_node_scores) - self.R_score + np.log(q_rev) - np.log(q):
+            # if np.random.rand() < np.exp(self.temp * sum(R_prime_node_scores) - self.R_score)*q_rev/q:
                 self.R = R_prime
                 self.R_node_scores = R_prime_node_scores
                 self.R_score = self.temp * sum(self.R_node_scores)
@@ -459,24 +278,24 @@ class MC3:
 
 class Score:
 
-    def __init__(self, datapath, datatype="discrete"):
+    def __init__(self, datapath, scoref="bdeu"):
 
-        if datatype == "discrete":
+        if scoref == "bdeu":
 
             def local(node, parents):
                 score = self.score.bdeu_score(node, parents)[0]
                 if len(self.score._cache) > 1000000:
                     self.score.clear_cache()
                 # consider putting the prior explicitly somewhere
-                return score #- np.log(comb(self.n - 1, len(parents)))
+                return score - np.log(comb(self.n - 1, len(parents)))
 
             d = DiscreteData(datapath)
             d._varidx = {v: v for v in d._varidx.values()}
             self.n = len(d._variables)
             self.score = BDeu(d)
-            self.local = local  # self.score.bdeu_score
+            self.local = local
 
-        elif datatype == "continuous":
+        elif scoref == "bge":
 
             def local(node, parents):
                 return self.score.bge_score(node, parents)[0] - np.log(comb(self.n - 1, len(parents)))
@@ -536,6 +355,8 @@ class ScoreR:
         return self._a[v][U] == self._a[v][U & ~T]
 
     def psum(self, v, U, T):
+        if U == 0 and T == 0:
+            return self.scores[v][0]
         if T == 0:  # special case for T2 in precompute
             return -float("inf")
         if v in self._psum and U in self._psum[v] and T in self._psum[v][U]:
@@ -558,76 +379,3 @@ class ScoreR:
             return np.logaddexp.reduce(s)
 
         return log_minus_exp(score_U_cap_C, score_U_minus_T_cap_C)
-
-
-def pset_posteriors(DAGs):
-    posteriors = dict({v: dict() for v in range(len(DAGs[0]))})
-    for DAG in DAGs:
-        for v in DAG:
-            pset = [tuple(sorted(v[1])) if len(v) > 1 else tuple()][0]
-            v = v[0]
-            if pset not in posteriors[v]:
-                posteriors[v][pset] = 1
-            else:
-                posteriors[v][pset] += 1
-    for v in posteriors:
-        for pset in posteriors[v]:
-            posteriors[v][pset] /= len(DAGs)
-            posteriors[v][pset] = np.log(posteriors[v][pset])
-    return posteriors
-
-
-def main():
-    K = 9
-
-    t0 = time.process_time()
-
-    scores = Score(sys.argv[1], datatype="discrete")
-
-    # np.random.seed(2)
-    t0 = time.process_time()
-    C = candidates_greedy_backward_forward(K, scores=scores)
-    print("computing candidate parents {}".format(time.process_time() - t0))
-
-    scores = scores.all_scores(C)
-
-    t0 = time.process_time()
-    sr = ScoreR(scores, C)
-    print("precompute scoresums {}".format(time.process_time() - t0))
-    print("number of brutes {}".format(sr.brute_n))
-    print("number of cc {}".format(sr.cc_n))
-
-    print("initiate chain")
-    mcmc = MC3([PartitionMCMC(scores, C, sr, temperature=i/15) for i in range(16)])
-
-    print("run chain")
-    t0 = time.process_time()
-    for i in range(50000):
-        #print(i, end="\r")
-        mcmc.sample()
-    print("50k mcmc steps {}".format(time.process_time() - t0))
-
-    t0 = time.process_time()
-    ds = DAGR(scores, C)
-    print("compute DAG samplers {}".format(time.process_time() - t0))
-
-    t0 = time.process_time()
-    DAGs = list()
-    for i in range(1000):
-        DAGs.append(ds.sample(mcmc.sample()[0], score=True)[1])
-    print("sample 1000 DAGs {}".format(time.process_time() - t0))
-
-    print(DAGs)
-
-    t0 = time.process_time()
-    DAGs = list()
-    for i in range(1000):
-        DAGs.append(ds.sample(mcmc.sample()[0]))
-    print("sample 1000 DAGs {}".format(time.process_time() - t0))
-
-    ppost = pset_posteriors(DAGs)
-    write_jkl(ppost, "ppost.jkl")
-
-
-if __name__ == '__main__':
-    main()
