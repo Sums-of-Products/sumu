@@ -14,14 +14,59 @@ class DAGR:
 
     def _precompute(self):
 
-        self._f = [[0]*2**len(self.C[0]) for v in range(len(self.C))]
+        K = len(self.C[0])
+        n = len(self.C)
+
+        def fbit(mask):
+            """get index of first set bit"""
+            k = 0
+            while 1 & mask == 0:
+                k += 1
+                mask = mask // 2
+            return k
+
+        def kzon(mask, k):
+            """set kth zerobit on"""
+            nmask = ~mask
+            for i in range(k):
+                nmask = nmask & ~(nmask & -nmask)
+            return mask | (nmask & -nmask)
+
+        def dkbit(mask, k):
+            """drop kth bith"""
+            if mask == 0:
+                return mask
+            trunc = mask // 2**(k+1)
+            trunc *= 2**k
+            return ((1 << k) - 1) & mask | trunc
+
+        def subsets_size_k(k, n):
+            if k == 0:
+                return [0]
+            sset = (1 << k) - 1
+            limit = (1 << n)
+            ssets = [0]*comb(n, k)
+            i = 0
+            while sset < limit:
+                ssets[i] = sset
+                c = sset & -sset
+                r = sset + c
+                sset = (((r ^ sset) >> 2) // c) | r
+                i += 1
+            return ssets
+
+        self._f = [[0]*2**K for v in range(n)]
         for v in self.C:
-            for X in subsets(self.C[v], 0, len(self.C[v])):
-                X_bm = bm(X, ix=self.C[v])
-                self._f[v][X_bm] = [-float("inf")]*2**(len(self.C[v])-len(X))
-                for S in subsets(set(self.C[v]).difference(X), 0, len(self.C[v]) - len(X)):
-                    self._f[v][X_bm][bm(S, ix=sorted(set(self.C[v]).difference(X)))] = self.scores[v][bm(X + S, ix=self.C[v])]
-                self._f[v][X_bm] = zeta_transform.from_list(self._f[v][X_bm])
+            for X in range(2**K):
+                self._f[v][X] = [-float("inf")]*2**(K-bin(X).count("1"))
+                self._f[v][X][0] = self.scores[v][X]
+
+            for k in range(1, K+1):
+                for k_x in range(K-k+1):
+                    for X in subsets_size_k(k_x, K):
+                        for Y in subsets_size_k(k, K-k_x):
+                            i = fbit(Y)
+                            self._f[v][X][Y] = np.logaddexp(self._f[v][kzon(X, i)][dkbit(Y, i)], self._f[v][X][Y & ~(Y & -Y)])
 
     def sample(self, R, score=False):
         DAG = [(v,) for v in R[0]]
