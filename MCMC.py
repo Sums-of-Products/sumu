@@ -5,6 +5,63 @@ import zeta_transform.zeta_transform as zeta_transform
 from scoring import DiscreteData, ContinuousData, BDeu, BGe
 
 
+def fbit(mask):
+    """get index of first set bit"""
+    k = 0
+    while 1 & mask == 0:
+        k += 1
+        mask >>= 1
+    return k
+
+
+def kzon(mask, k):
+    """set kth zerobit on"""
+    nmask = ~mask
+    for i in range(k):
+        nmask &= ~(nmask & -nmask)
+    return mask | (nmask & -nmask)
+
+
+def dkbit(mask, k):
+    """drop kth bith"""
+    if mask == 0:
+        return mask
+    trunc = mask >> (k+1)
+    trunc <<= k
+    return ((1 << k) - 1) & mask | trunc
+
+
+def ikbit(mask, k, bit):
+    """shift all bits >=k to the left and insert bit to k"""
+    if k == 0:
+        newmask = mask << 1
+    else:
+        newmask = mask >> k-1
+    newmask ^= (-bit ^ newmask) & 1
+    newmask <<= k
+    return newmask | ((1 << k) - 1) & mask
+
+
+def subsets_size_k(k, n):
+    if k == 0:
+        yield 0
+        return
+    S = (1 << k) - 1
+    limit = (1 << n)
+    while S < limit:
+        yield S
+        x = S & -S
+        r = S + x
+        S = (((r ^ S) >> 2) // x) | r
+
+
+def ssets(mask):
+    S = mask
+    while S > 0:
+        yield S
+        S = (S - 1) & mask
+
+
 class DAGR:
 
     def __init__(self, scores, C):
@@ -16,44 +73,6 @@ class DAGR:
 
         K = len(self.C[0])
         n = len(self.C)
-
-        def fbit(mask):
-            """get index of first set bit"""
-            k = 0
-            while 1 & mask == 0:
-                k += 1
-                mask = mask // 2
-            return k
-
-        def kzon(mask, k):
-            """set kth zerobit on"""
-            nmask = ~mask
-            for i in range(k):
-                nmask = nmask & ~(nmask & -nmask)
-            return mask | (nmask & -nmask)
-
-        def dkbit(mask, k):
-            """drop kth bith"""
-            if mask == 0:
-                return mask
-            trunc = mask // 2**(k+1)
-            trunc *= 2**k
-            return ((1 << k) - 1) & mask | trunc
-
-        def subsets_size_k(k, n):
-            if k == 0:
-                return [0]
-            sset = (1 << k) - 1
-            limit = (1 << n)
-            ssets = [0]*comb(n, k)
-            i = 0
-            while sset < limit:
-                ssets[i] = sset
-                c = sset & -sset
-                r = sset + c
-                sset = (((r ^ sset) >> 2) // c) | r
-                i += 1
-            return ssets
 
         self._f = [[0]*2**K for v in range(n)]
         for v in self.C:
@@ -167,7 +186,7 @@ class PartitionMCMC:
             return valid()
 
         m = len(self.R)
-        sum_binoms = [sum([comb(len(self.R[i]), c) for c in range(1, len(self.R[i]))]) for i in range(m)]
+        sum_binoms = [sum([comb(len(self.R[i]), v) for v in range(1, len(self.R[i]))]) for i in range(m)]
         nbd = m - 1 + sum(sum_binoms)
         q = 1/nbd
 
@@ -182,7 +201,7 @@ class PartitionMCMC:
         i_star = [m-1 + sum_binoms[i] for i in range(len(sum_binoms)) if m-1 + sum_binoms[i] < j]
         i_star = len(i_star)
 
-        c_star = [comb(len(self.R[i_star]), c) for c in range(1, len(self.R[i_star])+1)]
+        c_star = [comb(len(self.R[i_star]), v) for v in range(1, len(self.R[i_star])+1)]
         c_star = [sum(c_star[:i]) for i in range(1, len(c_star)+1)]
 
         c_star = [m-1 + sum_binoms[i_star-1] + c_star[i] for i in range(len(c_star))
@@ -369,6 +388,7 @@ class ScoreR:
         self.scores = scores
         self.C = C
         self._precompute_a()
+        self._precompute_basecases()
         self._precompute_psum()
 
     def _precompute_a(self):
@@ -376,25 +396,42 @@ class ScoreR:
         for v in range(len(self.scores)):
             self._a[v] = zeta_transform.from_list(self.scores[v])
 
-    def _precompute_psum(self):
-        self._psum = dict()
+    def _precompute_basecases(self):
+        K = len(self.C[0])
+        self._psum = {v: dict() for v in range(len(self.C))}
         for v in self.C:
-            for U in subsets(self.C[v], 1, len(self.C[v])):
-                U0 = bm(set(U), ix=self.C[v])
-                for T in subsets(U, 1, len(U)):
-                    T0 = bm(set(T), ix=self.C[v])
-                    if self._cc(v, U0, T0):
-                        self.cc_n += 1
-                        if v not in self._psum:
-                            self._psum[v] = dict()
-                        if U0 not in self._psum[v]:
-                            self._psum[v][U0] = dict()
-                        U1 = bm({u for u in U if u != T[0]}, ix=self.C[v])
-                        T1 = bm({T[0]}, ix=self.C[v])
-                        T2 = bm({t for t in T if t != T[0]}, ix=self.C[v])
+            for k in range(K):
+                x = 1 << k
+                U_minus_x = ((1 << K) - 1) & ~x
+                tmp = [0]*2**(K-1)
+                tmp[0] = self.scores[v][x]
+                self._psum[v][x] = dict()
+                for S in ssets(U_minus_x):
+                    if S | x not in self._psum[v]:
+                        self._psum[v][S | x] = dict()
+                    tmp[dkbit(S, k)] = self.scores[v][S | x]
+                tmp = zeta_transform.from_list(tmp)
+                for S in range(len(tmp)):
+                    # only save base case if it can't be computed as difference
+                    # makes a bit slower, makes require a bit less space
+                    if self._cc(v, ikbit(S, k, 1), x):
+                        self._psum[v][ikbit(S, k, 1)][x] = tmp[S]
 
-                        self._psum[v][U0][T0] = np.logaddexp(self.psum(v, U0, T1),
-                                                             self.psum(v, U1, T2))
+    def _precompute_psum(self):
+
+        K = len(self.C[0])
+
+        for v in self.C:
+            for U in range(1, 2**K):
+                for T in ssets(U):
+                    if self._cc(v, U, T):
+                        self.cc_n += 1
+                        T1 = T & -T
+                        U1 = U & ~T1
+                        T2 = T & ~T1
+
+                        self._psum[v][U][T] = np.logaddexp(self.psum(v, U, T1),
+                                                           self.psum(v, U1, T2))
 
     def _cc(self, v, U, T):
         return self._a[v][U] == self._a[v][U & ~T]
@@ -407,20 +444,4 @@ class ScoreR:
         if v in self._psum and U in self._psum[v] and T in self._psum[v][U]:
             return self._psum[v][U][T]
         else:
-            return self._psum_diff(v, U, T)
-
-    def _psum_diff(self, v, U, T):
-
-        score_U_cap_C = self._a[v][U]
-        score_U_minus_T_cap_C = self._a[v][U & ~T]
-        if score_U_cap_C == score_U_minus_T_cap_C:
-            self.brute_n += 1
-            U_minus_T_list = bm_to_ints(U & ~T)
-            T_list = bm_to_ints(T)
-            s = list()
-            for t in subsets(T_list, 1, len(T_list)):
-                for u in subsets(U_minus_T_list, 0, len(U_minus_T_list)):
-                    s.append(self.scores[v][bm(t) & bm(u)])
-            return np.logaddexp.reduce(s)
-
-        return log_minus_exp(score_U_cap_C, score_U_minus_T_cap_C)
+            return log_minus_exp(self._a[v][U], self._a[v][U & ~T])
