@@ -342,12 +342,17 @@ class MC3:
 
 class Score:
 
-    def __init__(self, datapath, scoref="bdeu"):
+    def __init__(self, datapath, scoref="bdeu", maxid=-1):
+
+        self.maxid = maxid
 
         if scoref == "bdeu":
 
             def local(node, parents):
-                score = self.score.bdeu_score(node, parents)[0]
+                if maxid == -1 or len(parents) <= self.maxid:
+                    score = self.score.bdeu_score(node, parents)[0]
+                else:
+                    return -float("inf")
                 if len(self.score._cache) > 1000000:
                     self.score.clear_cache()
                 # consider putting the prior explicitly somewhere
@@ -362,7 +367,10 @@ class Score:
         elif scoref == "bge":
 
             def local(node, parents):
-                return self.score.bge_score(node, parents)[0] - np.log(comb(self.n - 1, len(parents)))
+                if maxid == -1 or len(parents) <= self.maxid:
+                    return self.score.bge_score(node, parents)[0] - np.log(comb(self.n - 1, len(parents)))
+                else:
+                    return -float("inf")
 
             d = ContinuousData(datapath, header=False)
             d._varidx = {v: v for v in d._varidx.values()}
@@ -374,7 +382,7 @@ class Score:
         scores = list()
         for v in C:
             tmp = [-float('inf')]*2**len(C[0])
-            for pset in subsets(C[v], 0, len(C[v])):
+            for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
                 tmp[bm(pset, ix=C[v])] = self.local(v, pset)
             scores.append(tmp)
         return scores
