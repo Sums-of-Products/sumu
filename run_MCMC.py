@@ -14,6 +14,7 @@ def main():
     parser.add_argument("datapath", help="path to data file")
     parser.add_argument("K", help="how many candidates to include", type=int)
     parser.add_argument("-s", "--score", help="score function to use", choices=["bdeu", "bge"], default="bdeu")
+    parser.add_argument("-m", "--max-id", help="maximum indegree for scores (default no max-indegree)", type=int, default=-1)
     parser.add_argument("-c", "--candidate-algorithm", help="candidate algorithm to use", choices=cnd.algo.keys(), default="greedy-1")
 
     parser.add_argument("-b", "--burn-in", help="number of burn-in samples", type=int, default=1000)
@@ -32,10 +33,10 @@ def main():
         np.random.seed(args.randomseed)
 
     # scores : function to allow evaluation of any local score
-    scores = MCMC.Score(args.datapath, scoref=args.score)
+    scores = MCMC.Score(args.datapath, scoref=args.score, maxid=args.max_id)
 
     t0 = time.process_time()
-    C = cnd.algo[args.candidate_algorithm](args.K, scores=scores, datapath=args.datapath)
+    C = cnd.algo[args.candidate_algorithm](args.K, n=scores.n, scores=scores, datapath=args.datapath)
     t_C = time.process_time() - t0
     if args.verbose:
         print("1. candidates:\t\t{}".format(t_C))
