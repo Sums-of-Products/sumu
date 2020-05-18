@@ -27,27 +27,34 @@ def dkbit(mask, k):
     if mask == 0:
         return mask
     trunc = mask >> (k+1)
-    trunc <<= k
-    return ((1 << k) - 1) & mask | trunc
+    #trunc <<= k
+    trunc *= 2**k
+    # return ((1 << k) - 1) & mask | trunc
+    return (2**k - 1) & mask | trunc
 
 
 def ikbit(mask, k, bit):
     """shift all bits >=k to the left and insert bit to k"""
     if k == 0:
-        newmask = mask << 1
+        # newmask = mask << 1
+        newmask = mask * 2
     else:
         newmask = mask >> k-1
     newmask ^= (-bit ^ newmask) & 1
-    newmask <<= k
-    return newmask | ((1 << k) - 1) & mask
+    #newmask <<= k
+    newmask *= 2**k
+    #return newmask | ((1 << k) - 1) & mask
+    return newmask | (2**k - 1) & mask
 
 
 def subsets_size_k(k, n):
     if k == 0:
         yield 0
         return
-    S = (1 << k) - 1
-    limit = (1 << n)
+    #S = (1 << k) - 1
+    S = 2**k - 1
+    # limit = (1 << n)
+    limit = 2**n
     while S < limit:
         yield S
         x = S & -S
@@ -410,7 +417,7 @@ class ScoreR:
         for v in self.C:
             for k in range(K):
                 x = 1 << k
-                U_minus_x = ((1 << K) - 1) & ~x
+                U_minus_x = (2**K - 1) & ~x
                 tmp = [0]*2**(K-1)
                 tmp[0] = self.scores[v][x]
                 self._psum[v][x] = dict()
