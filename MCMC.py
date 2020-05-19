@@ -74,6 +74,72 @@ class DAGR:
     def __init__(self, scores, C):
         self.scores = scores.scores
         self.C = C
+
+    def precompute(self, v):
+
+        K = len(self.C[v])
+
+        self._f = [0]*2**K
+        for X in range(2**K):
+            self._f[X] = [-float("inf")]*2**(K-bin(X).count("1"))
+            self._f[X][0] = self.scores[v][X]
+
+        for k in range(1, K+1):
+            for k_x in range(K-k+1):
+                for X in subsets_size_k(k_x, K):
+                    for Y in subsets_size_k(k, K-k_x):
+                        i = fbit(Y)
+                        self._f[X][Y] = np.logaddexp(self._f[kzon(X, i)][dkbit(Y, i)], self._f[X][Y & ~(Y & -Y)])
+
+    def sample(self, v, R, score=False):
+
+        if v in R[0]:
+            family = (v,)
+            family_score = self.scores[v][0]
+
+        else:
+            for i in range(1, len(R)):
+                if v in R[i]:
+                    break
+            family = (v, self._sample_pset(v, set().union(*R[:i]), R[i-1]))
+            family_score = self.scores[v][bm(family[1], ix=self.C[v])]
+
+        if score is True:
+            return family, family_score
+        return family
+
+    def _sample_pset(self, v, U, T):
+
+        def g(X, E, U, T):
+
+            X_bm = bm(X, ix=self.C[v])
+            E_bm = bm(E, ix=sorted(set(self.C[v]).difference(X)))
+            U_bm = bm(U.difference(X), ix=sorted(set(self.C[v]).difference(X)))
+            T_bm = bm(T.difference(X), ix=sorted(set(self.C[v]).difference(X)))
+
+            score_1 = [self._f[X_bm][U_bm & ~E_bm] if X.issubset(U.difference(E)) else -float("inf")][0]
+            score_2 = [self._f[X_bm][(U_bm & ~E_bm) & ~T_bm] if X.issubset(U.difference(E.union(T))) else -float("inf")][0]
+
+            return log_minus_exp(score_1, score_2)
+
+        U = U.intersection(self.C[v])
+        T = T.intersection(self.C[v])
+
+        X = set()
+        E = set()
+        for i in U:
+            if -np.random.exponential() < g(X.union({i}), E, U, T) - g(X, E, U, T):
+                X.add(i)
+            else:
+                E.add(i)
+        return X
+
+
+class _DAGR:
+
+    def __init__(self, scores, C):
+        self.scores = scores.scores
+        self.C = C
         self._precompute()
 
     def _precompute(self):

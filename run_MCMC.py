@@ -71,7 +71,7 @@ def main():
     t0 = time.process_time()
     Rs = list()
     for i in range(args.iterations):
-        if i != 0 and i % args.nth == 0:
+        if i % args.nth == 0:
             Rs.append(mcmc.sample()[0])
         else:
             mcmc.sample()
@@ -79,21 +79,29 @@ def main():
     if args.verbose:
         print("6. {} mcmc iterations, {} root-partitions stored:\t\t{}".format(args.iterations, len(Rs), t_mcmc_iterations))
 
+    t_dagr = 0
     t0 = time.process_time()
     # DAGR : special structure for sampling psets given root-partition
     ds = MCMC.DAGR(scores, C)
-    t_dagr = time.process_time() - t0
+    t_dagr += time.process_time() - t0
+
+    t_dags = 0
+    DAGs = [[] for i in range(len(Rs))]
+    DAG_scores = [0]*len(Rs)
+    for v in C:
+        t0 = time.process_time()
+        ds.precompute(v)
+        t_dagr += time.process_time() - t0
+        t0 = time.process_time()
+        for i in range(len(Rs)):
+            family, family_score = ds.sample(v, Rs[i], score=True)
+            DAGs[i].append(family)
+            DAG_scores[i] += family_score
+        t_dags += time.process_time() - t0
+
     if args.verbose:
         print("7. precompute data structure for DAG sampling:\t\t{}".format(t_dagr))
 
-    t0 = time.process_time()
-    DAGs = list()
-    DAG_scores = list()
-    for R in Rs:
-        DAG, DAG_score = ds.sample(mcmc.sample()[0], score=True)
-        DAGs.append(DAG)
-        DAG_scores.append(DAG_score)
-    t_dags = time.process_time() - t0
     if args.verbose:
         print("8. {} DAGs sampled:\t\t{}".format(len(DAGs), t_dags))
 
