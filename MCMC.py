@@ -422,12 +422,12 @@ class Score:
         if scoref == "bdeu":
 
             def local(node, parents):
+                if len(self.score._cache) > 1000000:
+                    self.score.clear_cache()
                 if maxid == -1 or len(parents) <= self.maxid:
                     score = self.score.bdeu_score(node, parents)[0]
                 else:
                     return -float("inf")
-                if len(self.score._cache) > 1000000:
-                    self.score.clear_cache()
                 # consider putting the prior explicitly somewhere
                 return score - np.log(comb(self.n - 1, len(parents)))
 
@@ -440,6 +440,8 @@ class Score:
         elif scoref == "bge":
 
             def local(node, parents):
+                if len(self.score._cache) > 1000000:
+                    self.score._cache = dict()
                 if maxid == -1 or len(parents) <= self.maxid:
                     return self.score.bge_score(node, parents)[0] - np.log(comb(self.n - 1, len(parents)))
                 else:
