@@ -139,3 +139,7 @@ def pset_posteriors(DAGs):
             posteriors[v][pset] /= len(DAGs)
             posteriors[v][pset] = np.log(posteriors[v][pset])
     return posteriors
+
+
+def DAG_to_str(DAG):
+    return "|".join([str(f[0]) if len(f) == 1 else " ".join([str(f[0]), *[str(v) for v in sorted(f[1])]]) for f in DAG])

@@ -5,7 +5,7 @@ import numpy as np
 
 import candidates as cnd
 import MCMC
-from utils import pset_posteriors, write_jkl
+from utils import pset_posteriors, write_jkl, DAG_to_str
 
 
 def main():
@@ -111,9 +111,12 @@ def main():
     if args.verbose:
         print("9. parent set frequencies:\t\t{}".format(t_ppost))
 
-    for ext, item in [(".dag", DAGs), (".trace", DAG_scores)]:
-        with open(args.output_path_prefix + ext, "w") as f:
-            f.write(str(item))
+    with open(args.output_path_prefix + ".dag", "w") as f:
+        for DAG in DAGs:
+            f.write(DAG_to_str(DAG) + "\n")
+
+    with open(args.output_path_prefix + ".trace", "w") as f:
+        f.write(",".join(str(score) for score in DAG_scores))
 
     write_jkl(ppost, args.output_path_prefix + ".psetfreq")
 
