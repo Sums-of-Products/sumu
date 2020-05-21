@@ -146,9 +146,9 @@ def top(K, **kwargs):
     assert scores is not None, "scorepath (-s) required for algo == top"
 
     C = dict()
-    for v in scores:
-        top_candidates = sorted([(parent, scores[v][(parent,)])
-                                 for parent in scores if parent != v],
+    for v in range(scores.n):
+        top_candidates = sorted([(parent, scores.local(v, (parent,)))
+                                 for parent in range(scores.n) if parent != v],
                                 key=lambda item: item[1], reverse=True)[:K]
         top_candidates = tuple(sorted(c[0] for c in top_candidates))
         C[v] = top_candidates
@@ -162,12 +162,12 @@ def greedy(K, **kwargs):
     assert not [s, scores].count(None), "s (-gs) and scorepath (-s) required for algo == greedy"
 
     def unimportance(v, u, U):
-        pi_v = [scores[v][S] for S in subsets([m for m in U if m != u], 0, s)]
+        pi_v = [scores.local(v, S) for S in subsets([m for m in U if m != u], 0, s)]
         return max(pi_v)
 
-    C = dict({v: list() for v in scores})
-    for v in scores:
-        U = [u for u in scores if u != v]
+    C = dict({v: list() for v in range(scores.n)})
+    for v in range(scores.n):
+        U = [u for u in range(scores.n) if u != v]
         while len(C[v]) < K:
             least_unimportant = min([(u, unimportance(v, u, U)) for u in U], key=lambda item: item[1])[0]
             C[v].append(least_unimportant)
@@ -450,13 +450,13 @@ def pessy(K, **kwargs):
         for Y in subsets(sorted(C[v] + [u]),
                  min(len(C[v]) + 1, max(0, K - s)),
                  min(len(C[v]) + 1, max(0, K - s))):
-            sums.append(np.logaddexp.reduce([scores[v][S] for S in subsets(Y, 0, len(Y))]))
+            sums.append(np.logaddexp.reduce([scores.local(v, S) for S in subsets(Y, 0, len(Y))]))
         return min(sums)
 
-    C = dict({v: list() for v in scores})
+    C = dict({v: list() for v in range(scores.n)})
 
-    for v in scores:
-        U = [u for u in scores if u != v]
+    for v in range(scores.n):
+        U = [u for u in range(scores.n) if u != v]
 
         while len(C[v]) < K:
             max_u = max([(u, sum_scores(v, u)) for u in U], key=lambda item: item[1])[0]
