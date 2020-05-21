@@ -3,7 +3,7 @@ import time
 
 import numpy as np
 
-import candidates as cnd
+import candidates_no_R as cnd
 import MCMC
 from utils import pset_posteriors, write_jkl, DAG_to_str
 
@@ -43,7 +43,7 @@ def main():
 
     t0 = time.process_time()
     # scores : scores for all possible candidate parents precomputed
-    scores = scores.all_scores(C)
+    scores = scores.all_scores_list(C)
     t_scores = time.process_time() - t0
     if args.verbose:
         print("2. precompute all local scores for candidates:\t\t{}".format(t_scores))
@@ -111,14 +111,15 @@ def main():
     if args.verbose:
         print("9. parent set frequencies:\t\t{}".format(t_ppost))
 
-    with open(args.output_path_prefix + ".dag", "w") as f:
-        for DAG in DAGs:
-            f.write(DAG_to_str(DAG) + "\n")
+    if args.output_path_prefix is not None:
+        with open(args.output_path_prefix + ".dag", "w") as f:
+            for DAG in DAGs:
+                f.write(DAG_to_str(DAG) + "\n")
 
-    with open(args.output_path_prefix + ".trace", "w") as f:
-        f.write(",".join(str(score) for score in DAG_scores))
+        with open(args.output_path_prefix + ".trace", "w") as f:
+            f.write(",".join(str(score) for score in DAG_scores))
 
-    write_jkl(ppost, args.output_path_prefix + ".psetfreq")
+        write_jkl(ppost, args.output_path_prefix + ".psetfreq")
 
 
 if __name__ == '__main__':
