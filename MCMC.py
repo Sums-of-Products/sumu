@@ -453,7 +453,18 @@ class Score:
             self.score = BGe(d)
             self.local = local
 
-    def all_scores(self, C):
+    def all_scores_dict(self, C=None):
+        scores = dict()
+        if C is None:
+            C = {v: tuple(sorted(set(range(self.n)).difference({v}))) for v in range(self.n)}
+        for v in C:
+            tmp = dict()
+            for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
+                tmp[pset] = self.local(v, pset)
+            scores[v] = tmp
+        return scores
+
+    def all_scores_list(self, C):
         scores = list()
         for v in C:
             tmp = [-float('inf')]*2**len(C[0])
