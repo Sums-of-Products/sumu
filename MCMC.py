@@ -501,9 +501,9 @@ class ScoreR:
                         self._psum[v][S | x] = dict()
                     tmp[dkbit(S, k)] = self.scores[v][S | x]
                 tmp = zeta_transform.from_list(tmp)
+                if self.stats:
+                    self.stats[type(self).__name__]["basecases"] += len(tmp)
                 for S in range(len(tmp)):
-                    if self.stats:
-                            self.stats[type(self).__name__]["basecases"] += len(tmp)
                     # only save basecase if it can't be computed as difference
                     # makes a bit slower, makes require a bit less space
                     if self._cc(v, ikbit(S, k, 1), x):
