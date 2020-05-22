@@ -415,7 +415,7 @@ class MC3:
 
 class Score:
 
-    def __init__(self, datapath, scoref="bdeu", maxid=-1):
+    def __init__(self, datapath, scoref="bdeu", maxid=-1, ess=10):
 
         self.maxid = maxid
 
@@ -424,7 +424,7 @@ class Score:
             def local(node, parents):
                 if len(self.score._cache) > 1000000:
                     self.score.clear_cache()
-                if maxid == -1 or len(parents) <= self.maxid:
+                if self.maxid == -1 or len(parents) <= self.maxid:
                     score = self.score.bdeu_score(node, parents)[0]
                 else:
                     return -float("inf")
@@ -434,7 +434,7 @@ class Score:
             d = DiscreteData(datapath)
             d._varidx = {v: v for v in d._varidx.values()}
             self.n = len(d._variables)
-            self.score = BDeu(d)
+            self.score = BDeu(d, alpha=ess)
             self.local = local
 
         elif scoref == "bge":
@@ -442,7 +442,7 @@ class Score:
             def local(node, parents):
                 if len(self.score._cache) > 1000000:
                     self.score._cache = dict()
-                if maxid == -1 or len(parents) <= self.maxid:
+                if self.maxid == -1 or len(parents) <= self.maxid:
                     return self.score.bge_score(node, parents)[0] - np.log(comb(self.n - 1, len(parents)))
                 else:
                     return -float("inf")

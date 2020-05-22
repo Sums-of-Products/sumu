@@ -14,6 +14,7 @@ def main():
     parser.add_argument("datapath", help="path to data file")
     parser.add_argument("K", help="how many candidates to include", type=int)
     parser.add_argument("-s", "--score", help="score function to use", choices=["bdeu", "bge"], default="bdeu")
+    parser.add_argument("-e", "--ess", help="equivalent sample size for BDeu", type=int, default=10)
     parser.add_argument("-m", "--max-id", help="maximum indegree for scores (default no max-indegree)", type=int, default=-1)
     parser.add_argument("-c", "--candidate-algorithm", help="candidate algorithm to use", choices=cnd.algo.keys(), default="greedy-1")
 
@@ -33,7 +34,7 @@ def main():
         np.random.seed(args.randomseed)
 
     # scores : function to allow evaluation of any local score
-    scores = MCMC.Score(args.datapath, scoref=args.score, maxid=args.max_id)
+    scores = MCMC.Score(args.datapath, scoref=args.score, maxid=args.max_id, ess=args.ess)
 
     t0 = time.process_time()
     C = cnd.algo[args.candidate_algorithm](args.K, n=scores.n, scores=scores, datapath=args.datapath)
