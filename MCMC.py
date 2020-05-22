@@ -5,6 +5,10 @@ import zeta_transform.zeta_transform as zeta_transform
 from scoring import DiscreteData, ContinuousData, BDeu, BGe
 
 
+def close(a, b, tolerance):
+    return 1 - a/b < tolerance
+
+
 def fbit(mask):
     """get index of first set bit"""
     k = 0
@@ -71,9 +75,15 @@ def ssets(mask):
 
 class DAGR:
 
-    def __init__(self, scores, C):
+    def __init__(self, scores, C, tolerance=1e-32, stats=None):
+        if stats is not None:
+            self.stats = stats
+            self.stats[type(self).__name__] = dict()
+            self.stats[type(self).__name__]["CC"] = 0
+
         self.scores = scores.scores
         self.C = C
+        self.tol = tolerance
 
     def precompute(self, v):
 
@@ -120,7 +130,10 @@ class DAGR:
             score_1 = [self._f[X_bm][U_bm & ~E_bm] if X.issubset(U.difference(E)) else -float("inf")][0]
             score_2 = [self._f[X_bm][(U_bm & ~E_bm) & ~T_bm] if X.issubset(U.difference(E.union(T))) else -float("inf")][0]
 
-            return log_minus_exp(score_1, score_2)
+            if not close(score_1, score_2, self.tol):
+                return log_minus_exp(score_1, score_2)
+            else:  # CC
+                return None
 
         U = U.intersection(self.C[v])
         T = T.intersection(self.C[v])
@@ -128,72 +141,34 @@ class DAGR:
         X = set()
         E = set()
         for i in U:
-            if -np.random.exponential() < g(X.union({i}), E, U, T) - g(X, E, U, T):
-                X.add(i)
-            else:
-                E.add(i)
+            try:
+                if -np.random.exponential() < g(X.union({i}), E, U, T) - g(X, E, U, T):
+                    X.add(i)
+                else:
+                    E.add(i)
+            except TypeError:
+                if self.stats is not None:
+                    self.stats[type(self).__name__]["CC"] += 1
+
+                return self._sample_pset_brute(v, U, T)
         return X
 
-
-class _DAGR:
-
-    def __init__(self, scores, C):
-        self.scores = scores.scores
-        self.C = C
-        self._precompute()
-
-    def _precompute(self):
-
-        K = len(self.C[0])
-        n = len(self.C)
-
-        self._f = [[0]*2**K for v in range(n)]
-        for v in self.C:
-            for X in range(2**K):
-                self._f[v][X] = [-float("inf")]*2**(K-bin(X).count("1"))
-                self._f[v][X][0] = self.scores[v][X]
-
-            for k in range(1, K+1):
-                for k_x in range(K-k+1):
-                    for X in subsets_size_k(k_x, K):
-                        for Y in subsets_size_k(k, K-k_x):
-                            i = fbit(Y)
-                            self._f[v][X][Y] = np.logaddexp(self._f[v][kzon(X, i)][dkbit(Y, i)], self._f[v][X][Y & ~(Y & -Y)])
-
-    def sample(self, R, score=False):
-        DAG = [(v,) for v in R[0]]
-        for i in range(1, len(R)):
-            for v in R[i]:
-                DAG.append((v, self._sample_pset(v, set().union(*R[:i]), R[i-1])))
-        if score is True:
-            return DAG, sum(self.scores[i[0]][0] if len(i) < 2 else self.scores[i[0]][bm(i[1], ix=self.C[i[0]])] for i in DAG)
-        return DAG
-
-    def _sample_pset(self, v, U, T):
-
-        def g(X, E, U, T):
-
-            X_bm = bm(X, ix=self.C[v])
-            E_bm = bm(E, ix=sorted(set(self.C[v]).difference(X)))
-            U_bm = bm(U.difference(X), ix=sorted(set(self.C[v]).difference(X)))
-            T_bm = bm(T.difference(X), ix=sorted(set(self.C[v]).difference(X)))
-
-            score_1 = [self._f[v][X_bm][U_bm & ~E_bm] if X.issubset(U.difference(E)) else -float("inf")][0]
-            score_2 = [self._f[v][X_bm][(U_bm & ~E_bm) & ~T_bm] if X.issubset(U.difference(E.union(T))) else -float("inf")][0]
-
-            return log_minus_exp(score_1, score_2)
+    def _sample_pset_brute(self, v, U, T):
 
         U = U.intersection(self.C[v])
         T = T.intersection(self.C[v])
 
-        X = set()
-        E = set()
-        for i in U:
-            if -np.random.exponential() < g(X.union({i}), E, U, T) - g(X, E, U, T):
-                X.add(i)
-            else:
-                E.add(i)
-        return X
+        probs = list()
+        psets = list()
+        for T_set in subsets(T, 1, len(T)):
+            for U_set in subsets(U.difference(T), 0, len(U.difference(T))):
+                pset = set(T_set).union(U_set)
+                probs.append(self.scores[v][bm(pset, ix=self.C[v])])
+                psets.append(pset)
+        probs = np.array(probs)
+        probs -= np.logaddexp.reduce(probs)
+        probs = np.exp(probs)
+        return psets[np.random.choice(range(len(psets)), p=probs)]
 
 
 class PartitionMCMC:
@@ -358,8 +333,8 @@ class PartitionMCMC:
             R_prime_node_scores = self._pi(R_prime, R_node_scores=self.R_node_scores, rescore=rescore)
 
             # make this happen in log space
-            if -np.random.exponential() < self.temp * sum(R_prime_node_scores) - self.R_score + np.log(q_rev) - np.log(q):
-            # if np.random.rand() < np.exp(self.temp * sum(R_prime_node_scores) - self.R_score)*q_rev/q:
+            #if -np.random.exponential() < self.temp * sum(R_prime_node_scores) - self.R_score + np.log(q_rev) - np.log(q):
+            if np.random.rand() < np.exp(self.temp * sum(R_prime_node_scores) - self.R_score)*q_rev/q:
                 self.R = R_prime
                 self.R_node_scores = R_prime_node_scores
                 self.R_score = self.temp * sum(self.R_node_scores)
@@ -390,7 +365,12 @@ class PartitionMCMC:
 
 class MC3:
 
-    def __init__(self, chains):
+    def __init__(self, chains, stats=None):
+        if stats is not None:
+            self.stats = stats
+            self.stats[type(self).__name__] = dict()
+            self.stats[type(self).__name__]["n chains"] = len(chains)
+            self.stats[type(self).__name__]["temperatures"] = [round(c.temp, 3) for c in chains]
         self.chains = chains
 
     def sample(self):
@@ -415,15 +395,22 @@ class MC3:
 
 class Score:
 
-    def __init__(self, datapath, scoref="bdeu", maxid=-1, ess=10):
+    def __init__(self, datapath, scoref="bdeu", maxid=-1, ess=10, stats=None):
 
         self.maxid = maxid
+        if stats is not None:
+            self.stats = stats
+            self.stats[type(self).__name__] = dict()
+            self.stats[type(self).__name__]["clear_cache"] = 0
 
         if scoref == "bdeu":
 
             def local(node, parents):
                 if len(self.score._cache) > 1000000:
                     self.score.clear_cache()
+                    if self.stats:
+                        self.stats[type(self).__name__]["clear_cache"] += 1
+
                 if self.maxid == -1 or len(parents) <= self.maxid:
                     score = self.score.bdeu_score(node, parents)[0]
                 else:
@@ -442,6 +429,8 @@ class Score:
             def local(node, parents):
                 if len(self.score._cache) > 1000000:
                     self.score._cache = dict()
+                    if self.stats:
+                        self.stats[type(self).__name__]["clear_cache"] += 1
                 if self.maxid == -1 or len(parents) <= self.maxid:
                     return self.score.bge_score(node, parents)[0] - np.log(comb(self.n - 1, len(parents)))
                 else:
@@ -476,11 +465,18 @@ class Score:
 
 class ScoreR:
 
-    def __init__(self, scores, C):
-        self.brute_n = 0
-        self.cc_n = 0
+    def __init__(self, scores, C, tolerance=1e-32, stats=None):
+
+        if stats is not None:
+            self.stats = stats
+            self.stats[type(self).__name__] = dict()
+            self.stats[type(self).__name__]["CC"] = 0
+            self.stats[type(self).__name__]["CC basecases"] = 0
+            self.stats[type(self).__name__]["basecases"] = 0
+
         self.scores = scores
         self.C = C
+        self.tol = tolerance
         self._precompute_a()
         self._precompute_basecases()
         self._precompute_psum()
@@ -506,29 +502,38 @@ class ScoreR:
                     tmp[dkbit(S, k)] = self.scores[v][S | x]
                 tmp = zeta_transform.from_list(tmp)
                 for S in range(len(tmp)):
-                    # only save base case if it can't be computed as difference
+                    if self.stats:
+                            self.stats[type(self).__name__]["basecases"] += len(tmp)
+                    # only save basecase if it can't be computed as difference
                     # makes a bit slower, makes require a bit less space
                     if self._cc(v, ikbit(S, k, 1), x):
+                        if self.stats:
+                            self.stats[type(self).__name__]["CC basecases"] += 1
                         self._psum[v][ikbit(S, k, 1)][x] = tmp[S]
 
     def _precompute_psum(self):
 
         K = len(self.C[0])
+        n = len(self.C)
 
         for v in self.C:
             for U in range(1, 2**K):
                 for T in ssets(U):
                     if self._cc(v, U, T):
-                        self.cc_n += 1
+                        if self.stats:
+                            self.stats[type(self).__name__]["CC"] += 1
                         T1 = T & -T
                         U1 = U & ~T1
                         T2 = T & ~T1
 
                         self._psum[v][U][T] = np.logaddexp(self.psum(v, U, T1),
                                                            self.psum(v, U1, T2))
+        if self.stats:
+            self.stats[type(self).__name__]["relative CC"] = self.stats[type(self).__name__]["CC"] / (n*3**K)
 
     def _cc(self, v, U, T):
-        return self._a[v][U] == self._a[v][U & ~T]
+        return close(self._a[v][U], self._a[v][U & ~T], self.tol)
+        # return self._a[v][U] == self._a[v][U & ~T]
 
     def psum(self, v, U, T):
         if U == 0 and T == 0:

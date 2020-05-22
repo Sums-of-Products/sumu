@@ -16,11 +16,14 @@ def main():
     parser.add_argument("-s", "--score", help="score function to use", choices=["bdeu", "bge"], default="bdeu")
     parser.add_argument("-e", "--ess", help="equivalent sample size for BDeu", type=int, default=10)
     parser.add_argument("-m", "--max-id", help="maximum indegree for scores (default no max-indegree)", type=int, default=-1)
+    parser.add_argument("-t", "--tolerance", help="max relative difference 1 - a/b for a and b to be considered too close (default 1e-32)", type=float, default=1e-32)
+
     parser.add_argument("-c", "--candidate-algorithm", help="candidate algorithm to use", choices=cnd.algo.keys(), default="greedy-1")
 
     parser.add_argument("-b", "--burn-in", help="number of burn-in samples", type=int, default=1000)
     parser.add_argument("-i", "--iterations", help="number of iterations after burn-in", type=int, default=1000)
     parser.add_argument("-n", "--nth", help="sample dag every nth iteration", type=int, default=1)
+    parser.add_argument("-nc", "--n-chains", help="number of Metropolis coupled MCMC chains (default 16)", type=int, default=16)
 
     parser.add_argument("-o", "--output-path-prefix", help="prefix for outputs of DAGs (.dag), DAG score (.trace), and pset frequencies (.psetfreq)")
     # parser.add_argument("-w", "--overwrite", help="if set, overwrite the output files if they already exist", action="store_true")
@@ -30,47 +33,56 @@ def main():
 
     args = parser.parse_args()
 
+    stats = dict()
+
     if args.randomseed is not None:
         np.random.seed(args.randomseed)
 
     # scores : function to allow evaluation of any local score
-    scores = MCMC.Score(args.datapath, scoref=args.score, maxid=args.max_id, ess=args.ess)
+    scores = MCMC.Score(args.datapath, scoref=args.score, maxid=args.max_id, ess=args.ess, stats=stats)
 
     t0 = time.process_time()
     C = cnd.algo[args.candidate_algorithm](args.K, n=scores.n, scores=scores, datapath=args.datapath)
     t_C = time.process_time() - t0
     if args.verbose:
-        print("Candidates:")
+        print("Candidates")
         for v in C:
             print("{}: {}".format(v, " ".join([str(u) for u in C[v]])))
-        print("1. candidates:\t\t{}".format(t_C))
+        print("")
+
+    if args.verbose:
+        print("Time usage")
+        print("1. candidates:\t\t{}".format(round(t_C, 3)))
 
     t0 = time.process_time()
     # scores : scores for all possible candidate parents precomputed
     scores = scores.all_scores_list(C)
     t_scores = time.process_time() - t0
     if args.verbose:
-        print("2. precompute all local scores for candidates:\t\t{}".format(t_scores))
+        print("2. precompute all local scores for candidates:\t\t{}".format(round(t_scores, 3)))
 
     t0 = time.process_time()
     # scores : special scoring structure for root-partition space
-    scores = MCMC.ScoreR(scores, C)
+    scores = MCMC.ScoreR(scores, C, tolerance=args.tolerance, stats=stats)
     t_scorer = time.process_time() - t0
     if args.verbose:
-        print("3. precompute data structure for scoring root-partitions:\t\t{}".format(t_scorer))
+        print("3. precompute data structure for scoring root-partitions:\t\t{}".format(round(t_scorer, 3)))
 
     t0 = time.process_time()
-    mcmc = MCMC.MC3([MCMC.PartitionMCMC(C, scores, temperature=i/15) for i in range(16)])
+    if args.n_chains > 1:
+        mcmc = MCMC.MC3([MCMC.PartitionMCMC(C, scores, temperature=i/(args.n_chains-1)) for i in range(args.n_chains)], stats=stats)
+    else:
+        mcmc = MCMC.PartitionMCMC(C, scores)
     t_mcmc_init = time.process_time() - t0
     if args.verbose:
-        print("4. initialize mcmc chains:\t\t{}".format(t_mcmc_init))
+        print("4. initialize mcmc chains:\t\t{}".format(round(t_mcmc_init, 3)))
 
     t0 = time.process_time()
     for i in range(args.burn_in):
         mcmc.sample()
     t_mcmc_burnin = time.process_time() - t0
     if args.verbose:
-        print("5. {} burn-in mcmc iterations:\t\t{}".format(args.burn_in, t_mcmc_burnin))
+        print("5. {} burn-in mcmc iterations:\t\t{}".format(args.burn_in, round(t_mcmc_burnin, 3)))
 
     t0 = time.process_time()
     Rs = list()
@@ -81,12 +93,12 @@ def main():
             mcmc.sample()
     t_mcmc_iterations = time.process_time() - t0
     if args.verbose:
-        print("6. {} mcmc iterations, {} root-partitions stored:\t\t{}".format(args.iterations, len(Rs), t_mcmc_iterations))
+        print("6. {} mcmc iterations, {} root-partitions stored:\t\t{}".format(args.iterations, len(Rs), round(t_mcmc_iterations, 3)))
 
     t_dagr = 0
     t0 = time.process_time()
     # DAGR : special structure for sampling psets given root-partition
-    ds = MCMC.DAGR(scores, C)
+    ds = MCMC.DAGR(scores, C, tolerance=args.tolerance, stats=stats)
     t_dagr += time.process_time() - t0
 
     t_dags = 0
@@ -104,16 +116,16 @@ def main():
         t_dags += time.process_time() - t0
 
     if args.verbose:
-        print("7. precompute data structure for DAG sampling:\t\t{}".format(t_dagr))
+        print("7. precompute data structure for DAG sampling:\t\t{}".format(round(t_dagr, 3)))
 
     if args.verbose:
-        print("8. {} DAGs sampled:\t\t{}".format(len(DAGs), t_dags))
+        print("8. {} DAGs sampled:\t\t{}".format(len(DAGs), round(t_dags, 3)))
 
     t0 = time.process_time()
     ppost = pset_posteriors(DAGs)
     t_ppost = time.process_time() - t0
     if args.verbose:
-        print("9. parent set frequencies:\t\t{}".format(t_ppost))
+        print("9. parent set frequencies:\t\t{}".format(round(t_ppost, 3)))
 
     if args.output_path_prefix is not None:
         with open(args.output_path_prefix + ".dag", "w") as f:
@@ -125,6 +137,15 @@ def main():
 
         write_jkl(ppost, args.output_path_prefix + ".psetfreq")
 
+    if args.verbose:
+        print("")
+        print("Statistics")
+        for title in stats:
+            print(title)
+            for subtitle in stats[title]:
+                print("    {}: {}".format(subtitle, stats[title][subtitle]))
+
+    #print(stats)
 
 if __name__ == '__main__':
     main()
