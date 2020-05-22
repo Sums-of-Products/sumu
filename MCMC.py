@@ -302,8 +302,8 @@ class PartitionMCMC:
             # Don't copy whole list, just the nodes to rescore?
             R_node_scores = list(R_node_scores)
 
-        if rescore is None:
-            rescore = set().union(*R)
+        #if rescore is None:
+        rescore = set().union(*R)
 
         for v in rescore:
 
