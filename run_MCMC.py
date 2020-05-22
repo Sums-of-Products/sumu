@@ -39,6 +39,9 @@ def main():
     C = cnd.algo[args.candidate_algorithm](args.K, n=scores.n, scores=scores, datapath=args.datapath)
     t_C = time.process_time() - t0
     if args.verbose:
+        print("Candidates:")
+        for v in C:
+            print("{}: {}".format(v, " ".join([str(u) for u in C[v]])))
         print("1. candidates:\t\t{}".format(t_C))
 
     t0 = time.process_time()
