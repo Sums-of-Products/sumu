@@ -16,7 +16,7 @@ def main():
     parser.add_argument("-s", "--score", help="score function to use", choices=["bdeu", "bge"], default="bdeu")
     parser.add_argument("-e", "--ess", help="equivalent sample size for BDeu", type=int, default=10)
     parser.add_argument("-m", "--max-id", help="maximum indegree for scores (default no max-indegree)", type=int, default=-1)
-    parser.add_argument("-t", "--tolerance", help="max relative difference 1 - a/b for a and b to be considered too close (default 1e-32)", type=float, default=1e-32)
+    parser.add_argument("-t", "--tolerance", help="max relative difference 1 - a/b for a and b to be considered too close (default 2.33e-10 = 2^-32)", type=float, default=2**(-32))
 
     parser.add_argument("-c", "--candidate-algorithm", help="candidate algorithm to use", choices=cnd.algo.keys(), default="greedy-1")
 
