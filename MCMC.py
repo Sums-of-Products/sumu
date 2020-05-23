@@ -182,13 +182,8 @@ class PartitionMCMC:
         self._moves = [self._R_basic_move, self._R_swap_any]
         self._moveprobs = [0.5, 0.5]
         self.R = self._random_partition()
-        if self.temp == 0:
-            self.sample = self._sample_temp0
-            self.R_node_scores = self._R_node_scores_temp0
-            self.R_score = 0
-        else:
-            self.R_node_scores = self._pi(self.R)
-            self.R_score = self.temp * sum(self.R_node_scores)
+        self.R_node_scores = self._pi(self.R)
+        self.R_score = self.temp * sum(self.R_node_scores)
 
     def _valid(self, R):
         if sum(len(R[i]) for i in range(len(R))) != self.n:
@@ -302,8 +297,8 @@ class PartitionMCMC:
             # Don't copy whole list, just the nodes to rescore?
             R_node_scores = list(R_node_scores)
 
-        #if rescore is None:
-        rescore = set().union(*R)
+        if rescore is None:
+            rescore = set().union(*R)
 
         for v in rescore:
 
@@ -332,35 +327,14 @@ class PartitionMCMC:
 
             R_prime_node_scores = self._pi(R_prime, R_node_scores=self.R_node_scores, rescore=rescore)
 
-            # make this happen in log space
-            #if -np.random.exponential() < self.temp * sum(R_prime_node_scores) - self.R_score + np.log(q_rev) - np.log(q):
+            # make this happen in log space?
+            # if -np.random.exponential() < self.temp * sum(R_prime_node_scores) - self.R_score + np.log(q_rev) - np.log(q):
             if np.random.rand() < np.exp(self.temp * sum(R_prime_node_scores) - self.R_score)*q_rev/q:
                 self.R = R_prime
                 self.R_node_scores = R_prime_node_scores
                 self.R_score = self.temp * sum(self.R_node_scores)
 
         return self.R, self.R_score
-
-    def _sample_temp0(self):
-
-        if np.random.rand() > self.stay_prob:
-            move = np.random.choice(self._moves, p=self._moveprobs)
-            if not move(R=self.R, validate=True):
-                return self.R, self.R_score
-
-            R_prime, q, q_rev, rescore = move(R=self.R)
-
-            if not self._valid(R_prime):
-                return self.R, self.R_score
-
-            if np.random.rand() < q_rev/q:
-                self.R = R_prime
-
-        return self.R, self.R_score
-
-    @property
-    def _R_node_scores_temp0(self):
-        return self._pi(self.R)
 
 
 class MC3:
