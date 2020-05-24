@@ -173,7 +173,17 @@ class DAGR:
 
 class PartitionMCMC:
 
-    def __init__(self, C, sr, temperature=1):
+    def __init__(self, C, sr, temperature=1, stats=None):
+
+        if stats is not None:
+            self.stats = stats
+            self.stats[type(self).__name__] = dict()
+            self.stats[type(self).__name__][self._R_basic_move.__name__] = 0
+            self.stats[type(self).__name__][self._R_swap_any.__name__] = 0
+            self.stats[type(self).__name__]["invalid " + self._R_basic_move.__name__] = 0
+            self.stats[type(self).__name__]["invalid " + self._R_swap_any.__name__] = 0
+            self.stats[type(self).__name__]["invalid moves"] = 0
+
         self.n = len(C)
         self.C = C
         self.temp = temperature
@@ -322,7 +332,13 @@ class PartitionMCMC:
 
             R_prime, q, q_rev, rescore = move(R=self.R)
 
+            if self.stats:
+                self.stats[type(self).__name__][move.__name__] += 1
+
             if not self._valid(R_prime):
+                if self.stats:
+                    self.stats[type(self).__name__]["invalid moves"] += 1
+                    self.stats[type(self).__name__]["invalid " + move.__name__] += 1
                 return self.R, self.R_score
 
             R_prime_node_scores = self._pi(R_prime, R_node_scores=self.R_node_scores, rescore=rescore)

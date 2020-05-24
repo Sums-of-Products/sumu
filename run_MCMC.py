@@ -70,9 +70,9 @@ def main():
 
     t0 = time.process_time()
     if args.n_chains > 1:
-        mcmc = MCMC.MC3([MCMC.PartitionMCMC(C, scores, temperature=i/(args.n_chains-1)) for i in range(args.n_chains)], stats=stats)
+        mcmc = MCMC.MC3([MCMC.PartitionMCMC(C, scores, temperature=i/(args.n_chains-1), stats=stats) for i in range(args.n_chains)], stats=stats)
     else:
-        mcmc = MCMC.PartitionMCMC(C, scores)
+        mcmc = MCMC.PartitionMCMC(C, scores, stats=stats)
     t_mcmc_init = time.process_time() - t0
     if args.verbose:
         print("4. initialize mcmc chains:\t\t{}".format(round(t_mcmc_init, 3)))
@@ -94,6 +94,9 @@ def main():
     t_mcmc_iterations = time.process_time() - t0
     if args.verbose:
         print("6. {} mcmc iterations, {} root-partitions stored:\t\t{}".format(args.iterations, len(Rs), round(t_mcmc_iterations, 3)))
+
+    if MCMC.PartitionMCMC.__name__ in stats:
+        stats[MCMC.PartitionMCMC.__name__]["invalid moves %"] = round(stats[MCMC.PartitionMCMC.__name__]["invalid moves"] / (args.n_chains * (args.burn_in + args.iterations)), 3)
 
     t_dagr = 0
     t0 = time.process_time()
