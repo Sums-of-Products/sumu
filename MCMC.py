@@ -6,7 +6,7 @@ from scoring import DiscreteData, ContinuousData, BDeu, BGe
 
 
 def close(a, b, tolerance):
-    return 1 - a/b < tolerance
+    return abs(1 - a/b) < tolerance
 
 
 def fbit(mask):
