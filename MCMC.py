@@ -361,21 +361,23 @@ class MC3:
             self.stats[type(self).__name__] = dict()
             self.stats[type(self).__name__]["n chains"] = len(chains)
             self.stats[type(self).__name__]["temperatures"] = [round(c.temp, 3) for c in chains]
-            self.stats[type(self).__name__]["swaps"] = [0]*len(chains)
-            # self.stats[type(self).__name__]["swaps"] = np.zeros(shape=(len(chains), len(chains)))
+            self.stats[type(self).__name__]["swaps proposed"] = [0]*len(chains)
+            self.stats[type(self).__name__]["swaps accepted"] = [0]*len(chains)
         self.chains = chains
 
     def sample(self):
         for c in self.chains:
             c.sample()
         i = np.random.randint(len(self.chains) - 1)
+        if self.stats:
+            self.stats[type(self).__name__]["swaps proposed"][i] += 1
         ap = sum(self.chains[i+1].R_node_scores)*self.chains[i].temp
         ap += sum(self.chains[i].R_node_scores)*self.chains[i+1].temp
         ap -= sum(self.chains[i].R_node_scores)*self.chains[i].temp
         ap -= sum(self.chains[i+1].R_node_scores)*self.chains[i+1].temp
         if -np.random.exponential() < ap:
             if self.stats:
-                self.stats[type(self).__name__]["swaps"][i] += 1
+                self.stats[type(self).__name__]["swaps accepted"][i] += 1
             R_tmp = self.chains[i].R
             R_node_scores_tmp = self.chains[i].R_node_scores
             self.chains[i].R = self.chains[i+1].R

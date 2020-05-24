@@ -98,6 +98,12 @@ def main():
     if MCMC.PartitionMCMC.__name__ in stats:
         stats[MCMC.PartitionMCMC.__name__]["invalid moves %"] = round(stats[MCMC.PartitionMCMC.__name__]["invalid moves"] / (args.n_chains * (args.burn_in + args.iterations)), 3)
 
+    if MCMC.MC3.__name__ in stats:
+        stats[MCMC.MC3.__name__]["swaps accepted %"] = [round(stats[MCMC.MC3.__name__]["swaps accepted"][i]/stats[MCMC.MC3.__name__]["swaps proposed"][i], 3)
+                                                        if stats[MCMC.MC3.__name__]["swaps proposed"][i] != 0 else 0 for i in range(args.n_chains)]
+        stats[MCMC.MC3.__name__]["swaps proposed"] = [int(x) for x in list(stats[MCMC.MC3.__name__]["swaps proposed"])]
+        stats[MCMC.MC3.__name__]["swaps accepted"] = [int(x) for x in list(stats[MCMC.MC3.__name__]["swaps accepted"])]
+
     t_dagr = 0
     t0 = time.process_time()
     # DAGR : special structure for sampling psets given root-partition
