@@ -13,6 +13,7 @@ def main():
     parser = argparse.ArgumentParser(description="MCMC")
     parser.add_argument("datapath", help="path to data file")
     parser.add_argument("K", help="how many candidates to include", type=int)
+    parser.add_argument("-f", "--candidates-from-file", help="load candidates from file, row number equals node label, space separated")
     parser.add_argument("-s", "--score", help="score function to use", choices=["bdeu", "bge"], default="bdeu")
     parser.add_argument("-e", "--ess", help="equivalent sample size for BDeu", type=int, default=10)
     parser.add_argument("-m", "--max-id", help="maximum indegree for scores (default no max-indegree)", type=int, default=-1)
