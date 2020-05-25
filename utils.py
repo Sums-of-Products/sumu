@@ -4,6 +4,15 @@ from itertools import chain, combinations
 import numpy as np
 
 
+def read_candidates(candidate_path):
+    C = dict()
+    with open(candidate_path, 'r') as f:
+        f = f.readlines()
+        for v, row in enumerate(f):
+            C[v] = tuple([int(x) for x in row.split()])
+    return C
+
+
 def read_jkl(scorepath):
     scores = dict()
     with open(scorepath, 'r') as jkl_file:

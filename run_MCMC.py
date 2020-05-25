@@ -5,7 +5,7 @@ import numpy as np
 
 import candidates_no_R as cnd
 import MCMC
-from utils import pset_posteriors, write_jkl, DAG_to_str
+from utils import pset_posteriors, write_jkl, DAG_to_str, read_candidates
 
 
 def main():
@@ -42,7 +42,10 @@ def main():
     scores = MCMC.Score(args.datapath, scoref=args.score, maxid=args.max_id, ess=args.ess, stats=stats)
 
     t0 = time.process_time()
-    C = cnd.algo[args.candidate_algorithm](args.K, n=scores.n, scores=scores, datapath=args.datapath)
+    if args.candidates_from_file is None:
+        C = cnd.algo[args.candidate_algorithm](args.K, n=scores.n, scores=scores, datapath=args.datapath)
+    else:
+        C = read_candidates(args.candidates_from_file)
     t_C = time.process_time() - t0
     if args.verbose:
         print("Candidates")
