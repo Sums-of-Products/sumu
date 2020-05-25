@@ -6,7 +6,7 @@ from scoring import DiscreteData, ContinuousData, BDeu, BGe
 
 
 def close(a, b, tolerance):
-    return abs(1 - a/b) < tolerance
+    return max(a, b) - min(a, b) < tolerance
 
 
 def fbit(mask):
@@ -75,7 +75,7 @@ def ssets(mask):
 
 class DAGR:
 
-    def __init__(self, scores, C, tolerance=1e-32, stats=None):
+    def __init__(self, scores, C, tolerance=2**(-32), stats=None):
         if stats is not None:
             self.stats = stats
             self.stats[type(self).__name__] = dict()
