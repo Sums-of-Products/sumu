@@ -394,6 +394,7 @@ class Score:
     def __init__(self, datapath, scoref="bdeu", maxid=-1, ess=10, stats=None):
 
         self.maxid = maxid
+        self.stats = None
         if stats is not None:
             self.stats = stats
             self.stats[type(self).__name__] = dict()
