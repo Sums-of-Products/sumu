@@ -369,7 +369,7 @@ def greedy_1(K, **kwargs):
     assert scores is not None, "scorepath (-s) required for algo == greedy-1"
 
     def highest_uncovered(v, U):
-        return max([(u, scores.local(v, tuple(set(S + (u,)))))
+        return max([(u, scores.local(v, S + (u,)))
                     for S in subsets(C[v], 0, [len(C[v]) if scores.maxid == -1 else min(len(C[v]), scores.maxid-1)][0])
                     for u in U], key=lambda item: item[1])[0]
 
@@ -380,6 +380,40 @@ def greedy_1(K, **kwargs):
             u_hat = highest_uncovered(v, U)
             C[v].append(u_hat)
             U = [u for u in U if u != u_hat]
+        C[v] = tuple(sorted(C[v]))
+
+    return C
+
+
+def greedy_lite(K, **kwargs):
+
+    scores = arg("scores", kwargs)
+    k = arg("k", kwargs)
+    assert scores is not None
+    if k is None:
+        k = min(6, K)
+    assert k <= K
+
+    def k_highest_uncovered(v, U, k):
+
+        uncovereds = {(u, scores.local(v, S + (u,)))
+                      for S in subsets(C[v], 0, [len(C[v]) if scores.maxid == -1 else min(len(C[v]), scores.maxid-1)][0])
+                      for u in U}
+        k_highest = set()
+        while len(k_highest) < k:
+            u_hat = max(uncovereds, key=lambda pair: pair[1])
+            k_highest.add(u_hat[0])
+            uncovereds.remove(u_hat)
+        return k_highest
+
+    C = dict({int(v): set() for v in range(scores.n)})
+    for v in C:
+        U = [u for u in C if u != v]
+        while len(C[v]) < K - k:
+            u_hat = k_highest_uncovered(v, U, 1)
+            C[v].update(u_hat)
+            U = [u for u in U if u not in u_hat]
+        C[v].update(k_highest_uncovered(v, U, k))
         C[v] = tuple(sorted(C[v]))
 
     return C
@@ -661,6 +695,7 @@ algo = {
     "mb": mb,
     "hc": hc,
     "greedy": greedy,
+    "greedy-lite": greedy_lite,
     "pessy": pessy,
     "greedy-1": greedy_1,
     "greedy-2": greedy_2,
