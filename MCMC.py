@@ -1,12 +1,8 @@
 import numpy as np
 
-from utils import subsets, bm, bm_to_ints, log_minus_exp, comb
+from utils import subsets, bm, bm_to_ints, log_minus_exp, comb, close
 import zeta_transform.zeta_transform as zeta_transform
 from scoring import DiscreteData, ContinuousData, BDeu, BGe
-
-
-def close(a, b, tolerance):
-    return max(a, b) - min(a, b) < tolerance
 
 
 def fbit(mask):
@@ -75,14 +71,15 @@ def ssets(mask):
 
 class DAGR:
 
-    def __init__(self, scores, C, tolerance=2**(-32), stats=None):
+    def __init__(self, scores, C, complementary_scores, tolerance=2**(-32), stats=None):
         if stats is not None:
             self.stats = stats
             self.stats[type(self).__name__] = dict()
             self.stats[type(self).__name__]["CC"] = 0
 
-        self.scores = scores.scores
+        self.scores = scores
         self.C = C
+        self.cscores = complementary_scores
         self.tol = tolerance
 
     def precompute(self, v):
@@ -92,7 +89,7 @@ class DAGR:
         self._f = [0]*2**K
         for X in range(2**K):
             self._f[X] = [-float("inf")]*2**(K-bin(X).count("1"))
-            self._f[X][0] = self.scores[v][X]
+            self._f[X][0] = self.scores.scores[v][X]
 
         for k in range(1, K+1):
             for k_x in range(K-k+1):
@@ -101,18 +98,34 @@ class DAGR:
                         i = fbit(Y)
                         self._f[X][Y] = np.logaddexp(self._f[kzon(X, i)][dkbit(Y, i)], self._f[X][Y & ~(Y & -Y)])
 
-    def sample(self, v, R, score=False):
+    def sample_pset(self, v, R, score=False):
 
-        if v in R[0]:
+        # TODO: keep track of positions in move functions
+        for i in range(len(R)):
+            if v in R[i]:
+                break
+
+        if i == 0:
             family = (v,)
-            family_score = self.scores[v][0]
+            family_score = self.scores.scores[v][0]
 
         else:
-            for i in range(1, len(R)):
-                if v in R[i]:
-                    break
-            family = (v, self._sample_pset(v, set().union(*R[:i]), R[i-1]))
-            family_score = self.scores[v][bm(family[1], ix=self.C[v])]
+
+            U = set().union(*R[:i])
+            T = R[i-1]
+
+            w_C = -float("inf")
+            if len(T.intersection(self.C[v])) > 0:
+                w_C = self.scores.scoresum(v, U, T)
+
+            w_compl_sum, contribs = self.cscores.scoresum(v, U, T, -float("inf"))
+
+            if -np.random.exponential() < w_C - np.logaddexp(w_compl_sum, w_C):
+                family = (v, self._sample_pset(v, set().union(*R[:i]), R[i-1]))
+                family_score = self.scores.scores[v][bm(family[1], ix=self.C[v])]
+            else:
+                pset, family_score = self.cscores.sample_pset(v, contribs, w_compl_sum)
+                family = (v, pset)
 
         if score is True:
             return family, family_score
@@ -163,7 +176,7 @@ class DAGR:
         for T_set in subsets(T, 1, len(T)):
             for U_set in subsets(U.difference(T), 0, len(U.difference(T))):
                 pset = set(T_set).union(U_set)
-                probs.append(self.scores[v][bm(pset, ix=self.C[v])])
+                probs.append(self.scores.scores[v][bm(pset, ix=self.C[v])])
                 psets.append(pset)
         probs = np.array(probs)
         probs -= np.logaddexp.reduce(probs)
@@ -173,7 +186,7 @@ class DAGR:
 
 class PartitionMCMC:
 
-    def __init__(self, C, sr, temperature=1, stats=None):
+    def __init__(self, C, sr, cscores, temperature=1, stats=None):
 
         if stats is not None:
             self.stats = stats
@@ -188,6 +201,7 @@ class PartitionMCMC:
         self.C = C
         self.temp = temperature
         self.sr = sr
+        self.cscores = cscores
         self.stay_prob = 0.01
         self._moves = [self._R_basic_move, self._R_swap_any]
         self._moveprobs = [0.5, 0.5]
@@ -208,6 +222,23 @@ class PartitionMCMC:
 
     def _random_partition(self):
 
+        def rp_d_gt0(n):
+            R = list()
+            U = list(range(n))
+            while sum(R) < n:
+                n_nodes = 1
+                while np.random.random() < (n/2-1)/(n-1) and sum(R) + n_nodes < n:
+                    n_nodes += 1
+                R.append(n_nodes)
+            for i in range(len(R)):
+                R_i = np.random.choice(U, R[i], replace=False)
+                R[i] = set(R_i)
+                U = [u for u in U if u not in R_i]
+            return tuple(R)
+
+        if self.cscores.d > 0:
+            return rp_d_gt0(self.n)
+
         def n(R):
             n_nodes = 1
             while np.random.random() < (self.n/2-1)/(self.n-1) and sum(len(R[i]) for i in range(len(R))) + n_nodes < self.n:
@@ -226,7 +257,8 @@ class PartitionMCMC:
                 R_i = np.random.choice(pool, min(n(R), len(pool)), replace=False)
                 R.append(set(R_i))
                 U = U.difference(R[-1])
-
+            if self.cscores.d > 0:
+                return tuple(R)
             if self._valid(R):
                 return tuple(R)
 
@@ -313,14 +345,23 @@ class PartitionMCMC:
         for v in rescore:
 
             if inpart[v] == 0:
-                R_node_scores[v] = self.sr.psum(v, 0, 0)
+                R_node_scores[v] = self.sr.scoresum(v, set(), set())
 
             else:
 
-                R_node_scores[v] = self.sr.psum(v,
-                                                bm(set().union(*R[:inpart[v]]).intersection(self.C[v]), ix=self.C[v]),
-                                                bm(R[inpart[v]-1].intersection(self.C[v]), ix=self.C[v]))
-
+                R_node_scores[v] = self.sr.scoresum(v,
+                                                    set().union(*R[:inpart[v]]),
+                                                    R[inpart[v]-1])
+        if -float("inf") in R_node_scores:
+            print("Something is wrong")
+            u = R_node_scores.index(-float("inf"))
+            print("R {}".format(R))
+            print("R_node_scores {}".format(R_node_scores))
+            print("u = {},\tC[{}] = {}".format(u, u, self.C[u]))
+            print("u = {},\tU = {},\tT = {}".format(u, set().union(*R[:inpart[u]]), R[inpart[u]-1]))
+            print("")
+            self.sr.scoresum(u, set().union(*R[:inpart[u]]), R[inpart[u]-1], debug=True)
+            exit()
         return R_node_scores
 
     def sample(self):
@@ -335,7 +376,7 @@ class PartitionMCMC:
             if self.stats:
                 self.stats[type(self).__name__][move.__name__] += 1
 
-            if not self._valid(R_prime):
+            if self.cscores.d == 0 and not self._valid(R_prime):
                 if self.stats:
                     self.stats[type(self).__name__]["invalid moves"] += 1
                     self.stats[type(self).__name__]["invalid " + move.__name__] += 1
@@ -462,7 +503,7 @@ class Score:
 
 class ScoreR:
 
-    def __init__(self, scores, C, tolerance=1e-32, stats=None):
+    def __init__(self, scores, C, tolerance=2**(-32), D=2, cscores=None, stats=None):
 
         if stats is not None:
             self.stats = stats
@@ -474,6 +515,7 @@ class ScoreR:
         self.scores = scores
         self.C = C
         self.tol = tolerance
+        self.cscores = cscores
         self._precompute_a()
         self._precompute_basecases()
         self._precompute_psum()
@@ -532,6 +574,24 @@ class ScoreR:
         return close(self._a[v][U], self._a[v][U & ~T], self.tol)
         # return self._a[v][U] == self._a[v][U & ~T]
 
+    def _scoresum(self, v, U, T):
+        return self.psum(v, bm(U, ix=self.C[v]), bm(T, ix=self.C[v]))
+
+    def scoresum(self, v, U, T, debug=False):
+
+        if len(T) == 0:
+            return self.scores[v][0]
+
+        if len(T.intersection(self.C[v])) > 0:
+            W_prime = self.psum(v, bm(U.intersection(self.C[v]), ix=self.C[v]), bm(T.intersection(self.C[v]), ix=self.C[v]))
+        else:
+            W_prime = -float("inf")
+
+        # This does not have to check whether CScoreR.d == 0
+        # because if it is 0 the proposal is already rejected in
+        # PartitionMCMC.sample if it is invalid
+        return self.cscores.scoresum(v, U, T, W_prime, debug=debug)[0]
+
     def psum(self, v, U, T):
         if U == 0 and T == 0:
             return self.scores[v][0]
@@ -541,3 +601,81 @@ class ScoreR:
             return self._psum[v][U][T]
         else:
             return log_minus_exp(self._a[v][U], self._a[v][U & ~T])
+
+
+class CScoreR:
+
+    """Complementary scores
+
+    Scores complementary to those constrained
+    by the candidate parent sets"""
+
+    def __init__(self, C, scores, d):
+
+        tmp = scores.all_scores_dict()
+        scores = scores.all_scores_dict()
+
+        for v in tmp:
+            for pset in tmp[v]:
+                if set(pset).issubset(C[v]):
+                    del scores[v][pset]
+        del tmp
+
+        ordered_scores = dict()
+        ordered_scores_psums = dict()
+        for v in scores:
+            ordered_scores_psums[v] = [0]*len(scores[v])
+            ordered_scores[v] = sorted(scores[v].items(), key=lambda item: item[1], reverse=True)
+            for i in range(len(ordered_scores[v])-1):
+                ordered_scores_psums[v][i+1] = np.logaddexp(ordered_scores_psums[v][i], ordered_scores[v][i][1])
+            ordered_scores_psums[v] = ordered_scores_psums[v][::-1]
+
+        self.ordered_scores = ordered_scores
+        self.W = ordered_scores_psums
+        self.log09 = np.log(0.9)
+        self.C = C
+        self.d = d
+        #print(1, ordered_scores[1])
+
+    def _valids(self, v, U, T):
+        """This is used just for debugging I think, delete when unnecessary"""
+        return [i for i, pset_score in enumerate(self.ordered_scores[v])
+                if set(pset_score[0]).issubset(U)
+                and len(set(pset_score[0]).intersection(T)) > 0]
+
+    def sample_pset(self, v, pset_indices, w_sum):
+        i = np.random.choice(pset_indices, p=np.exp(self._scores(v, pset_indices)-w_sum))
+        return self.ordered_scores[v][i]
+
+    def _scores(self, v, indices):
+        return np.array([self.ordered_scores[v][i][1] for i in indices])
+
+    def n_valids(self, v, U, T):
+        n = 0
+        for k in range(1, self.d+1):
+            n += comb(len(U), k) - comb(len(U.intersection(self.C[v])), k)
+            n -= comb(len(U.difference(T)), k) - comb(len(U.difference(T).intersection(self.C[v])), k)
+        return n
+
+    def scoresum(self, v, U, T, W_prime, debug=False):
+
+        t = self.n_valids(v, U, T)
+        contribs = list()
+
+        if debug:
+            print("v = {}".format(v))
+            print("W_prime {}".format(W_prime))
+            print("t {}".format(t))
+            print("v valid scores = {}".format([self.ordered_scores[v][i] for i in self._valids(v, U, T)]))
+
+        if t > 0:  # t here represents number of valid psets
+            j = 0
+            t -= 1  # t here is fixed to mirror 0-based indexing
+            while t >= 0 and W_prime <= self.log09 + log_minus_exp(np.logaddexp(W_prime, self.W[v][j]), self.W[v][j + t]):
+                if set(self.ordered_scores[v][j][0]).issubset(U) and len(set(self.ordered_scores[v][j][0]).intersection(T)) > 0:
+                    W_prime = np.logaddexp(W_prime, self.ordered_scores[v][j][1])
+                    contribs.append(j)
+                    t -= 1
+                j += 1
+
+        return W_prime, contribs

@@ -3,6 +3,8 @@ from itertools import chain, combinations
 
 import numpy as np
 
+def close(a, b, tolerance):
+    return max(a, b) - min(a, b) < tolerance
 
 def read_candidates(candidate_path):
     C = dict()
@@ -124,7 +126,7 @@ def translate_psets_to_bitmaps(C, scores):
 
 
 def log_minus_exp(p1, p2):
-    if p1 == p2 and p1:
+    if np.exp(min(p1, p2)-max(p1, p2)) == 1:
         return -float("inf")
     return max(p1, p2) + np.log1p(-np.exp(min(p1, p2)-max(p1, p2)))
 

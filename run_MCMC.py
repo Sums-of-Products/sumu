@@ -17,9 +17,10 @@ def main():
     parser.add_argument("-s", "--score", help="score function to use", choices=["bdeu", "bge"], default="bdeu")
     parser.add_argument("-e", "--ess", help="equivalent sample size for BDeu", type=int, default=10)
     parser.add_argument("-m", "--max-id", help="maximum indegree for scores (default no max-indegree)", type=int, default=-1)
+    parser.add_argument("-d", help="maximum indegree for psets which are not subsets of candidates (default 2)", type=int, default=2)
     parser.add_argument("-t", "--tolerance", help="max relative difference 1 - a/b for a and b to be considered too close (default 2.33e-10 = 2^-32)", type=float, default=2**(-32))
 
-    parser.add_argument("-c", "--candidate-algorithm", help="candidate algorithm to use", choices=cnd.algo.keys(), default="greedy-1")
+    parser.add_argument("-c", "--candidate-algorithm", help="candidate algorithm to use", choices=cnd.algo.keys(), default="greedy-lite")
 
     parser.add_argument("-b", "--burn-in", help="number of burn-in samples", type=int, default=1000)
     parser.add_argument("-i", "--iterations", help="number of iterations after burn-in", type=int, default=1000)
@@ -47,6 +48,7 @@ def main():
         C = cnd.algo[args.candidate_algorithm](args.K, n=scores.n, scores=scores, datapath=args.datapath)
     else:
         C = read_candidates(args.candidates_from_file)
+
     t_C = time.process_time() - t0
     if args.verbose:
         print("Candidates")
@@ -65,16 +67,19 @@ def main():
     if args.verbose:
         print("2. precompute all local scores for candidates:\t\t{}".format(round(t_scores, 3)))
 
+    complementary_scores = MCMC.Score(args.datapath, scoref=args.score, maxid=args.d, ess=args.ess)
+    complementary_scores = MCMC.CScoreR(C, complementary_scores, args.d)
+
     t0 = time.process_time()
     # scores : special scoring structure for root-partition space
-    scores = MCMC.ScoreR(scores, C, tolerance=args.tolerance, stats=stats)
+    scores = MCMC.ScoreR(scores, C, tolerance=args.tolerance, cscores=complementary_scores, stats=stats)
     t_scorer = time.process_time() - t0
     if args.verbose:
         print("3. precompute data structure for scoring root-partitions:\t\t{}".format(round(t_scorer, 3)))
 
     t0 = time.process_time()
     if args.n_chains > 1:
-        mcmc = MCMC.MC3([MCMC.PartitionMCMC(C, scores, temperature=i/(args.n_chains-1), stats=stats) for i in range(args.n_chains)], stats=stats)
+        mcmc = MCMC.MC3([MCMC.PartitionMCMC(C, scores, complementary_scores, temperature=i/(args.n_chains-1), stats=stats) for i in range(args.n_chains)], stats=stats)
     else:
         mcmc = MCMC.PartitionMCMC(C, scores, stats=stats)
     t_mcmc_init = time.process_time() - t0
@@ -111,7 +116,7 @@ def main():
     t_dagr = 0
     t0 = time.process_time()
     # DAGR : special structure for sampling psets given root-partition
-    ds = MCMC.DAGR(scores, C, tolerance=args.tolerance, stats=stats)
+    ds = MCMC.DAGR(scores, C, complementary_scores, tolerance=args.tolerance, stats=stats)
     t_dagr += time.process_time() - t0
 
     t_dags = 0
@@ -123,7 +128,7 @@ def main():
         t_dagr += time.process_time() - t0
         t0 = time.process_time()
         for i in range(len(Rs)):
-            family, family_score = ds.sample(v, Rs[i], score=True)
+            family, family_score = ds.sample_pset(v, Rs[i], score=True)
             DAGs[i].append(family)
             DAG_scores[i] += family_score
         t_dags += time.process_time() - t0
@@ -158,7 +163,6 @@ def main():
             for subtitle in stats[title]:
                 print("    {}: {}".format(subtitle, stats[title][subtitle]))
 
-    #print(stats)
 
 if __name__ == '__main__':
     main()
