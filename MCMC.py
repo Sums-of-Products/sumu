@@ -326,7 +326,22 @@ class PartitionMCMC:
         if "validate" in kwargs and kwargs["validate"] is True:
             return valid()
 
-        j, k = np.random.choice(range(len(self.R)), 2, replace=False)
+        if m == 2:
+            j = 0
+            k = 1
+            q = 1/(len(self.R[j])*len(self.R[k]))
+        else:
+            if np.random.random() <= 0.9:  # adjacent
+                j = np.random.randint(len(self.R)-1)
+                k = j+1
+                q = 0.9 * 1/((m-1) * len(self.R[j]) * len(self.R[k]))
+            else:
+                # j, k = np.random.choice(range(len(self.R)), 2, replace=False)
+                j = np.random.randint(m)
+                n = list(set(range(m)).difference({j-1, j, j+1}))
+                k = np.random.choice(n)
+                q = 0.1 * 1/((m*len(n)) * len(self.R[j]) * len(self.R[k]))
+
         v_j = np.random.choice(list(self.R[j]))
         v_k = np.random.choice(list(self.R[k]))
         R_prime = list()
@@ -337,8 +352,6 @@ class PartitionMCMC:
                 R_prime.append(self.R[i].difference({v_k}).union({v_j}))
             else:
                 R_prime.append(self.R[i])
-
-        q = 1/(comb(m, 2)*len(self.R[j])*len(self.R[k]))
 
         return tuple(R_prime), q, q, {v_j, v_k}.union(*self.R[min(j, k)+1:min(max(j, k)+2, m+1)])
 
