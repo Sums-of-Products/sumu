@@ -647,6 +647,7 @@ class CScoreR:
 
     def __init__(self, C, scores, d):
 
+        # complicated structures not needed when d = 1?
         tmp = scores.all_scores_dict()
         scores = scores.all_scores_dict()
 
@@ -670,7 +671,13 @@ class CScoreR:
         self.log09 = np.log(0.9)
         self.C = C
         self.d = d
-        #print(1, ordered_scores[1])
+
+        if self.d == 1:
+            self.pset_to_idx = dict()
+            for v in scores:
+                self.pset_to_idx[v] = dict()
+                for i, pset in enumerate(ordered_scores[v]):
+                    self.pset_to_idx[v][pset[0][0]] = i
 
     def _valids(self, v, U, T):
         """This is used just for debugging I think, delete when unnecessary"""
@@ -693,6 +700,17 @@ class CScoreR:
         return n
 
     def scoresum(self, v, U, T, W_prime, debug=False):
+
+        if self.d == 1:  # special case
+            contribs = list()
+            w_contribs = list()
+            for u in T:
+                if u not in self.C[v]:
+                    pset_idx = self.pset_to_idx[v][u]
+                    contribs.append(pset_idx)
+                    w_contribs.append(self.ordered_scores[v][pset_idx][1])
+            w_contribs.append(W_prime)
+            return np.logaddexp.reduce(w_contribs), contribs
 
         t = self.n_valids(v, U, T)
         contribs = list()
