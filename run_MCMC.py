@@ -5,7 +5,7 @@ import numpy as np
 
 import candidates_no_R as cnd
 import MCMC
-from utils import pset_posteriors, write_jkl, DAG_to_str, read_candidates
+from utils import pset_posteriors, write_jkl, DAG_to_str, read_candidates, pretty_dict
 
 
 def main():
@@ -105,7 +105,37 @@ def main():
         print("6. {} mcmc iterations, {} root-partitions stored:\t\t{}".format(args.iterations, len(Rs), round(t_mcmc_iterations, 3)))
 
     if MCMC.PartitionMCMC.__name__ in stats:
-        stats[MCMC.PartitionMCMC.__name__]["invalid moves %"] = round(stats[MCMC.PartitionMCMC.__name__]["invalid moves"] / (args.n_chains * (args.burn_in + args.iterations)), 3)
+        for temp in [i/(args.n_chains-1) for i in range(args.n_chains)]:
+
+            k_mcmc = MCMC.PartitionMCMC.__name__
+            k_move_basic = MCMC.PartitionMCMC.R_basic_move.__name__
+            k_move_swap = MCMC.PartitionMCMC.R_swap_any.__name__
+
+            n_valid = stats[k_mcmc][temp][k_move_basic]["candidate-valid"]["n"]
+            n_invalid = stats[k_mcmc][temp][k_move_basic]["candidate-invalid"]["n"]
+            acc_valid = stats[k_mcmc][temp][k_move_basic]["candidate-valid"]["accepted"]
+            acc_invalid = stats[k_mcmc][temp][k_move_basic]["candidate-invalid"]["accepted"]
+            stats[k_mcmc][temp][k_move_basic]["candidate-valid"]["ratio"] = round(n_valid / (n_valid + n_invalid), 3)
+            stats[k_mcmc][temp][k_move_basic]["candidate-invalid"]["ratio"] = round(n_invalid / (n_valid + n_invalid), 3)
+            if n_valid > 0:
+                stats[k_mcmc][temp][k_move_basic]["candidate-valid"]["accepted"] = round(acc_valid / n_valid, 3)
+            if n_invalid > 0:
+                stats[k_mcmc][temp][k_move_basic]["candidate-invalid"]["accepted"] = round(acc_invalid / n_invalid, 3)
+            del stats[k_mcmc][temp][k_move_basic]["candidate-valid"]["n"]
+            del stats[k_mcmc][temp][k_move_basic]["candidate-invalid"]["n"]
+
+            n_valid = stats[k_mcmc][temp][k_move_swap]["candidate-valid"]["n"]
+            n_invalid = stats[k_mcmc][temp][k_move_swap]["candidate-invalid"]["n"]
+            acc_valid = stats[k_mcmc][temp][k_move_swap]["candidate-valid"]["accepted"]
+            acc_invalid = stats[k_mcmc][temp][k_move_swap]["candidate-invalid"]["accepted"]
+            stats[k_mcmc][temp][k_move_swap]["candidate-valid"]["ratio"] = round(n_valid / (n_valid + n_invalid), 3)
+            stats[k_mcmc][temp][k_move_swap]["candidate-invalid"]["ratio"] = round(n_invalid / (n_valid + n_invalid), 3)
+            if n_valid > 0:
+                stats[k_mcmc][temp][k_move_swap]["candidate-valid"]["accepted"] = round(acc_valid / n_valid, 3)
+            if n_invalid > 0:
+                stats[k_mcmc][temp][k_move_swap]["candidate-invalid"]["accepted"] = round(acc_invalid / n_invalid, 3)
+            del stats[k_mcmc][temp][k_move_swap]["candidate-valid"]["n"]
+            del stats[k_mcmc][temp][k_move_swap]["candidate-invalid"]["n"]
 
     if MCMC.MC3.__name__ in stats:
         stats[MCMC.MC3.__name__]["swaps accepted %"] = [round(stats[MCMC.MC3.__name__]["swaps accepted"][i]/stats[MCMC.MC3.__name__]["swaps proposed"][i], 3)
@@ -158,10 +188,7 @@ def main():
     if args.verbose:
         print("")
         print("Statistics")
-        for title in stats:
-            print(title)
-            for subtitle in stats[title]:
-                print("    {}: {}".format(subtitle, stats[title][subtitle]))
+        pretty_dict(stats)
 
 
 if __name__ == '__main__':

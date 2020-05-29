@@ -3,8 +3,20 @@ from itertools import chain, combinations
 
 import numpy as np
 
+
+def pretty_dict(d, n=1):
+    for k in d:
+        if type(d[k]) == dict:
+            print("{}{}".format(" "*n, k))
+        else:
+            print("{}{}: {}".format(" "*n, k, d[k]))
+        if type(d[k]) == dict:
+            pretty_dict(d[k], n=n+4)
+
+
 def close(a, b, tolerance):
     return max(a, b) - min(a, b) < tolerance
+
 
 def read_candidates(candidate_path):
     C = dict()

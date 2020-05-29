@@ -190,12 +190,28 @@ class PartitionMCMC:
 
         if stats is not None:
             self.stats = stats
-            self.stats[type(self).__name__] = dict()
-            self.stats[type(self).__name__][self._R_basic_move.__name__] = 0
-            self.stats[type(self).__name__][self._R_swap_any.__name__] = 0
-            self.stats[type(self).__name__]["invalid " + self._R_basic_move.__name__] = 0
-            self.stats[type(self).__name__]["invalid " + self._R_swap_any.__name__] = 0
-            self.stats[type(self).__name__]["invalid moves"] = 0
+            self.key = type(self).__name__
+            if self.key not in stats:
+                self.stats[self.key] = dict()
+            self.stats[self.key][temperature] = dict()
+            self.stats[self.key][temperature][self.R_basic_move.__name__] = dict()
+            self.stats[self.key][temperature][self.R_basic_move.__name__]["candidate-valid"] = dict()
+            self.stats[self.key][temperature][self.R_basic_move.__name__]["candidate-valid"]["n"] = 0
+            self.stats[self.key][temperature][self.R_basic_move.__name__]["candidate-valid"]["ratio"] = 0
+            self.stats[self.key][temperature][self.R_basic_move.__name__]["candidate-valid"]["accepted"] = 0
+            self.stats[self.key][temperature][self.R_basic_move.__name__]["candidate-invalid"] = dict()
+            self.stats[self.key][temperature][self.R_basic_move.__name__]["candidate-invalid"]["n"] = 0
+            self.stats[self.key][temperature][self.R_basic_move.__name__]["candidate-invalid"]["ratio"] = 0
+            self.stats[self.key][temperature][self.R_basic_move.__name__]["candidate-invalid"]["accepted"] = 0
+            self.stats[self.key][temperature][self.R_swap_any.__name__] = dict()
+            self.stats[self.key][temperature][self.R_swap_any.__name__]["candidate-valid"] = dict()
+            self.stats[self.key][temperature][self.R_swap_any.__name__]["candidate-valid"]["n"] = 0
+            self.stats[self.key][temperature][self.R_swap_any.__name__]["candidate-valid"]["ratio"] = 0
+            self.stats[self.key][temperature][self.R_swap_any.__name__]["candidate-valid"]["accepted"] = 0
+            self.stats[self.key][temperature][self.R_swap_any.__name__]["candidate-invalid"] = dict()
+            self.stats[self.key][temperature][self.R_swap_any.__name__]["candidate-invalid"]["n"] = 0
+            self.stats[self.key][temperature][self.R_swap_any.__name__]["candidate-invalid"]["ratio"] = 0
+            self.stats[self.key][temperature][self.R_swap_any.__name__]["candidate-invalid"]["accepted"] = 0
 
         self.n = len(C)
         self.C = C
@@ -203,7 +219,7 @@ class PartitionMCMC:
         self.sr = sr
         self.cscores = cscores
         self.stay_prob = 0.01
-        self._moves = [self._R_basic_move, self._R_swap_any]
+        self._moves = [self.R_basic_move, self.R_swap_any]
         self._moveprobs = [0.5, 0.5]
         self.R = self._random_partition()
         self.R_node_scores = self._pi(self.R)
@@ -262,7 +278,7 @@ class PartitionMCMC:
             if self._valid(R):
                 return tuple(R)
 
-    def _R_basic_move(self, **kwargs):
+    def R_basic_move(self, **kwargs):
 
         def valid():
             return True
@@ -300,7 +316,7 @@ class PartitionMCMC:
 
         return tuple(R_prime), q, q, self.R[i_star].difference(nodes).union(self.R[min(m-1, i_star+1)])
 
-    def _R_swap_any(self, **kwargs):
+    def R_swap_any(self, **kwargs):
 
         def valid():
             return len(self.R) > 1
@@ -373,13 +389,14 @@ class PartitionMCMC:
 
             R_prime, q, q_rev, rescore = move(R=self.R)
 
+            R_prime_valid = self._valid(R_prime)
             if self.stats:
-                self.stats[type(self).__name__][move.__name__] += 1
+                if R_prime_valid:
+                    self.stats[self.key][self.temp][move.__name__]["candidate-valid"]["n"] += 1
+                else:
+                    self.stats[self.key][self.temp][move.__name__]["candidate-invalid"]["n"] += 1
 
-            if self.cscores.d == 0 and not self._valid(R_prime):
-                if self.stats:
-                    self.stats[type(self).__name__]["invalid moves"] += 1
-                    self.stats[type(self).__name__]["invalid " + move.__name__] += 1
+            if self.cscores.d == 0 and not R_prime_valid:
                 return self.R, self.R_score
 
             R_prime_node_scores = self._pi(R_prime, R_node_scores=self.R_node_scores, rescore=rescore)
@@ -387,6 +404,11 @@ class PartitionMCMC:
             # make this happen in log space?
             # if -np.random.exponential() < self.temp * sum(R_prime_node_scores) - self.R_score + np.log(q_rev) - np.log(q):
             if np.random.rand() < np.exp(self.temp * sum(R_prime_node_scores) - self.R_score)*q_rev/q:
+                if self.stats:
+                    if R_prime_valid:
+                        self.stats[self.key][self.temp][move.__name__]["candidate-valid"]["accepted"] += 1
+                    else:
+                        self.stats[self.key][self.temp][move.__name__]["candidate-invalid"]["accepted"] += 1
                 self.R = R_prime
                 self.R_node_scores = R_prime_node_scores
                 self.R_score = self.temp * sum(self.R_node_scores)
