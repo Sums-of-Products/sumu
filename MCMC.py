@@ -337,11 +337,15 @@ class PartitionMCMC:
                 k = j+1
                 q = 0.9 * 1/((m-1) * len(self.R[j]) * len(self.R[k]))
             else:
-                # j, k = np.random.choice(range(len(self.R)), 2, replace=False)
-                j = np.random.randint(m)
-                n = list(set(range(m)).difference({j-1, j, j+1}))
-                k = np.random.choice(n)
-                q = 0.1 * 1/((m*len(n)) * len(self.R[j]) * len(self.R[k]))
+                if m == 3:
+                    j = 0
+                    k = 2
+                    q = 1/(len(self.R[j])*len(self.R[k]))
+                else:
+                    j = np.random.randint(m)
+                    n = list(set(range(m)).difference({j-1, j, j+1}))
+                    k = np.random.choice(n)
+                    q = 0.1 * 1/((m*len(n)) * len(self.R[j]) * len(self.R[k]))
 
         v_j = np.random.choice(list(self.R[j]))
         v_k = np.random.choice(list(self.R[k]))
