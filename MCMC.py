@@ -3,6 +3,7 @@ import numpy as np
 from utils import subsets, bm, bm_to_ints, log_minus_exp, comb, close
 import zeta_transform.zeta_transform as zeta_transform
 from scoring import DiscreteData, ContinuousData, BDeu, BGe
+import gadget.gadget as gadget
 
 
 def fbit(mask):
@@ -118,14 +119,14 @@ class DAGR:
             if len(T.intersection(self.C[v])) > 0:
                 w_C = self.scores.scoresum(v, U, T)
 
-            w_compl_sum, contribs = self.cscores.scoresum(v, U, T, -float("inf"))
+            w_compl_sum, contribs = self.cscores.scoresum(v, U, T, -float("inf"), contribs=True)
 
             if -np.random.exponential() < w_C - np.logaddexp(w_compl_sum, w_C):
                 family = (v, self._sample_pset(v, set().union(*R[:i]), R[i-1]))
                 family_score = self.scores.scores[v][bm(family[1], ix=self.C[v])]
             else:
                 pset, family_score = self.cscores.sample_pset(v, contribs, w_compl_sum)
-                family = (v, pset)
+                family = (v, bm_to_ints(pset))
 
         if score is True:
             return family, family_score
@@ -622,6 +623,7 @@ class ScoreR:
         else:
             W_prime = -float("inf")
 
+        #print("Y", W_prime)
         # This does not have to check whether CScoreR.d == 0
         # because if it is 0 the proposal is already rejected in
         # PartitionMCMC.sample if it is invalid
@@ -657,19 +659,19 @@ class CScoreR:
                     del scores[v][pset]
         del tmp
 
+        ordered_psets = dict()
         ordered_scores = dict()
-        ordered_scores_psums = dict()
-        for v in scores:
-            ordered_scores_psums[v] = [0]*len(scores[v])
-            ordered_scores[v] = sorted(scores[v].items(), key=lambda item: item[1], reverse=True)
-            for i in range(len(ordered_scores[v])-1):
-                ordered_scores_psums[v][i+1] = np.logaddexp(ordered_scores_psums[v][i], ordered_scores[v][i][1])
-            ordered_scores_psums[v] = ordered_scores_psums[v][::-1]
 
+        for v in scores:
+            ordered_scores[v] = sorted(scores[v].items(), key=lambda item: item[1], reverse=True)
+            ordered_psets[v] = np.array([bm(item[0]) for item in ordered_scores[v]], dtype=np.uint64)
+            ordered_scores[v] = np.array([item[1] for item in ordered_scores[v]], dtype=np.float64)
+
+        self.ordered_psets = ordered_psets
         self.ordered_scores = ordered_scores
-        self.W = ordered_scores_psums
-        self.log09 = np.log(0.9)
+
         self.C = C
+        self.n = len(C)
         self.d = d
 
         if self.d == 1:
@@ -679,18 +681,24 @@ class CScoreR:
                 for i, pset in enumerate(ordered_scores[v]):
                     self.pset_to_idx[v][pset[0][0]] = i
 
+        self.t_ub = np.zeros(shape=(len(C), len(C)), dtype=np.int32)
+        for u in range(1, len(C)+1):
+            for t in range(1, u+1):
+                self.t_ub[u-1][t-1] = self.n_valids_ub(u, t)
+
+    def sample_pset(self, v, pset_indices, w_sum):
+        i = np.random.choice(pset_indices, p=np.exp(self._scores(v, pset_indices)-w_sum))
+        return self.ordered_psets[v][i], self.ordered_scores[v][i]
+
+    def _scores(self, v, indices):
+        return np.array([self.ordered_scores[v][i] for i in indices])
+        #return np.array([self.ordered_scores[v][i][1] for i in indices])
+
     def _valids(self, v, U, T):
         """This is used just for debugging I think, delete when unnecessary"""
         return [i for i, pset_score in enumerate(self.ordered_scores[v])
                 if set(pset_score[0]).issubset(U)
                 and len(set(pset_score[0]).intersection(T)) > 0]
-
-    def sample_pset(self, v, pset_indices, w_sum):
-        i = np.random.choice(pset_indices, p=np.exp(self._scores(v, pset_indices)-w_sum))
-        return self.ordered_scores[v][i]
-
-    def _scores(self, v, indices):
-        return np.array([self.ordered_scores[v][i][1] for i in indices])
 
     def n_valids(self, v, U, T):
         n = 0
@@ -699,7 +707,13 @@ class CScoreR:
             n -= comb(len(U.difference(T)), k) - comb(len(U.difference(T).intersection(self.C[v])), k)
         return n
 
-    def scoresum(self, v, U, T, W_prime, debug=False):
+    def n_valids_ub(self, u, t):
+        n = 0
+        for k in range(self.d+1):
+            n += comb(u, k) - comb(u - t, k)
+        return n
+
+    def scoresum(self, v, U, T, W_prime, debug=False, contribs=False):
 
         if self.d == 1:  # special case
             contribs = list()
@@ -712,23 +726,24 @@ class CScoreR:
             w_contribs.append(W_prime)
             return np.logaddexp.reduce(w_contribs), contribs
 
-        t = self.n_valids(v, U, T)
-        contribs = list()
+        #t = self.t_ub[len(U)-1][len(T)-1]
+        #print(t, t_ub, self.t[len(U)-1][len(T)-1])
 
-        if debug:
-            print("v = {}".format(v))
+        if contribs is True:
+            return gadget.weight_sum_contribs(W_prime, self.ordered_psets[v], self.ordered_scores[v], self.n, bm(U), bm(T), int(self.t_ub[len(U)][len(T)]))
+
+        W_sum = gadget.weight_sum(W_prime, self.ordered_psets[v], self.ordered_scores[v], self.n, bm(U), bm(T), int(self.t_ub[len(U)][len(T)]))
+        # print("XXXXXXXXXXXXXXXXXXXXX", W_sum)
+        if W_sum == -float("inf"):
+            print("INFFI")
             print("W_prime {}".format(W_prime))
-            print("t {}".format(t))
-            print("v valid scores = {}".format([self.ordered_scores[v][i] for i in self._valids(v, U, T)]))
-
-        if t > 0:  # t here represents number of valid psets
-            j = 0
-            t -= 1  # t here is fixed to mirror 0-based indexing
-            while t >= 0 and W_prime <= self.log09 + log_minus_exp(np.logaddexp(W_prime, self.W[v][j]), self.W[v][j + t]):
-                if set(self.ordered_scores[v][j][0]).issubset(U) and len(set(self.ordered_scores[v][j][0]).intersection(T)) > 0:
-                    W_prime = np.logaddexp(W_prime, self.ordered_scores[v][j][1])
-                    contribs.append(j)
-                    t -= 1
-                j += 1
-
-        return W_prime, contribs
+            np.set_printoptions(threshold=np.inf)
+            print(self.ordered_psets[v])
+            np.save("psets.npy", self.ordered_psets[v])
+            np.save("weights.npy", self.ordered_scores[v])
+            print(self.ordered_scores[v])
+            print("U {}".format(bm(U)))
+            print("T {}".format(bm(T)))
+            print("t_ub {}".format(int(self.t_ub[len(U)][len(T)])))
+            exit()
+        return W_sum, None
