@@ -678,8 +678,8 @@ class CScoreR:
             self.pset_to_idx = dict()
             for v in scores:
                 self.pset_to_idx[v] = dict()
-                for i, pset in enumerate(ordered_scores[v]):
-                    self.pset_to_idx[v][pset[0][0]] = i
+                for i, pset in enumerate(ordered_psets[v]):
+                    self.pset_to_idx[v][pset] = i
 
         self.t_ub = np.zeros(shape=(len(C), len(C)), dtype=np.int32)
         for u in range(1, len(C)+1):
@@ -720,9 +720,9 @@ class CScoreR:
             w_contribs = list()
             for u in T:
                 if u not in self.C[v]:
-                    pset_idx = self.pset_to_idx[v][u]
+                    pset_idx = self.pset_to_idx[v][bm(u)]
                     contribs.append(pset_idx)
-                    w_contribs.append(self.ordered_scores[v][pset_idx][1])
+                    w_contribs.append(self.ordered_scores[v][pset_idx])
             w_contribs.append(W_prime)
             return np.logaddexp.reduce(w_contribs), contribs
 
