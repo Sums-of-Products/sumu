@@ -67,15 +67,19 @@ def main():
     if args.verbose:
         print("2. precompute all local scores for candidates:\t\t{}".format(round(t_scores, 3)))
 
+    t0 = time.process_time()
     complementary_scores = MCMC.Score(args.datapath, scoref=args.score, maxid=args.d, ess=args.ess)
     complementary_scores = MCMC.CScoreR(C, complementary_scores, args.d)
+    c_scores = time.process_time() - t0
+    if args.verbose:
+        print("3. precompute data structure for complementary scores for candidates:\t\t{}".format(round(c_scores, 3)))
 
     t0 = time.process_time()
     # scores : special scoring structure for root-partition space
     scores = MCMC.ScoreR(scores, C, tolerance=args.tolerance, cscores=complementary_scores, stats=stats)
     t_scorer = time.process_time() - t0
     if args.verbose:
-        print("3. precompute data structure for scoring root-partitions:\t\t{}".format(round(t_scorer, 3)))
+        print("4. precompute data structure for scoring root-partitions:\t\t{}".format(round(t_scorer, 3)))
 
     t0 = time.process_time()
     if args.n_chains > 1:
@@ -84,14 +88,14 @@ def main():
         mcmc = MCMC.PartitionMCMC(C, scores, stats=stats)
     t_mcmc_init = time.process_time() - t0
     if args.verbose:
-        print("4. initialize mcmc chains:\t\t{}".format(round(t_mcmc_init, 3)))
+        print("5. initialize mcmc chains:\t\t{}".format(round(t_mcmc_init, 3)))
 
     t0 = time.process_time()
     for i in range(args.burn_in):
         mcmc.sample()
     t_mcmc_burnin = time.process_time() - t0
     if args.verbose:
-        print("5. {} burn-in mcmc iterations:\t\t{}".format(args.burn_in, round(t_mcmc_burnin, 3)))
+        print("6. {} burn-in mcmc iterations:\t\t{}".format(args.burn_in, round(t_mcmc_burnin, 3)))
 
     t0 = time.process_time()
     Rs = list()
@@ -102,7 +106,7 @@ def main():
             mcmc.sample()
     t_mcmc_iterations = time.process_time() - t0
     if args.verbose:
-        print("6. {} mcmc iterations, {} root-partitions stored:\t\t{}".format(args.iterations, len(Rs), round(t_mcmc_iterations, 3)))
+        print("7. {} mcmc iterations, {} root-partitions stored:\t\t{}".format(args.iterations, len(Rs), round(t_mcmc_iterations, 3)))
 
     if MCMC.PartitionMCMC.__name__ in stats:
         for temp in [i/(args.n_chains-1) for i in range(args.n_chains)]:
@@ -164,16 +168,16 @@ def main():
         t_dags += time.process_time() - t0
 
     if args.verbose:
-        print("7. precompute data structure for DAG sampling:\t\t{}".format(round(t_dagr, 3)))
+        print("8. precompute data structure for DAG sampling:\t\t{}".format(round(t_dagr, 3)))
 
     if args.verbose:
-        print("8. {} DAGs sampled:\t\t{}".format(len(DAGs), round(t_dags, 3)))
+        print("9. {} DAGs sampled:\t\t{}".format(len(DAGs), round(t_dags, 3)))
 
     t0 = time.process_time()
     ppost = pset_posteriors(DAGs)
     t_ppost = time.process_time() - t0
     if args.verbose:
-        print("9. parent set frequencies:\t\t{}".format(round(t_ppost, 3)))
+        print("10. parent set frequencies:\t\t{}".format(round(t_ppost, 3)))
 
     if args.output_path_prefix is not None:
         with open(args.output_path_prefix + ".dag", "w") as f:
