@@ -2,17 +2,49 @@
 #include <cmath>
 #include <cstdint>
 #include <vector>
+#include <iostream>
 
 using namespace std;
-
 using bitmap = uint64_t;
+struct bitmap_2 { bitmap s1; bitmap s2; };
 
 inline bool intersects(bitmap A, bitmap B){ return A & B; }
 inline bool subseteq(bitmap A, bitmap B){ return (A == (A & B)); }
+inline bool intersects_2(bitmap_2 A, bitmap_2 B){ return (A.s1 & B.s1) || (A.s2 & B.s2); }
+inline bool subseteq_2(bitmap_2 A, bitmap_2 B){ return ( (A.s1 == (A.s1 & B.s1)) && (A.s2 == (A.s2 & B.s2)) ); }
 
-//double log_add(double x, double y){ return fmax(x, y) + log1p(exp( -fabs(x - y) )); }
+double weight_sum_1(double w, bitmap *psets, int m, double *weights, int j, int n, bitmap U, bitmap T, int t_ub);
+double weight_sum_2(double w, bitmap *psets, int m, double *weights, int j, int n, vector<bitmap> U_vec, vector<bitmap> T_vec, int t_ub);
 
-double weight_sum(double w, bitmap *psets, int m, double *weights, int j, int n, bitmap U, bitmap T, int t_ub) {
+pair<double, vector<int>> weight_sum_contribs_1(double w, bitmap *psets, int m, double *weights, int j, int n, bitmap U, bitmap T, int t_ub);
+pair<double, vector<int>> weight_sum_contribs_2(double w, bitmap *psets, int m, double *weights, int j, int n, vector<bitmap> U_vec, vector<bitmap> T_vec, int t_ub);
+
+int idx2d(int row, int col, int dim2) {
+  return dim2*row + col;
+}
+
+double weight_sum(double w, uint64_t *psets, int m, int dim2, double *weights, int j, int n, vector<bitmap> U, vector<bitmap> T, int t_ub) {
+  if (dim2 == 1) {
+    return weight_sum_1(w, psets, m, weights, j, n, U[0], T[0], t_ub);
+    }
+  else if (dim2 == 2) {
+    return weight_sum_2(w, psets, m, weights, j, n, U, T, t_ub);
+  }
+  return 0;
+}
+
+pair<double, vector<int>> weight_sum_contribs(double w, uint64_t *psets, int m, int dim2, double *weights, int j, int n, vector<bitmap> U, vector<bitmap> T, int t_ub) {
+  if (dim2 == 1) {
+    return weight_sum_contribs_1(w, psets, m, weights, j, n, U[0], T[0], t_ub);
+    }
+  else if (dim2 == 2) {
+    return weight_sum_contribs_2(w, psets, m, weights, j, n, U, T, t_ub);
+  }
+  return weight_sum_contribs_1(w, psets, m, weights, j, n, U[0], T[0], t_ub);
+}
+
+
+double weight_sum_1(double w, bitmap *psets, int m, double *weights, int j, int n, bitmap U, bitmap T, int t_ub) {
   double sum = 0;
   double slack = log(0.1/t_ub);
   j = -1;
@@ -34,7 +66,43 @@ double weight_sum(double w, bitmap *psets, int m, double *weights, int j, int n,
   return log(sum) + factor;
 }
 
-pair<double, vector<int>> weight_sum_contribs(double w, bitmap *psets, int m, double *weights, int j, int n, bitmap U, bitmap T, int t_ub) {
+
+double weight_sum_2(double w, bitmap *psets, int m, double *weights, int j, int n, vector<bitmap> U_vec, vector<bitmap> T_vec, int t_ub) {
+  bitmap_2 T;
+  T.s1 = T_vec[0];
+  T.s2 = T_vec[1];
+  bitmap_2 U;
+  U.s1 = U_vec[0];
+  U.s2 = U_vec[1];
+
+  double sum = 0;
+  double slack = log(0.1/t_ub);
+  j = -1;
+  double factor = 0;
+  for (int i = 0; i < m; i ++){
+    bitmap P1 = psets[idx2d(i, 0, 2)];
+    bitmap P2 = psets[idx2d(i, 1, 2)];
+    bitmap_2 P;
+    P.s1 = P1;
+    P.s2 = P2;
+
+    if ( intersects_2(P, T) && subseteq_2(P, U) ) {
+      j++;
+      double score = weights[i];
+      if (j == 0){
+	factor = fmax(score, w);
+	sum += exp(w - factor);
+      }
+      else if (score < factor + slack) { break; }
+      sum += exp(score - factor);
+    }
+  }
+  if (j == -1) {return w;}
+  return log(sum) + factor;
+}
+
+
+pair<double, vector<int>> weight_sum_contribs_1(double w, bitmap *psets, int m, double *weights, int j, int n, bitmap U, bitmap T, int t_ub) {
   pair <double, vector<int>> w_and_contribs;
   vector<int> contribs(0);
   double sum = 0;
@@ -60,24 +128,39 @@ pair<double, vector<int>> weight_sum_contribs(double w, bitmap *psets, int m, do
 }
 
 
-/*
-double _weight_sum(double lsum, bitmap *psets, int m, double *weights, int j, int n, bitmap U, bitmap T, int t_ub) {
-  //double sum = lsum;
+pair<double, vector<int>> weight_sum_contribs_2(double w, bitmap *psets, int m, double *weights, int j, int n, vector<bitmap> U_vec, vector<bitmap> T_vec, int t_ub) {
+  bitmap_2 T;
+  T.s1 = T_vec[0];
+  T.s2 = T_vec[1];
+  bitmap_2 U;
+  U.s1 = U_vec[0];
+  U.s2 = U_vec[1];
+
+  pair <double, vector<int>> w_and_contribs;
+  vector<int> contribs(0);
+  double sum = 0;
   double slack = log(0.1/t_ub);
-  j = 0;
+  j = -1;
   double factor = 0;
   for (int i = 0; i < m; i ++){
-    bitmap P = psets[i];
-    if ( intersects(P, T) && subseteq(P, U) ) {
-      double score = weights[i];
-      if (j == 0){ factor = score; }
-      else if (score < factor + slack) { break; }
-      lsum = log_add(lsum, score);
-      //sum += exp(score - factor);
+    bitmap P1 = psets[idx2d(i, 0, 2)];
+    bitmap P2 = psets[idx2d(i, 1, 2)];
+    bitmap_2 P;
+    P.s1 = P1;
+    P.s2 = P2;
+
+    if ( intersects_2(P, T) && subseteq_2(P, U) ) {
       j++;
+      double score = weights[i];
+      if (j == 0){
+	factor = fmax(score, w);
+	sum += exp(w - factor);
+      }
+      else if (score < factor + slack) { break; }
+      sum += exp(score - factor);
+      contribs.insert(contribs.end(), i);
     }
   }
-  //sum = log(sum) + factor;
-  return lsum;
+  w_and_contribs = make_pair(log(sum) + factor, contribs);
+  return w_and_contribs;
 }
-*/
