@@ -248,8 +248,10 @@ class PartitionMCMC:
                     n_nodes += 1
                 R.append(n_nodes)
             for i in range(len(R)):
-                R_i = np.random.choice(U, R[i], replace=False)
-                R[i] = set(R_i)
+                # node labels need to be kept as Python ints
+                # for all the bitmap operations to work as expected
+                R_i = set(int(v) for v in np.random.choice(U, R[i], replace=False))
+                R[i] = R_i
                 U = [u for u in U if u not in R_i]
             return tuple(R)
 
@@ -310,9 +312,9 @@ class PartitionMCMC:
                   if m-1 + sum_binoms[i_star-1] + c_star[i] < j]
         c_star = len(c_star)+1
 
-        nodes = np.random.choice(list(self.R[i_star]), c_star)
+        nodes = {int(v) for v in np.random.choice(list(self.R[i_star]), c_star)}
 
-        R_prime = [self.R[i] for i in range(i_star)] + [set(nodes)]
+        R_prime = [self.R[i] for i in range(i_star)] + [nodes]
         R_prime += [self.R[i_star].difference(nodes)] + [self.R[i] for i in range(min(m, i_star+1), m)]
 
         return tuple(R_prime), q, q, self.R[i_star].difference(nodes).union(self.R[min(m-1, i_star+1)])
@@ -347,8 +349,8 @@ class PartitionMCMC:
                     k = np.random.choice(n)
                     q = 0.1 * 1/((m*len(n)) * len(self.R[j]) * len(self.R[k]))
 
-        v_j = np.random.choice(list(self.R[j]))
-        v_k = np.random.choice(list(self.R[k]))
+        v_j = int(np.random.choice(list(self.R[j])))
+        v_k = int(np.random.choice(list(self.R[k])))
         R_prime = list()
         for i in range(m):
             if i == j:
