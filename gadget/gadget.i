@@ -15,7 +15,7 @@
 namespace std {
   %template(VecInt) vector<int>;
   %template() pair<double,vector<int>>;
-  %template() vector<uint64_t>;
+   //%template() vector<uint64_t>;
 }
 
 %init %{
