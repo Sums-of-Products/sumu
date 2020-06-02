@@ -15,7 +15,6 @@
 namespace std {
   %template(VecInt) vector<int>;
   %template() pair<double,vector<int>>;
-   //%template() vector<uint64_t>;
 }
 
 %init %{
@@ -24,7 +23,5 @@ import_array();
 
 %apply (uint64_t* INPLACE_ARRAY1, int DIM1) {(uint64_t* ivec, int ni)}
 %apply (double* INPLACE_ARRAY1, int DIM1) {(double* dvec, int nd)}
-
-%apply (uint64_t* INPLACE_ARRAY2, int DIM1, int DIM2) {(uint64_t* ivec, int d1, int d2)}
 
 %include "gadget.h"

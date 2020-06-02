@@ -6,56 +6,6 @@ from scoring import DiscreteData, ContinuousData, BDeu, BGe
 import gadget.gadget as gadget
 
 
-def msb(n):
-    blen = 0
-    while (n > 0):
-        n >>= 1
-        blen += 1
-    return blen
-
-
-def bm_to_pyint_chunks(bitmap):
-    chunk = [0]*max(1, (msb(bitmap)-1)//64+1)
-    mask = (1 << 64) - 1
-    for j in range(len(chunk)):
-        chunk[j] = (bitmap & mask) >> 64*j
-        mask *= 2**64
-    return chunk
-
-
-def bm_to_np64(bitmap):
-    chunk = np.zeros(max(1, (msb(bitmap)-1)//64+1), dtype=np.uint64)
-    mask = (1 << 64) - 1
-    for j in range(len(chunk)):
-        chunk[j] = (bitmap & mask) >> 64*j
-        mask *= 2**64
-    return chunk
-
-
-def bms_to_np64(bitmaps):
-    blen = np.array([msb(x) for x in bitmaps])
-    dim1 = len(bitmaps)
-    dim2 = max((blen - 1) // 64) + 1
-    chunks = np.zeros(shape=(dim1, dim2), dtype=np.uint64)
-    for i in range(dim1):
-        n_c = (blen[i] - 1)//64
-        mask = (1 << 64) - 1
-        for j in range(n_c + 1):
-            chunks[i][j] = (bitmaps[i] & mask) >> 64*j
-            mask *= 2**64
-
-    return chunks
-
-
-def np64_to_bm(chunk):
-    bm = 0
-    for part in chunk[::-1]:
-        bm |= int(part)
-        bm *= 2**64
-    bm >>= 64
-    return bm
-
-
 def fbit(mask):
     """get index of first set bit"""
     k = 0
@@ -572,16 +522,6 @@ class Score:
             self.score = BGe(d)
             self.local = local
 
-    def complementary_scores_dict(self, C, d):
-        """C candidates, d indegree for complement psets"""
-        cscores = dict()
-        for v in C:
-            cscores[v] = dict()
-            for pset in subsets([u for u in C if u != v], 1, d):
-                if not (set(pset)).issubset(C[v]):
-                    cscores[v][pset] = self.local(v, pset)
-        return cscores
-
     def all_scores_dict(self, C=None):
         scores = dict()
         if C is None:
@@ -715,14 +655,22 @@ class CScoreR:
 
     def __init__(self, C, scores, d):
 
-        scores = scores.complementary_scores_dict(C, d)
+        # complicated structures not needed when d = 1?
+        tmp = scores.all_scores_dict()
+        scores = scores.all_scores_dict()
+
+        for v in tmp:
+            for pset in tmp[v]:
+                if set(pset).issubset(C[v]):
+                    del scores[v][pset]
+        del tmp
 
         ordered_psets = dict()
         ordered_scores = dict()
 
         for v in scores:
             ordered_scores[v] = sorted(scores[v].items(), key=lambda item: item[1], reverse=True)
-            ordered_psets[v] = bms_to_np64([bm(item[0]) for item in ordered_scores[v]])
+            ordered_psets[v] = np.array([bm(item[0]) for item in ordered_scores[v]], dtype=np.uint64)
             ordered_scores[v] = np.array([item[1] for item in ordered_scores[v]], dtype=np.float64)
 
         self.ordered_psets = ordered_psets
@@ -735,8 +683,6 @@ class CScoreR:
         if self.d == 1:
             self.pset_to_idx = dict()
             for v in scores:
-                # wrong if over 64 variables?
-                ordered_psets[v] = ordered_psets[v].flatten()
                 self.pset_to_idx[v] = dict()
                 for i, pset in enumerate(ordered_psets[v]):
                     self.pset_to_idx[v][pset] = i
@@ -748,7 +694,7 @@ class CScoreR:
 
     def sample_pset(self, v, pset_indices, w_sum):
         i = np.random.choice(pset_indices, p=np.exp(self._scores(v, pset_indices)-w_sum))
-        return np64_to_bm(self.ordered_psets[v][i]), self.ordered_scores[v][i]
+        return self.ordered_psets[v][i], self.ordered_scores[v][i]
 
     def _scores(self, v, indices):
         return np.array([self.ordered_scores[v][i] for i in indices])
@@ -786,34 +732,22 @@ class CScoreR:
             w_contribs.append(W_prime)
             return np.logaddexp.reduce(w_contribs), contribs
 
+        #t = self.t_ub[len(U)-1][len(T)-1]
+        #print(t, t_ub, self.t[len(U)-1][len(T)-1])
+
         if contribs is True:
-            return gadget.weight_sum_contribs(W_prime,
-                                              self.ordered_psets[v],
-                                              self.ordered_scores[v],
-                                              self.n,
-                                              bm_to_pyint_chunks(bm(U)),
-                                              bm_to_pyint_chunks(bm(T)),
-                                              int(self.t_ub[len(U)][len(T)]))
+            return gadget.weight_sum_contribs(W_prime, self.ordered_psets[v], self.ordered_scores[v], self.n, bm(U), bm(T), int(self.t_ub[len(U)][len(T)]))
 
-        W_sum = gadget.weight_sum(W_prime,
-                                  self.ordered_psets[v],
-                                  self.ordered_scores[v],
-                                  self.n,
-                                  bm_to_pyint_chunks(bm(U)),
-                                  bm_to_pyint_chunks(bm(T)),
-                                  int(self.t_ub[len(U)][len(T)]))
-
+        W_sum = gadget.weight_sum(W_prime, self.ordered_psets[v], self.ordered_scores[v], self.n, bm(U), bm(T), int(self.t_ub[len(U)][len(T)]))
         # print("XXXXXXXXXXXXXXXXXXXXX", W_sum)
         if W_sum == -float("inf"):
             print("INFFI")
-            print("U types {}".format([type(x) for x in U]))
-            print("T types {}".format([type(x) for x in T]))
             print("W_prime {}".format(W_prime))
-            #np.set_printoptions(threshold=np.inf)
-            #print(self.ordered_psets[v])
+            np.set_printoptions(threshold=np.inf)
+            print(self.ordered_psets[v])
             np.save("psets.npy", self.ordered_psets[v])
             np.save("weights.npy", self.ordered_scores[v])
-            #print(self.ordered_scores[v])
+            print(self.ordered_scores[v])
             print("U {}".format(bm(U)))
             print("T {}".format(bm(T)))
             print("t_ub {}".format(int(self.t_ub[len(U)][len(T)])))
