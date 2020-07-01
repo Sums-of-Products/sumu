@@ -1,6 +1,6 @@
 import numpy as np
 
-from utils import arg, subsets
+from .utils import arg, subsets
 
 
 def candidates_to_str(C):
@@ -532,3 +532,14 @@ def eval_candidates(C, pset_posteriors):
 
 def eval_candidates_gmean(pset_covers):
     return np.exp(np.log(list(pset_covers.values())).mean())
+
+
+class Candidates:
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+    def solve(self):
+        calgo = arg("algo", self.kwargs)
+        #K = arg("K", self.kwargs)
+        return algo[calgo](**self.kwargs)
