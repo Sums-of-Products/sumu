@@ -1,17 +1,10 @@
 from distutils.core import setup, Extension
-import os
+from Cython.Build import cythonize
 
-import numpy
+exts = Extension(
+    name='gadget',
+    sources=['_gadget.pyx', 'gadget.cpp'],
+    language='c++',
+    extra_compile_args=['-std=c++11'])
 
-os.environ["CC"] = "g++"
-
-try:
-    numpy_include = numpy.get_include()
-except AttributeError:
-    numpy_include = numpy.get_numpy_include()
-
-setup(ext_modules=[Extension("_gadget",
-                             sources=["gadget.cpp", "gadget.i"],
-                             swig_opts=['-c++', '-py3'],
-                             include_dirs=[numpy_include, '.'],
-                             extra_compile_args=['-std=c++17'])])
+setup(ext_modules=cythonize(exts, language_level="3"))

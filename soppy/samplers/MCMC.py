@@ -1,9 +1,9 @@
 import numpy as np
 
-from utils import subsets, bm, bm_to_ints, log_minus_exp, comb, close
-import zeta_transform.zeta_transform as zeta_transform
-from scoring import DiscreteData, ContinuousData, BDeu, BGe
-import gadget.gadget as gadget
+from ..utils import subsets, bm, bm_to_ints, log_minus_exp, comb, close
+from ..exact import zeta_transform
+from ..scoring import DiscreteData, ContinuousData, BDeu, BGe
+from . import gadget
 
 
 def msb(n):
@@ -630,7 +630,7 @@ class ScoreR:
     def _precompute_a(self):
         self._a = [0]*len(self.scores)
         for v in range(len(self.scores)):
-            self._a[v] = zeta_transform.from_list(self.scores[v])
+            self._a[v] = zeta_transform.solve(self.scores[v])
 
     def _precompute_basecases(self):
         K = len(self.C[0])
@@ -646,7 +646,7 @@ class ScoreR:
                     if S | x not in self._psum[v]:
                         self._psum[v][S | x] = dict()
                     tmp[dkbit(S, k)] = self.scores[v][S | x]
-                tmp = zeta_transform.from_list(tmp)
+                tmp = zeta_transform.solve(tmp)
                 if self.stats:
                     self.stats[type(self).__name__]["basecases"] += len(tmp)
                 for S in range(len(tmp)):
@@ -795,6 +795,32 @@ class CScoreR:
             w_contribs.append(W_prime)
             return np.logaddexp.reduce(w_contribs), contribs
 
+        if self.n <= 64:
+            U_bm = bm(U)
+            T_bm = bm(T)
+        else:  # if 64 < n <= 128
+            U_bm = bm_to_pyint_chunks(bm(U), 2)
+            T_bm = bm_to_pyint_chunks(bm(T), 2)
+
+        # contribs should be a param to weight_sum()
+        if contribs is True:
+            return gadget.weight_sum_contribs(W_prime,
+                                              self.ordered_psets[v],
+                                              self.ordered_scores[v],
+                                              self.n,
+                                              U_bm,
+                                              T_bm,
+                                              int(self.t_ub[len(U)][len(T)]))
+
+        W_sum = gadget.weight_sum(W_prime,
+                                  self.ordered_psets[v],
+                                  self.ordered_scores[v],
+                                  self.n,
+                                  U_bm,
+                                  T_bm,
+                                  int(self.t_ub[len(U)][len(T)]))
+
+        """
         if contribs is True:
             if self.n <= 64:
                 return gadget.weight_sum_contribs_64(W_prime,
@@ -832,6 +858,7 @@ class CScoreR:
                                           T_bm[0],
                                           T_bm[1],
                                           int(self.t_ub[len(U)][len(T)]))
+        """
 
         # print("XXXXXXXXXXXXXXXXXXXXX", W_sum)
         if W_sum == -float("inf"):

@@ -3,25 +3,10 @@
 
 using namespace std;
 using bitmap = uint64_t;
-//using bitmap = unsigned long long int;
 
-// these argument names and types ("using" breaks) must match those
-// in swig interface file
-// but not those in the cpp file
-
-int testi(uint64_t *ivec, int ni);
-
-double weight_sum_64(double w, uint64_t *ivec, int ni, double *dvec, int nd, bitmap U, bitmap T, int t_ub);
-
-pair<double, vector<int > > weight_sum_contribs_64(double w, uint64_t *ivec, int ni, double *dvec, int nd, bitmap U, bitmap T, int t_ub);
-
-double weight_sum_128(double w, uint64_t *ivec, int d1, int d2, double *dvec, int nd, bitmap U1, bitmap U2, bitmap T1, bitmap T2, int t_ub);
-
-pair<double, vector<int > > weight_sum_contribs_128(double w, uint64_t *ivec, int d1, int d2, double *dvec, int nd, bitmap U1, bitmap U2, bitmap T1, bitmap T2, int t_ub);
+double weight_sum_64(double w, bitmap *psets, int m, double *weights, int j, int n, bitmap U, bitmap T, int t_ub);
+pair<double, vector<int> > weight_sum_contribs_64(double w, bitmap *psets, int m, double *weights, int j, int n, bitmap U, bitmap T, int t_ub);
 
 
-/*
-double weight_sum(double W, uint64_t *ivec, int d1, int d2, double *dvec, int nd, int n, vector<bitmap> U, vector<bitmap> T, int t_ub);
-
-std::pair<double, std::vector<int>> weight_sum_contribs(double W, uint64_t *ivec, int d1, int d2, double *dvec, int nd, int n, vector<bitmap> U, vector<bitmap> T, int t_ub);
-*/
+double weight_sum_128(double w, bitmap *psets, int m, double *weights, int j, int n, vector<bitmap> U_vec, vector<bitmap> T_vec, int t_ub);
+pair<double, vector<int> > weight_sum_contribs_128(double w, bitmap *psets, int m, double *weights, int j, int n, vector<bitmap> U_vec, vector<bitmap> T_vec, int t_ub);
