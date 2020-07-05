@@ -42,6 +42,37 @@ def read_jkl(scorepath):
                 continue
 
             row_list = row.strip().split()
+            score = float(row_list[0])
+            n_parents = int(row_list[1])
+
+            parents = frozenset()
+            if n_parents > 0:
+                parents = frozenset([int(x) for x in row_list[2:]])
+            scores[current_var][frozenset(parents)] = score
+            n_scores -= 1
+
+    return scores
+
+
+def _read_jkl(scorepath):
+    """I think this is still needed in
+    loading the aps produced parent set posteriors.
+    Therefore I will not delete this yet, although
+    there is another version using frozensets above."""
+    scores = dict()
+    with open(scorepath, 'r') as jkl_file:
+        rows = jkl_file.readlines()
+        scores = dict()
+        n_scores = 0
+        for row in rows[1:]:
+
+            if not n_scores:
+                n_scores = int(row.strip().split()[1])
+                current_var = int(row.strip().split()[0])
+                scores[current_var] = dict()
+                continue
+
+            row_list = row.strip().split()
             prob_sum = float(row_list[0])
             n_parents = int(row_list[1])
 
