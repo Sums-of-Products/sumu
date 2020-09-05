@@ -1,11 +1,11 @@
 from collections import defaultdict
 import numpy as np
 
-from ..utils import subsets, bm, bm_to_ints, log_minus_exp, comb, close
+from ..utils import subsets, bm, bm_to_ints, log_minus_exp, comb, close, partition
 from ..exact import zeta_transform
 from ..scoring import DiscreteData, ContinuousData, BDeu, BGe
 from . import gadget
-from .MCMC_moves import R_basic_move, R_swap_any, B_relocate_one, B_relocate_many, B_swap_adjacent, B_swap_nonadjacent
+from .MCMC_moves import R_basic_move, R_swap_any, B_relocate_one, B_relocate_many, B_swap_adjacent, B_swap_nonadjacent, DAG_edgereversal
 
 
 def msb(n):
@@ -263,8 +263,12 @@ class LayeringMCMC:
 
         self.B_moves = [B_relocate_one, B_relocate_many, B_swap_adjacent, B_swap_nonadjacent]
         self.R_moves = [R_basic_move, R_swap_any]
-        self.moves = self.B_moves + self.R_moves
-        self.move_probs = np.array([0.2, 0.2, 0.2, 0.2, 0.1, 0.1])
+        self.DAG_moves = [DAG_edgereversal]
+        self.moves = self.B_moves + self.R_moves + self.DAG_moves
+        self.move_probs = np.array([0.2, 0.2, 0.2, 0.2, 0.1, 0.05, 0.05])
+
+    def DAG_edgereversal(**kwargs):
+        return DAG_edgereversal(**kwargs)
 
     def R_basic_move(**kwargs):
         return R_basic_move(**kwargs)
@@ -615,6 +619,7 @@ class LayeringMCMC:
                     # continue
                     return self.B, self.B_prob, DAG, DAG_prob
 
+                # WHY IS THIS CALCULATED ALREADY HERE
                 # t_psum = time.process_time()
                 tau_hat_prime = self.parentsums(B_prime, self.M, self.max_indegree, self.scores)
                 # t_psum = time.process_time() - t_psum
@@ -623,6 +628,19 @@ class LayeringMCMC:
                 R_prime_prob = self.posterior_R(R_prime, self.scores, self.max_indegree)
 
                 acc_prob = np.exp(R_prime_prob - R_prob)*q_rev/q
+
+            elif move in self.DAG_moves:
+
+                R = self.generate_partition(self.B, self.M, self.tau_hat, self.g, self.scores)
+                DAG, DAG_prob = self.sample_DAG(self.R, self.scores, self.max_indegree)
+                DAG_prime, acc_prob = move(DAG=DAG, scores=self.scores, max_indegree=self.max_indegree)
+                R_prime = partition(DAG_prime)
+                R_prime_prob = self.posterior_R(R_prime, self.scores, self.max_indegree)
+                B_prime = self.R_to_B(R_prime, self.M)
+                if B_prime == self.B:
+                    return self.B, self.B_prob, DAG, DAG_prob
+                # WHY IS THIS CALCULATED ALREADY HERE
+                tau_hat_prime = self.parentsums(B_prime, self.M, self.max_indegree, self.scores)
 
             if np.random.rand() < acc_prob:
 
@@ -635,10 +653,18 @@ class LayeringMCMC:
                 self.tau_hat = tau_hat_prime
                 self.g = g_prime
                 self.B_prob = self.g[0][frozenset()][frozenset()]
-                self.R = self.generate_partition(self.B, self.M, self.tau_hat, self.g, self.scores)
-                DAG, DAG_prob = self.sample_DAG(self.R, self.scores, self.max_indegree)
-                # update_stats(B_prime_prob, DAG_prob, B_prime, DAG, acc_prob, 1, move.__name__, t_psum, t_pos)
-                return self.B, self.B_prob, DAG, DAG_prob
+                if move not in self.DAG_moves:
+                    self.R = self.generate_partition(self.B, self.M, self.tau_hat, self.g, self.scores)
+                    DAG, DAG_prob = self.sample_DAG(self.R, self.scores, self.max_indegree)
+                    # update_stats(B_prime_prob, DAG_prob, B_prime, DAG, acc_prob, 1, move.__name__, t_psum, t_pos)
+                    return self.B, self.B_prob, DAG, DAG_prob
+                else:
+                    self.R = R_prime
+                    #print("-------")
+                    #print(DAG)
+                    #print("-------")
+                    DAG_prob = sum(self.scores[f[0]][frozenset(f[1:])] if len(f) > 1 else self.scores[f[0]][frozenset()] for f in DAG)
+                    return self.B, self.B_prob, DAG, DAG_prob
 
             else:
                 self.R = self.generate_partition(self.B, self.M, self.tau_hat, self.g, self.scores)

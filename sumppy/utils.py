@@ -4,6 +4,72 @@ from itertools import chain, combinations
 import numpy as np
 
 
+def partition(dag):
+
+    adjmat = np.zeros((len(dag), len(dag)))
+
+    for f in dag:
+        if len(f) > 1:
+            adjmat[f[1:], f[0]] = 1
+
+    partitions = list()
+    matrix_pruned = adjmat
+    indices = np.arange(adjmat.shape[0])
+    while True:
+        pmask = np.sum(matrix_pruned, axis=0) == 0
+        if not any(pmask):
+            break
+        matrix_pruned = matrix_pruned[:, pmask == False][pmask == False, :]
+        partitions.append(frozenset(indices[pmask]))
+        indices = indices[pmask == False]
+    return partitions
+
+
+def topological_sort(dag):
+
+    """
+    Kahn, Arthur B. (1962), "Topological sorting of large networks",
+    Communications of the ACM, 5 (11): 558–562, doi:10.1145/368996.369025
+    """
+    names = set(range(len(dag)))
+    edges = set((f[i], f[0]) for f in dag for i in range(1, len(f)) if len(f) > 1)
+
+    l = list()
+    s = set(names)
+    for pnode in names:
+        for cnode in names:
+            if (pnode, cnode) in edges:
+                s.discard(cnode)
+    while s:
+        n = s.pop()
+        l.append(n)
+        for m in names:
+            if (n, m) in edges:
+                edges.discard((n, m))
+                s.add(m)
+                for pm in names:
+                    if (pm, m) in edges:
+                        s.discard(m)
+    if edges:
+        return False
+    return l
+
+
+def transitive_closure(dag, mat=False):
+
+    edgeto = {f[0]: [set(f[1:]) if len(f) > 1 else set()][0] for f in dag}
+    tclosure = {v: {v} for v in range(len(dag))}
+    for v in topological_sort(dag)[::-1]:
+        for u in edgeto[v]:
+            tclosure[u].update(tclosure[v])
+    if mat is False:
+        return tclosure
+    tclomat = np.zeros((len(dag), len(dag)))
+    for v in tclosure:
+        tclomat[v, list(tclosure[v])] = 1
+    return tclomat
+
+
 def pretty_dict(d, n=1):
     for k in d:
         if type(d[k]) == dict:
