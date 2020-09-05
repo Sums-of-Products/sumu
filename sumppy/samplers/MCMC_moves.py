@@ -149,18 +149,41 @@ def DAG_edgereversal(**kwargs):
 
 
 def R_basic_move(**kwargs):
+    """Splits or merges a root-partition (Kuipers and Moffa, 2017).
+
+    Kuipers, J. and G. Moffa (2017). "Partition MCMC for Inference on Acyclic Digraphs." J. Am. Stat. Assoc.
+
+    Args:
+       **kwargs: {"R": root-partition, "validate": boolean for whether to just validate input root-partition}
+
+    Returns:
+        A tuple of: proposed root-partition, proposal probability, inverse proposal probability, set of nodes that need to be rescored
+
+    """
 
     def valid():
         return True
+
+    def nbd_size(R):
+        """Size of split/merge neighbourhood of input root-partition
+
+        Args:
+           R: root-partition
+
+        Returns:
+           The size of the neighbourhood and sum of binomial coefficients needed later
+        """
+        m = len(R)
+        sum_binoms = [sum([comb(len(R[i]), v) for v in range(1, len(R[i]))]) for i in range(m)]
+        return m - 1 + sum(sum_binoms), sum_binoms
 
     if "validate" in kwargs and kwargs["validate"] is True:
         return valid()
 
     R = kwargs["R"]
-
     m = len(R)
-    sum_binoms = [sum([comb(len(R[i]), v) for v in range(1, len(R[i]))]) for i in range(m)]
-    nbd = m - 1 + sum(sum_binoms)
+
+    nbd, sum_binoms = nbd_size(R)
     q = 1/nbd
 
     j = np.random.randint(1, nbd+1)
@@ -168,25 +191,30 @@ def R_basic_move(**kwargs):
     R_prime = list()
     if j < m:
         R_prime = [R[i] for i in range(j-1)] + [R[j-1].union(R[j])] + [R[i] for i in range(min(m, j+1), m)]
-        return R_prime, q, q, R[j].union(R[min(m-1, j+1)])
+        q_prime = 1/nbd_size(R_prime)[0]
+        rescore = R[j].union(R[min(m-1, j+1)])
 
-    sum_binoms = [sum(sum_binoms[:i]) for i in range(1, len(sum_binoms)+1)]
-    i_star = [m-1 + sum_binoms[i] for i in range(len(sum_binoms)) if m-1 + sum_binoms[i] < j]
-    i_star = len(i_star)
+    else:
+        sum_binoms = [sum(sum_binoms[:i]) for i in range(1, len(sum_binoms)+1)]
+        i_star = [m-1 + sum_binoms[i] for i in range(len(sum_binoms)) if m-1 + sum_binoms[i] < j]
+        i_star = len(i_star)
 
-    c_star = [comb(len(R[i_star]), v) for v in range(1, len(R[i_star])+1)]
-    c_star = [sum(c_star[:i]) for i in range(1, len(c_star)+1)]
+        c_star = [comb(len(R[i_star]), v) for v in range(1, len(R[i_star])+1)]
+        c_star = [sum(c_star[:i]) for i in range(1, len(c_star)+1)]
 
-    c_star = [m-1 + sum_binoms[i_star-1] + c_star[i] for i in range(len(c_star))
-              if m-1 + sum_binoms[i_star-1] + c_star[i] < j]
-    c_star = len(c_star)+1
+        c_star = [m-1 + sum_binoms[i_star-1] + c_star[i] for i in range(len(c_star))
+                  if m-1 + sum_binoms[i_star-1] + c_star[i] < j]
+        c_star = len(c_star)+1
 
-    nodes = {int(v) for v in np.random.choice(list(R[i_star]), c_star)}
+        nodes = {int(v) for v in np.random.choice(list(R[i_star]), c_star)}
 
-    R_prime = [R[i] for i in range(i_star)] + [nodes]
-    R_prime += [R[i_star].difference(nodes)] + [R[i] for i in range(min(m, i_star+1), m)]
+        R_prime = [R[i] for i in range(i_star)] + [nodes]
+        R_prime += [R[i_star].difference(nodes)] + [R[i] for i in range(min(m, i_star+1), m)]
 
-    return tuple(R_prime), q, q, R[i_star].difference(nodes).union(R[min(m-1, i_star+1)])
+        q_prime = 1/nbd_size(R_prime)[0]
+        rescore = R[i_star].difference(nodes).union(R[min(m-1, i_star+1)])
+
+    return R_prime, q, q_prime, rescore
 
 
 def R_swap_any(**kwargs):
