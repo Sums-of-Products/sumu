@@ -155,7 +155,11 @@ def rnd(K, **kwargs):
 
 
 def ges(K, fill=None, scores=None, **kwargs):
+    """Greedy equivalence search :cite:`chickering:2002`.
 
+    GES is implemented in the R package pcalg :cite:`hauser:2012,kalisch:2012`,
+    for which the function :py:func:`pcalg` provides a Python wrapping.
+    """
     datapath = kwargs["datapath"]
     data = r["load_dat"](datapath)
 
@@ -187,6 +191,11 @@ def pcalg(method, K, data):
         score = r["new"]("GaussL0penObsScore", data)
         cpdag = r["ges"](score).rx2("essgraph")
         for v in range(n):
+            # NOTE: undirected edges are represented as bidirected!
+            # See pcalg documentation at
+            # https://cran.r-project.org/web/packages/pcalg/pcalg.pdf
+            # for ges and EssGraph.
+            # Also running the ges example confirms this.
             C[v] = [v-1 for v in sorted(dollar(cpdag, ".in.edges").rx2(v+1))]
 
     for v in C:
@@ -297,13 +306,11 @@ def bnlearn(method, K, data, **kwargs):
             for u in mb:
                 if u not in C[v]:
                     C[v].append(u)
-                if v not in C[u]:
-                    C[u].append(v)
         if method in ['pc', 'hc']:
-            pset = [int(u) for u in bn.rx2('nodes').rx2(str(v)).rx2('parents')]
-            for u in pset:
-                C[v].append(u)
-                C[u].append(v)
+            nbr = [int(u) for u in bn.rx2('nodes').rx2(str(v)).rx2('nbr')]
+            for u in nbr:
+                if u not in C[v]:
+                    C[v].append(u)
 
     for v in C:
         C[v] = tuple(sorted(C[v]))
