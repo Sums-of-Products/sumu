@@ -5,6 +5,10 @@ def test_R_basic_move():
 
     # TODO: test nodes to rescore
 
+    # Test that the (inverse) proposal probabilities are correct.
+    # To avoid relying on random seeds this proposes a move
+    # 100 times to have high probability that all possible
+    # moves are considered.
     R = [{0}, {1, 2}]
 
     passed = list()

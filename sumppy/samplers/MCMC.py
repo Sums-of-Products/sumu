@@ -680,6 +680,8 @@ class LayeringMCMC:
 
 
 class PartitionMCMC:
+    """Partition-MCMC sampler :cite:`kuipers:2017` with efficient scoring.
+    """
 
     def __init__(self, C, sr, cscores, temperature=1, stats=None):
 

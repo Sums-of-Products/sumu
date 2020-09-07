@@ -149,15 +149,13 @@ def DAG_edgereversal(**kwargs):
 
 
 def R_basic_move(**kwargs):
-    """Splits or merges a root-partition (Kuipers and Moffa, 2017).
-
-    Kuipers, J. and G. Moffa (2017). "Partition MCMC for Inference on Acyclic Digraphs." J. Am. Stat. Assoc.
+    """Splits or merges a root-partition :cite:`kuipers:2017`.
 
     Args:
        **kwargs: {"R": root-partition, "validate": boolean for whether to just validate input root-partition}
 
     Returns:
-        A tuple of: proposed root-partition, proposal probability, inverse proposal probability, set of nodes that need to be rescored
+        tuple: proposed root-partition, proposal probability, inverse proposal probability, set of nodes that need to be rescored
 
     """
 
@@ -265,8 +263,10 @@ def R_swap_any(**kwargs):
 
 def B_swap_nonadjacent(**kwargs):
     """Swaps the layer of two nodes in different layers by sampling uniformly at random:
-    1. j \in V and k \in V \setminus {j-1, j, j+1}
-    2. nodes in B[j] and B[k]
+
+    1. :math:`j \in V` and :math:`k \in V \setminus \{ j-1, j, j+1 \}`
+    2. nodes in :math:`B_{j}` and :math:`B_{k}`
+
     and finally swapping the layers of the chosen nodes.
 
     The proposed layering is valid and cannot be reached by the relocate function with one step.
@@ -311,8 +311,10 @@ def B_swap_nonadjacent(**kwargs):
 
 def B_swap_adjacent(**kwargs):
     """Swaps the layer of two nodes in adjacent layers by sampling uniformly at random:
-    1. j between 1 and l-1
-    2. nodes in B[j] and B[j+1]
+
+    1. :math:`j` between 1 and :math:`l-1`
+    2. nodes in :math:`B_{j}` and :math:`B_{j+1}`
+
     and finally swapping the layers of the chosen nodes.
 
     The proposed layering is valid and cannot be reached by the relocate function with one step.
@@ -348,18 +350,19 @@ def B_swap_adjacent(**kwargs):
 
 
 def B_relocate_many(**kwargs):
-    """Relocates n > 1 nodes in the input M-layering B by choosing uniformly at random:
-    1. a source layer j from among the valid possibilities,
-    2. number n between 2 and |B[j]|
-    3. n nodes from within the source layer,
+    """Relocates :math:`n > 1` nodes in the input :math:`M`-layering :math:`B` by choosing uniformly at random:
+
+    1. a source layer :math:`j` from among the valid possibilities,
+    2. number :math:`n` between 2 and :math:`|B_{j}|`
+    3. :math:`n` nodes from within the source layer,
     4. a target layer, including any possible new layer, where to move the nodes.
 
     In step (1), any layer with more than one node is valid, as the problem of invalid
-    sources described in B_relocate_one can be bypassed by choosing n appropriately.
-    At the moment n however is chosen uniformly from {2,...,|B[j]|} so the move can
+    sources described in :py:func:`B_relocate_one` can be bypassed by choosing :math:`n` appropriately.
+    At the moment :math:`n` however is chosen uniformly from :math:`\{ 2,\ldots,|B_{j}| \}` so the move can
     produce an invalid output (which is later discarded in MCMC function).
 
-    In step (4) only a new layer right after j is discarded as it is clearly invalid.
+    In step (4) only a new layer right after :math:`j` is discarded as it is clearly invalid.
     However, as explained, the proposed M-layering can still be invalid.
 
     Args:
@@ -380,6 +383,7 @@ def B_relocate_many(**kwargs):
 
     if "validate" in kwargs and kwargs["validate"] is True:
         return valid()
+
 
     B_prime = [frozenset()]
 
@@ -419,27 +423,28 @@ def B_relocate_many(**kwargs):
 
 
 def B_relocate_one(**kwargs):
-    """Relocates a single node in the input M-layering B by choosing uniformly at random:
+    """Relocates a single node in the input :math:`M`-layering :math:`B` by choosing uniformly at random:
+
     1. a source layer from among the valid possibilities,
     2. a node within the source layer,
     3. a valid target layer, including any possible new layer, where to move the node.
 
     In step (1), only such layers are valid, from which it is possible to draw a node,
-    and create a valid new M-layering by moving it to another part. If the sizes of three
-    consequetive layers are b_1, b_2, b_3, such that b_1 + (b_2 - 1) = M = (b_2 - 1) + b_3,
+    and create a valid new :math:`M`-layering by moving it to another part. If the sizes of three
+    consequetive layers are :math:`b_1`, :math:`b_2`, :math:`b_3`, such that :math:`b_1 + (b_2 - 1) = M = (b_2 - 1) + b_3`,
     then it is impossible to create a valid layering by relocating one node from the middle layer
     as to get a valid layering one should also merge the left or the right layer
     with the remaining middle layer.
 
     In step (3) the possible target layers depend on the source part sampled in step (1).
-    The proposed M-layering is thus guaranteed to be valid and different from the input M-layering.
+    The proposed :math:`M`-layering is thus guaranteed to be valid and different from the input :math:`M`-layering.
 
     Args:
        B (list): Initial state of the layering for the relocation transition
        M (int):  Specifies the space of Bs
 
     Returns:
-        Proposed new M-layering, proposal probability and reverse proposal probability
+        Proposed new :math:`M`-layering, proposal probability and reverse proposal probability
     """
     def valid():
         return len(B) > 1
