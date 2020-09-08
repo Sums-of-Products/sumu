@@ -1,10 +1,11 @@
-// -*- flycheck-clang-language-standard: "c++17"; -*-
+// -*- flycheck-clang-language-standard: "c++11"; -*-
 #include <cmath>
 #include <random>
 #include <limits>
 #include <functional>
 #include <vector>
 #include <queue>
+#include "assert.h"
 
 //template <typename T>
 class discrete_random_variable {
