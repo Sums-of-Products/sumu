@@ -1,4 +1,4 @@
-from sumppy.samplers import MCMC_moves
+from sumppy import MCMC_moves
 
 
 def test_R_basic_move():

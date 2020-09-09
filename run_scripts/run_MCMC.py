@@ -4,7 +4,7 @@ import time
 import numpy as np
 
 import sumppy.candidates_no_R as cnd
-from sumppy.samplers import MCMC
+from sumppy import MCMC
 from sumppy.utils import pset_posteriors, write_jkl, DAG_to_str, read_candidates, pretty_dict
 
 

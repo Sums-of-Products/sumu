@@ -1,9 +1,9 @@
 from collections import defaultdict
 import numpy as np
 
-from ..utils import subsets, bm, bm_to_ints, log_minus_exp, comb, close, partition
-from ..exact import zeta_transform
-from ..scoring import DiscreteData, ContinuousData, BDeu, BGe
+from .utils import subsets, bm, bm_to_ints, log_minus_exp, comb, close, partition
+from . import zeta_transform
+from .scoring import DiscreteData, ContinuousData, BDeu, BGe
 from . import gadget
 from .MCMC_moves import R_basic_move, R_swap_any, B_relocate_one, B_relocate_many, B_swap_adjacent, B_swap_nonadjacent, DAG_edgereversal
 
@@ -1077,7 +1077,7 @@ class ScoreR:
     def _precompute_a(self):
         self._a = [0]*len(self.scores)
         for v in range(len(self.scores)):
-            self._a[v] = zeta_transform.solve(self.scores[v])
+            self._a[v] = zeta_transform(self.scores[v])
 
     def _precompute_basecases(self):
         K = len(self.C[0])
@@ -1093,7 +1093,7 @@ class ScoreR:
                     if S | x not in self._psum[v]:
                         self._psum[v][S | x] = dict()
                     tmp[dkbit(S, k)] = self.scores[v][S | x]
-                tmp = zeta_transform.solve(tmp)
+                tmp = zeta_transform(tmp)
                 if self.stats:
                     self.stats[type(self).__name__]["basecases"] += len(tmp)
                 for S in range(len(tmp)):
