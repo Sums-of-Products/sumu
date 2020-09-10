@@ -1,130 +1,13 @@
 from collections import defaultdict
 import numpy as np
 
-from .utils import subsets, bm, bm_to_ints, log_minus_exp, comb, close, partition
+from .utils.bitmap import bm, bm_to_ints, msb, bm_to_pyint_chunks, bm_to_np64, bms_to_np64, np64_to_bm, fbit, kzon, dkbit, ikbit, subsets_size_k, ssets
+from .utils.math_utils import log_minus_exp, close, comb
+from .bnet import partition
 from . import zeta_transform
 from .scoring import DiscreteData, ContinuousData, BDeu, BGe
 from . import gadget
 from .MCMC_moves import R_basic_move, R_swap_any, B_relocate_one, B_relocate_many, B_swap_adjacent, B_swap_nonadjacent, DAG_edgereversal
-
-
-def msb(n):
-    blen = 0
-    while (n > 0):
-        n >>= 1
-        blen += 1
-    return blen
-
-
-def bm_to_pyint_chunks(bitmap, minwidth=1):
-    chunk = [0]*max(minwidth, (msb(bitmap)-1)//64+1)
-    if len(chunk) == 1:
-        return bitmap
-    mask = (1 << 64) - 1
-    for j in range(len(chunk)):
-        chunk[j] = (bitmap & mask) >> 64*j
-        mask *= 2**64
-    return chunk
-
-
-def bm_to_np64(bitmap):
-    chunk = np.zeros(max(1, (msb(bitmap)-1)//64+1), dtype=np.uint64)
-    mask = (1 << 64) - 1
-    for j in range(len(chunk)):
-        chunk[j] = (bitmap & mask) >> 64*j
-        mask *= 2**64
-    return chunk
-
-
-def bms_to_np64(bitmaps, minwidth=1):
-    blen = np.array([msb(x) for x in bitmaps])
-    dim1 = len(bitmaps)
-    dim2 = max(minwidth, max((blen - 1) // 64) + 1)
-    if dim2 == 1:
-        return np.array(bitmaps, dtype=np.uint64)
-    chunks = np.zeros(shape=(dim1, dim2), dtype=np.uint64)
-    for i in range(dim1):
-        n_c = (blen[i] - 1)//64
-        mask = (1 << 64) - 1
-        for j in range(n_c + 1):
-            chunks[i][j] = (bitmaps[i] & mask) >> 64*j
-            mask *= 2**64
-    return chunks
-
-
-def np64_to_bm(chunk):
-    if type(chunk) in {np.uint64, int}:
-        return int(chunk)
-    bm = 0
-    for part in chunk[::-1]:
-        bm |= int(part)
-        bm *= 2**64
-    bm >>= 64
-    return bm
-
-
-def fbit(mask):
-    """get index of first set bit"""
-    k = 0
-    while 1 & mask == 0:
-        k += 1
-        mask >>= 1
-    return k
-
-
-def kzon(mask, k):
-    """set kth zerobit on"""
-    nmask = ~mask
-    for i in range(k):
-        nmask &= ~(nmask & -nmask)
-    return mask | (nmask & -nmask)
-
-
-def dkbit(mask, k):
-    """drop kth bith"""
-    if mask == 0:
-        return mask
-    trunc = mask >> (k+1)
-    #trunc <<= k
-    trunc *= 2**k
-    # return ((1 << k) - 1) & mask | trunc
-    return (2**k - 1) & mask | trunc
-
-
-def ikbit(mask, k, bit):
-    """shift all bits >=k to the left and insert bit to k"""
-    if k == 0:
-        # newmask = mask << 1
-        newmask = mask * 2
-    else:
-        newmask = mask >> k-1
-    newmask ^= (-bit ^ newmask) & 1
-    #newmask <<= k
-    newmask *= 2**k
-    #return newmask | ((1 << k) - 1) & mask
-    return newmask | (2**k - 1) & mask
-
-
-def subsets_size_k(k, n):
-    if k == 0:
-        yield 0
-        return
-    #S = (1 << k) - 1
-    S = 2**k - 1
-    # limit = (1 << n)
-    limit = 2**n
-    while S < limit:
-        yield S
-        x = S & -S
-        r = S + x
-        S = (((r ^ S) >> 2) // x) | r
-
-
-def ssets(mask):
-    S = mask
-    while S > 0:
-        yield S
-        S = (S - 1) & mask
 
 
 class DAGR:
@@ -267,25 +150,25 @@ class LayeringMCMC:
         self.moves = self.B_moves + self.R_moves + self.DAG_moves
         self.move_probs = np.array([0.2, 0.2, 0.2, 0.2, 0.1, 0.05, 0.05])
 
-    def DAG_edgereversal(**kwargs):
+    def DAG_edgereversal(self, **kwargs):
         return DAG_edgereversal(**kwargs)
 
-    def R_basic_move(**kwargs):
+    def R_basic_move(self, **kwargs):
         return R_basic_move(**kwargs)
 
-    def R_swap_any(**kwargs):
+    def R_swap_any(self, **kwargs):
         return R_swap_any(**kwargs)
 
-    def B_relocate_one(**kwargs):
+    def B_relocate_one(self, **kwargs):
         return B_relocate_one(**kwargs)
 
-    def B_relocate_many(**kwargs):
+    def B_relocate_many(self, **kwargs):
         return B_relocate_many(**kwargs)
 
-    def B_swap_adjacent(**kwargs):
+    def B_swap_adjacent(self, **kwargs):
         return B_swap_adjacent(**kwargs)
 
-    def B_swap_nonadjacent(**kwargs):
+    def B_swap_nonadjacent(self, **kwargs):
         return B_swap_nonadjacent(**kwargs)
 
     def partitions(self, n):
@@ -538,7 +421,6 @@ class LayeringMCMC:
                        R[i], scores, max_indegree)
         return f_sum
 
-
     def sample_DAG(self, R, scores, max_indegree):
         DAG = list((root,) for root in R[0])
         tmp_scores = [scores[root][frozenset()] for root in R[0]]
@@ -782,87 +664,6 @@ class PartitionMCMC:
                 return tuple(R)
             if self._valid(R):
                 return tuple(R)
-
-    def _R_basic_move(self, **kwargs):
-
-        def valid():
-            return True
-
-        if "validate" in kwargs and kwargs["validate"] is True:
-            return valid()
-
-        m = len(self.R)
-        sum_binoms = [sum([comb(len(self.R[i]), v) for v in range(1, len(self.R[i]))]) for i in range(m)]
-        nbd = m - 1 + sum(sum_binoms)
-        q = 1/nbd
-
-        j = np.random.randint(1, nbd+1)
-
-        R_prime = list()
-        if j < m:
-            R_prime = [self.R[i] for i in range(j-1)] + [self.R[j-1].union(self.R[j])] + [self.R[i] for i in range(min(m, j+1), m)]
-            return R_prime, q, q, self.R[j].union(self.R[min(m-1, j+1)])
-
-        sum_binoms = [sum(sum_binoms[:i]) for i in range(1, len(sum_binoms)+1)]
-        i_star = [m-1 + sum_binoms[i] for i in range(len(sum_binoms)) if m-1 + sum_binoms[i] < j]
-        i_star = len(i_star)
-
-        c_star = [comb(len(self.R[i_star]), v) for v in range(1, len(self.R[i_star])+1)]
-        c_star = [sum(c_star[:i]) for i in range(1, len(c_star)+1)]
-
-        c_star = [m-1 + sum_binoms[i_star-1] + c_star[i] for i in range(len(c_star))
-                  if m-1 + sum_binoms[i_star-1] + c_star[i] < j]
-        c_star = len(c_star)+1
-
-        nodes = {int(v) for v in np.random.choice(list(self.R[i_star]), c_star)}
-
-        R_prime = [self.R[i] for i in range(i_star)] + [nodes]
-        R_prime += [self.R[i_star].difference(nodes)] + [self.R[i] for i in range(min(m, i_star+1), m)]
-
-        return tuple(R_prime), q, q, self.R[i_star].difference(nodes).union(self.R[min(m-1, i_star+1)])
-
-    def _R_swap_any(self, **kwargs):
-
-        def valid():
-            return len(self.R) > 1
-
-        m = len(self.R)
-
-        if "validate" in kwargs and kwargs["validate"] is True:
-            return valid()
-
-        if m == 2:
-            j = 0
-            k = 1
-            q = 1/(len(self.R[j])*len(self.R[k]))
-        else:
-            if np.random.random() <= 0.9:  # adjacent
-                j = np.random.randint(len(self.R)-1)
-                k = j+1
-                q = 0.9 * 1/((m-1) * len(self.R[j]) * len(self.R[k]))
-            else:
-                if m == 3:
-                    j = 0
-                    k = 2
-                    q = 1/(len(self.R[j])*len(self.R[k]))
-                else:
-                    j = np.random.randint(m)
-                    n = list(set(range(m)).difference({j-1, j, j+1}))
-                    k = np.random.choice(n)
-                    q = 0.1 * 1/((m*len(n)) * len(self.R[j]) * len(self.R[k]))
-
-        v_j = int(np.random.choice(list(self.R[j])))
-        v_k = int(np.random.choice(list(self.R[k])))
-        R_prime = list()
-        for i in range(m):
-            if i == j:
-                R_prime.append(self.R[i].difference({v_j}).union({v_k}))
-            elif i == k:
-                R_prime.append(self.R[i].difference({v_k}).union({v_j}))
-            else:
-                R_prime.append(self.R[i])
-
-        return tuple(R_prime), q, q, {v_j, v_k}.union(*self.R[min(j, k)+1:min(max(j, k)+2, m+1)])
 
     def _pi(self, R, R_node_scores=None, rescore=None):
 
@@ -1159,7 +960,6 @@ class ScoreR:
 
 
 class CScoreR:
-
     """Complementary scores
 
     Scores complementary to those constrained

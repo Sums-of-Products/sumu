@@ -1,6 +1,7 @@
 import numpy as np
 
-from .utils import arg, subsets
+from .utils.core_utils import arg
+from .utils.math_utils import subsets
 
 
 def candidates_to_str(C):

@@ -1,6 +1,6 @@
 import numpy as np
-from .utils import comb, transitive_closure, subsets
-
+from .utils.math_utils import comb, subsets
+from .bnet import transitive_closure
 
 def DAG_edgereversal(**kwargs):
 
