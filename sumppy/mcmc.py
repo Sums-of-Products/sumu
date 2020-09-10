@@ -7,7 +7,7 @@ from .bnet import partition
 from . import zeta_transform
 from .scoring import DiscreteData, ContinuousData, BDeu, BGe
 from . import gadget
-from .MCMC_moves import R_basic_move, R_swap_any, B_relocate_one, B_relocate_many, B_swap_adjacent, B_swap_nonadjacent, DAG_edgereversal
+from .mcmc_moves import R_basic_move, R_swap_any, B_relocate_one, B_relocate_many, B_swap_adjacent, B_swap_nonadjacent, DAG_edgereversal
 
 
 class DAGR:
