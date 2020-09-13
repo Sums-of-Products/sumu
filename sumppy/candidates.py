@@ -307,9 +307,17 @@ def bnlearn(method, K, data, **kwargs):
             for u in mb:
                 if u not in C[v]:
                     C[v].append(u)
-        if method in ['pc', 'hc']:
+        if method == 'pc':
             nbr = [int(u) for u in bn.rx2('nodes').rx2(str(v)).rx2('nbr')]
+            children = [int(u) for u in bn.rx2('nodes').rx2(str(v)).rx2('children')]
             for u in nbr:
+                if u in children:
+                    continue
+                if u not in C[v]:
+                    C[v].append(u)
+        if method == 'hc':
+            pset = [int(u) for u in bn.rx2('nodes').rx2(str(v)).rx2('parents')]
+            for u in pset:
                 if u not in C[v]:
                     C[v].append(u)
 
