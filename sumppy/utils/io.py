@@ -8,6 +8,27 @@ import numpy as np
 from ..bnet import BNet, Node
 
 
+def write_data(data, datapath, bn=None):
+    """Write data to datapath with variable names and arities if provided.
+
+    Args:
+       data numpy array
+       datapath datapath
+       bn Bayesian network (default None)
+    """
+    if bn is not None:
+        names = np.array([node.name for node in bn.nodes])
+        arities = np.array([node.r for node in bn.nodes])
+        data = np.vstack((names, arities, data))
+    np.savetxt(datapath, data, delimiter=" ", fmt='%i')
+
+
+def get_n(datapath):
+    """Get number of space separated columns in datafile"""
+    with open(datapath) as f:
+        return len(f.readline().split())
+
+
 def decrement_dict_labels_by_one(jkl):
     """Decrement all integer keys in a two level dict by one.
 
@@ -112,7 +133,7 @@ def write_jkl(scores, fpath):
         f.writelines(lines)
 
 
-def read_dsc(filepath):
+def read_dsc(filepath, zerolabels = True):
     """Read and parse a .dsc file in the input path into a object of type :py:class:`.BNet`.
 
     Args:
@@ -122,7 +143,7 @@ def read_dsc(filepath):
         BNet: a fully specified Bayesian network.
 
     """
-    
+
     def custom_formatwarning(msg, *args, **kwargs):
         # ignore everything except the message
         return str(msg) + '\n'
@@ -135,7 +156,7 @@ def read_dsc(filepath):
                 maxerror_node = name + ' ' + str(key)
             return probs / probs.sum()
         return probs
-    
+
     warnings.formatwarning = custom_formatwarning
     maxerror = -float('inf')
     maxerror_node = ''
@@ -181,8 +202,8 @@ def read_dsc(filepath):
         warnings.warn("Some probabilities didn't sum to 1 and were normalized.\n" +
                       "Maximum error: " + maxerror_node + ' ' + str(maxerror))
 
-    return BNet([nodes[name] for name in names])
-
-
-
-
+    bn = BNet([nodes[name] for name in names])
+    if zerolabels:
+        for i in range(len(bn.nodes)):
+            bn.nodes[i].name = i
+    return bn
