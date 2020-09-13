@@ -1,128 +1,8 @@
 from collections import defaultdict
 import numpy as np
-
-from .utils.bitmap import bm, bm_to_ints, msb, bm_to_pyint_chunks, bm_to_np64, bms_to_np64, np64_to_bm, fbit, kzon, dkbit, ikbit, subsets_size_k, ssets
-from .utils.math_utils import log_minus_exp, close, comb
+from .utils.math_utils import log_minus_exp, subsets
 from .bnet import partition
-from . import zeta_transform
-from .scoring import DiscreteData, ContinuousData, BDeu, BGe
-from . import gadget
 from .mcmc_moves import R_basic_move, R_swap_any, B_relocate_one, B_relocate_many, B_swap_adjacent, B_swap_nonadjacent, DAG_edgereversal
-
-
-class DAGR:
-
-    def __init__(self, scores, C, complementary_scores, tolerance=2**(-32), stats=None):
-        if stats is not None:
-            self.stats = stats
-            self.stats[type(self).__name__] = dict()
-            self.stats[type(self).__name__]["CC"] = 0
-
-        self.scores = scores
-        self.C = C
-        self.cscores = complementary_scores
-        self.tol = tolerance
-
-    def precompute(self, v):
-
-        K = len(self.C[v])
-
-        self._f = [0]*2**K
-        for X in range(2**K):
-            self._f[X] = [-float("inf")]*2**(K-bin(X).count("1"))
-            self._f[X][0] = self.scores.scores[v][X]
-
-        for k in range(1, K+1):
-            for k_x in range(K-k+1):
-                for X in subsets_size_k(k_x, K):
-                    for Y in subsets_size_k(k, K-k_x):
-                        i = fbit(Y)
-                        self._f[X][Y] = np.logaddexp(self._f[kzon(X, i)][dkbit(Y, i)], self._f[X][Y & ~(Y & -Y)])
-
-    def sample_pset(self, v, R, score=False):
-
-        # TODO: keep track of positions in move functions
-        for i in range(len(R)):
-            if v in R[i]:
-                break
-
-        if i == 0:
-            family = (v,)
-            family_score = self.scores.scores[v][0]
-
-        else:
-
-            U = set().union(*R[:i])
-            T = R[i-1]
-
-            w_C = -float("inf")
-            if len(T.intersection(self.C[v])) > 0:
-                w_C = self.scores.scoresum(v, U, T)
-
-            w_compl_sum, contribs = self.cscores.scoresum(v, U, T, -float("inf"), contribs=True)
-
-            if -np.random.exponential() < w_C - np.logaddexp(w_compl_sum, w_C):
-                family = (v, self._sample_pset(v, set().union(*R[:i]), R[i-1]))
-                family_score = self.scores.scores[v][bm(family[1], ix=self.C[v])]
-            else:
-                pset, family_score = self.cscores.sample_pset(v, contribs, w_compl_sum)
-                family = (v, bm_to_ints(pset))
-
-        if score is True:
-            return family, family_score
-        return family
-
-    def _sample_pset(self, v, U, T):
-
-        def g(X, E, U, T):
-
-            X_bm = bm(X, ix=self.C[v])
-            E_bm = bm(E, ix=sorted(set(self.C[v]).difference(X)))
-            U_bm = bm(U.difference(X), ix=sorted(set(self.C[v]).difference(X)))
-            T_bm = bm(T.difference(X), ix=sorted(set(self.C[v]).difference(X)))
-
-            score_1 = [self._f[X_bm][U_bm & ~E_bm] if X.issubset(U.difference(E)) else -float("inf")][0]
-            score_2 = [self._f[X_bm][(U_bm & ~E_bm) & ~T_bm] if X.issubset(U.difference(E.union(T))) else -float("inf")][0]
-
-            if not close(score_1, score_2, self.tol):
-                return log_minus_exp(score_1, score_2)
-            else:  # CC
-                return None
-
-        U = U.intersection(self.C[v])
-        T = T.intersection(self.C[v])
-
-        X = set()
-        E = set()
-        for i in U:
-            try:
-                if -np.random.exponential() < g(X.union({i}), E, U, T) - g(X, E, U, T):
-                    X.add(i)
-                else:
-                    E.add(i)
-            except TypeError:
-                if self.stats is not None:
-                    self.stats[type(self).__name__]["CC"] += 1
-
-                return self._sample_pset_brute(v, U, T)
-        return X
-
-    def _sample_pset_brute(self, v, U, T):
-
-        U = U.intersection(self.C[v])
-        T = T.intersection(self.C[v])
-
-        probs = list()
-        psets = list()
-        for T_set in subsets(T, 1, len(T)):
-            for U_set in subsets(U.difference(T), 0, len(U.difference(T))):
-                pset = set(T_set).union(U_set)
-                probs.append(self.scores.scores[v][bm(pset, ix=self.C[v])])
-                psets.append(pset)
-        probs = np.array(probs)
-        probs -= np.logaddexp.reduce(probs)
-        probs = np.exp(probs)
-        return psets[np.random.choice(range(len(psets)), p=probs)]
 
 
 class LayeringMCMC:
@@ -442,6 +322,10 @@ class LayeringMCMC:
         return DAG, sum(tmp_scores)
 
     def sample(self):
+
+        # NOTE: The outernmost if-else is strange? Should return B
+        # even if we stay in place.
+
         if np.random.rand() < self.stay_prob:
             R = self.generate_partition(self.B, self.M, self.tau_hat, self.g, self.scores)
             DAG, DAG_prob = self.sample_DAG(R, self.scores, self.max_indegree)
@@ -565,8 +449,9 @@ class PartitionMCMC:
     """Partition-MCMC sampler :cite:`kuipers:2017` with efficient scoring.
     """
 
-    def __init__(self, C, sr, cscores, temperature=1, stats=None):
+    def __init__(self, C, sr, d, temperature=1, stats=None):
 
+        self.stats = None
         if stats is not None:
             self.stats = stats
             self.key = type(self).__name__
@@ -596,7 +481,7 @@ class PartitionMCMC:
         self.C = C
         self.temp = temperature
         self.sr = sr
-        self.cscores = cscores
+        self.d = d
         self.stay_prob = 0.01
         self._moves = [R_basic_move, R_swap_any]
         self._moveprobs = [0.5, 0.5]
@@ -604,10 +489,10 @@ class PartitionMCMC:
         self.R_node_scores = self._pi(self.R)
         self.R_score = self.temp * sum(self.R_node_scores)
 
-    def R_basic_move(**kwargs):
+    def R_basic_move(self, **kwargs):
         return R_basic_move(**kwargs)
 
-    def R_swap_any(**kwargs):
+    def R_swap_any(self, **kwargs):
         return R_swap_any(**kwargs)
 
     def _valid(self, R):
@@ -639,7 +524,7 @@ class PartitionMCMC:
                 U = [u for u in U if u not in R_i]
             return tuple(R)
 
-        if self.cscores.d > 0:
+        if self.d > 0:
             return rp_d_gt0(self.n)
 
         def n(R):
@@ -660,7 +545,7 @@ class PartitionMCMC:
                 R_i = np.random.choice(pool, min(n(R), len(pool)), replace=False)
                 R.append(set(R_i))
                 U = U.difference(R[-1])
-            if self.cscores.d > 0:
+            if self.d > 0:
                 return tuple(R)
             if self._valid(R):
                 return tuple(R)
@@ -701,6 +586,7 @@ class PartitionMCMC:
             print("")
             self.sr.scoresum(u, set().union(*R[:inpart[u]]), R[inpart[u]-1], debug=True)
             exit()
+
         return R_node_scores
 
     def sample(self):
@@ -711,7 +597,6 @@ class PartitionMCMC:
                 return self.R, self.R_score
 
             R_prime, q, q_rev, rescore = move(R=self.R)
-
             R_prime_valid = self._valid(R_prime)
             if self.stats:
                 if R_prime_valid:
@@ -719,7 +604,7 @@ class PartitionMCMC:
                 else:
                     self.stats[self.key][self.temp][move.__name__]["candidate-invalid"]["n"] += 1
 
-            if self.cscores.d == 0 and not R_prime_valid:
+            if self.d == 0 and not R_prime_valid:
                 return self.R, self.R_score
 
             R_prime_node_scores = self._pi(R_prime, R_node_scores=self.R_node_scores, rescore=rescore)
@@ -742,6 +627,8 @@ class PartitionMCMC:
 class MC3:
 
     def __init__(self, chains, stats=None):
+
+        self.stats = None
         if stats is not None:
             self.stats = stats
             self.stats[type(self).__name__] = dict()
@@ -774,352 +661,3 @@ class MC3:
             self.chains[i+1].R_score = self.chains[i+1].temp * sum(self.chains[i+1].R_node_scores)
         return self.chains[-1].R, self.chains[-1].R_score
 
-
-class Score:
-
-    def __init__(self, datapath, scoref="bdeu", maxid=-1, ess=10, stats=None):
-
-        self.maxid = maxid
-        self.stats = None
-        if stats is not None:
-            self.stats = stats
-            self.stats[type(self).__name__] = dict()
-            self.stats[type(self).__name__]["clear_cache"] = 0
-
-        if scoref == "bdeu":
-
-            def local(node, parents):
-                if len(self.score._cache) > 1000000:
-                    self.score.clear_cache()
-                    if self.stats:
-                        self.stats[type(self).__name__]["clear_cache"] += 1
-
-                if self.maxid == -1 or len(parents) <= self.maxid:
-                    score = self.score.bdeu_score(node, parents)[0]
-                else:
-                    return -float("inf")
-                # consider putting the prior explicitly somewhere
-                return score - np.log(comb(self.n - 1, len(parents)))
-
-            d = DiscreteData(datapath)
-            d._varidx = {v: v for v in d._varidx.values()}
-            self.n = len(d._variables)
-            self.score = BDeu(d, alpha=ess)
-            self.local = local
-
-        elif scoref == "bge":
-
-            def local(node, parents):
-                if len(self.score._cache) > 1000000:
-                    self.score._cache = dict()
-                    if self.stats:
-                        self.stats[type(self).__name__]["clear_cache"] += 1
-                if self.maxid == -1 or len(parents) <= self.maxid:
-                    return self.score.bge_score(node, parents)[0] - np.log(comb(self.n - 1, len(parents)))
-                else:
-                    return -float("inf")
-
-            d = ContinuousData(datapath, header=False)
-            d._varidx = {v: v for v in d._varidx.values()}
-            self.n = len(d._variables)
-            self.score = BGe(d)
-            self.local = local
-
-    def complementary_scores_dict(self, C, d):
-        """C candidates, d indegree for complement psets"""
-        cscores = dict()
-        for v in C:
-            cscores[v] = dict()
-            for pset in subsets([u for u in C if u != v], 1, d):
-                if not (set(pset)).issubset(C[v]):
-                    cscores[v][pset] = self.local(v, pset)
-        return cscores
-
-    def all_scores_dict(self, C=None):
-        scores = dict()
-        if C is None:
-            C = {v: tuple(sorted(set(range(self.n)).difference({v}))) for v in range(self.n)}
-        for v in C:
-            tmp = dict()
-            for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
-                tmp[pset] = self.local(v, pset)
-            scores[v] = tmp
-        return scores
-
-    def all_scores_list(self, C):
-        scores = list()
-        for v in C:
-            tmp = [-float('inf')]*2**len(C[0])
-            for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
-                tmp[bm(pset, ix=C[v])] = self.local(v, pset)
-            scores.append(tmp)
-        return scores
-
-
-class ScoreR:
-
-    def __init__(self, scores, C, tolerance=2**(-32), D=2, cscores=None, stats=None):
-
-        if stats is not None:
-            self.stats = stats
-            self.stats[type(self).__name__] = dict()
-            self.stats[type(self).__name__]["CC"] = 0
-            self.stats[type(self).__name__]["CC basecases"] = 0
-            self.stats[type(self).__name__]["basecases"] = 0
-
-        self.scores = scores
-        self.C = C
-        self.tol = tolerance
-        self.cscores = cscores
-        self._precompute_a()
-        self._precompute_basecases()
-        self._precompute_psum()
-
-    def _precompute_a(self):
-        self._a = [0]*len(self.scores)
-        for v in range(len(self.scores)):
-            self._a[v] = zeta_transform(self.scores[v])
-
-    def _precompute_basecases(self):
-        K = len(self.C[0])
-        self._psum = {v: dict() for v in range(len(self.C))}
-        for v in self.C:
-            for k in range(K):
-                x = 1 << k
-                U_minus_x = (2**K - 1) & ~x
-                tmp = [0]*2**(K-1)
-                tmp[0] = self.scores[v][x]
-                self._psum[v][x] = dict()
-                for S in ssets(U_minus_x):
-                    if S | x not in self._psum[v]:
-                        self._psum[v][S | x] = dict()
-                    tmp[dkbit(S, k)] = self.scores[v][S | x]
-                tmp = zeta_transform(tmp)
-                if self.stats:
-                    self.stats[type(self).__name__]["basecases"] += len(tmp)
-                for S in range(len(tmp)):
-                    # only save basecase if it can't be computed as difference
-                    # makes a bit slower, makes require a bit less space
-                    if self._cc(v, ikbit(S, k, 1), x):
-                        if self.stats:
-                            self.stats[type(self).__name__]["CC basecases"] += 1
-                        self._psum[v][ikbit(S, k, 1)][x] = tmp[S]
-
-    def _precompute_psum(self):
-
-        K = len(self.C[0])
-        n = len(self.C)
-
-        for v in self.C:
-            for U in range(1, 2**K):
-                for T in ssets(U):
-                    if self._cc(v, U, T):
-                        if self.stats:
-                            self.stats[type(self).__name__]["CC"] += 1
-                        T1 = T & -T
-                        U1 = U & ~T1
-                        T2 = T & ~T1
-
-                        self._psum[v][U][T] = np.logaddexp(self.psum(v, U, T1),
-                                                           self.psum(v, U1, T2))
-        if self.stats:
-            self.stats[type(self).__name__]["relative CC"] = self.stats[type(self).__name__]["CC"] / (n*3**K)
-
-    def _cc(self, v, U, T):
-        return close(self._a[v][U], self._a[v][U & ~T], self.tol)
-        # return self._a[v][U] == self._a[v][U & ~T]
-
-    def _scoresum(self, v, U, T):
-        return self.psum(v, bm(U, ix=self.C[v]), bm(T, ix=self.C[v]))
-
-    def scoresum(self, v, U, T, debug=False):
-
-        if len(T) == 0:
-            return self.scores[v][0]
-
-        if len(T.intersection(self.C[v])) > 0:
-            W_prime = self.psum(v, bm(U.intersection(self.C[v]), ix=self.C[v]), bm(T.intersection(self.C[v]), ix=self.C[v]))
-        else:
-            W_prime = -float("inf")
-
-        #print("Y", W_prime)
-        # This does not have to check whether CScoreR.d == 0
-        # because if it is 0 the proposal is already rejected in
-        # PartitionMCMC.sample if it is invalid
-        return self.cscores.scoresum(v, U, T, W_prime, debug=debug)[0]
-
-    def psum(self, v, U, T):
-        if U == 0 and T == 0:
-            return self.scores[v][0]
-        if T == 0:  # special case for T2 in precompute
-            return -float("inf")
-        if v in self._psum and U in self._psum[v] and T in self._psum[v][U]:
-            return self._psum[v][U][T]
-        else:
-            return log_minus_exp(self._a[v][U], self._a[v][U & ~T])
-
-
-class CScoreR:
-    """Complementary scores
-
-    Scores complementary to those constrained
-    by the candidate parent sets"""
-
-    def __init__(self, C, scores, d):
-
-        self.C = C
-        self.n = len(C)
-        self.d = d
-        minwidth = 1
-        if self.n > 64:
-            minwidth = 2
-
-        scores = scores.complementary_scores_dict(C, d)
-
-        ordered_psets = dict()
-        ordered_scores = dict()
-
-        for v in scores:
-            ordered_scores[v] = sorted(scores[v].items(), key=lambda item: item[1], reverse=True)
-            ordered_psets[v] = bms_to_np64([bm(item[0]) for item in ordered_scores[v]], minwidth=minwidth)
-            ordered_scores[v] = np.array([item[1] for item in ordered_scores[v]], dtype=np.float64)
-
-        self.ordered_psets = ordered_psets
-        self.ordered_scores = ordered_scores
-
-        if self.d == 1:
-            self.pset_to_idx = dict()
-            for v in scores:
-                # wrong if over 64 variables?
-                # ordered_psets[v] = ordered_psets[v].flatten()
-                ordered_psets[v] = [np64_to_bm(pset) for pset in ordered_psets[v]]
-                self.pset_to_idx[v] = dict()
-                for i, pset in enumerate(ordered_psets[v]):
-                    self.pset_to_idx[v][pset] = i
-
-        self.t_ub = np.zeros(shape=(len(C), len(C)), dtype=np.int32)
-        for u in range(1, len(C)+1):
-            for t in range(1, u+1):
-                self.t_ub[u-1][t-1] = self.n_valids_ub(u, t)
-
-    def sample_pset(self, v, pset_indices, w_sum):
-        i = np.random.choice(pset_indices, p=np.exp(self._scores(v, pset_indices)-w_sum))
-        return np64_to_bm(self.ordered_psets[v][i]), self.ordered_scores[v][i]
-
-    def _scores(self, v, indices):
-        return np.array([self.ordered_scores[v][i] for i in indices])
-        #return np.array([self.ordered_scores[v][i][1] for i in indices])
-
-    def _valids(self, v, U, T):
-        """This is used just for debugging I think, delete when unnecessary"""
-        return [i for i, pset_score in enumerate(self.ordered_scores[v])
-                if set(pset_score[0]).issubset(U)
-                and len(set(pset_score[0]).intersection(T)) > 0]
-
-    def n_valids(self, v, U, T):
-        n = 0
-        for k in range(1, self.d+1):
-            n += comb(len(U), k) - comb(len(U.intersection(self.C[v])), k)
-            n -= comb(len(U.difference(T)), k) - comb(len(U.difference(T).intersection(self.C[v])), k)
-        return n
-
-    def n_valids_ub(self, u, t):
-        n = 0
-        for k in range(self.d+1):
-            n += comb(u, k) - comb(u - t, k)
-        return n
-
-    def scoresum(self, v, U, T, W_prime, debug=False, contribs=False):
-
-        if self.d == 1:  # special case
-            contribs = list()
-            w_contribs = list()
-            for u in T:
-                if u not in self.C[v]:
-                    pset_idx = self.pset_to_idx[v][bm(u)]
-                    contribs.append(pset_idx)
-                    w_contribs.append(self.ordered_scores[v][pset_idx])
-            w_contribs.append(W_prime)
-            return np.logaddexp.reduce(w_contribs), contribs
-
-        if self.n <= 64:
-            U_bm = bm(U)
-            T_bm = bm(T)
-        else:  # if 64 < n <= 128
-            U_bm = bm_to_pyint_chunks(bm(U), 2)
-            T_bm = bm_to_pyint_chunks(bm(T), 2)
-
-        # contribs should be a param to weight_sum()
-        if contribs is True:
-            return gadget.weight_sum_contribs(W_prime,
-                                              self.ordered_psets[v],
-                                              self.ordered_scores[v],
-                                              self.n,
-                                              U_bm,
-                                              T_bm,
-                                              int(self.t_ub[len(U)][len(T)]))
-
-        W_sum = gadget.weight_sum(W_prime,
-                                  self.ordered_psets[v],
-                                  self.ordered_scores[v],
-                                  self.n,
-                                  U_bm,
-                                  T_bm,
-                                  int(self.t_ub[len(U)][len(T)]))
-
-        """
-        if contribs is True:
-            if self.n <= 64:
-                return gadget.weight_sum_contribs_64(W_prime,
-                                                     self.ordered_psets[v],
-                                                     self.ordered_scores[v],
-                                                     bm(U),
-                                                     bm(T),
-                                                     int(self.t_ub[len(U)][len(T)]))
-            else:
-                U_bm = bm_to_pyint_chunks(bm(U), 2)
-                T_bm = bm_to_pyint_chunks(bm(T), 2)
-                return gadget.weight_sum_contribs_128(W_prime,
-                                                      self.ordered_psets[v],
-                                                      self.ordered_scores[v],
-                                                      U_bm[0],
-                                                      U_bm[1],
-                                                      T_bm[0],
-                                                      T_bm[1],
-                                                      int(self.t_ub[len(U)][len(T)]))
-        if self.n <= 64:
-            W_sum = gadget.weight_sum_64(W_prime,
-                                         self.ordered_psets[v],
-                                         self.ordered_scores[v],
-                                         bm(U),
-                                         bm(T),
-                                         int(self.t_ub[len(U)][len(T)]))
-        else:
-            U_bm = bm_to_pyint_chunks(bm(U), 2)
-            T_bm = bm_to_pyint_chunks(bm(T), 2)
-            W_sum = gadget.weight_sum_128(W_prime,
-                                          self.ordered_psets[v],
-                                          self.ordered_scores[v],
-                                          U_bm[0],
-                                          U_bm[1],
-                                          T_bm[0],
-                                          T_bm[1],
-                                          int(self.t_ub[len(U)][len(T)]))
-        """
-
-        # print("XXXXXXXXXXXXXXXXXXXXX", W_sum)
-        if W_sum == -float("inf"):
-            print("INFFI")
-            print("U types {}".format([type(x) for x in U]))
-            print("T types {}".format([type(x) for x in T]))
-            print("W_prime {}".format(W_prime))
-            #np.set_printoptions(threshold=np.inf)
-            #print(self.ordered_psets[v])
-            np.save("psets.npy", self.ordered_psets[v])
-            np.save("weights.npy", self.ordered_scores[v])
-            #print(self.ordered_scores[v])
-            print("U {}".format(bm(U)))
-            print("T {}".format(bm(T)))
-            print("t_ub {}".format(int(self.t_ub[len(U)][len(T)])))
-            exit()
-        return W_sum, None
