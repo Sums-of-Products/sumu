@@ -19,9 +19,9 @@ exts = [
     # This should not be exposed really.
     # I don't know yet how to fix.
     Extension(
-        name='sumppy.gadget',
-        sources=['sumppy/gadget/_gadget.pyx',
-                 'sumppy/gadget/gadget.cpp'],
+        name='sumppy.weight_sum',
+        sources=['sumppy/weight_sum/_weight_sum.pyx',
+                 'sumppy/weight_sum/weight_sum.cpp'],
         language='c++',
         extra_compile_args=['-std=c++11']),
 
