@@ -34,52 +34,57 @@ class Gadget():
         self.stats = dict()
 
     def sample(self):
-        self._init_scoring()
         self._find_candidate_parents()
-        self._build_scoring_structure()
+        self._precompute_scores_for_all_candidate_psets()
+        self._precompute_candidate_restricted_scoring()
+        self._precompute_candidate_complement_scoring()
         self._init_mcmc()
         self._mcmc()
         return self._sample_dags()
 
-    def _init_scoring(self):
-        self.scores = Score(self.datapath, scoref=self.scoref,
-                            maxid=self.maxid, ess=self.ess,
-                            stats=self.stats)
-
     def _find_candidate_parents(self):
+        self.l_score = LocalScore(self.datapath, scoref=self.scoref,
+                                  maxid=self.maxid, ess=self.ess,
+                                  stats=self.stats)
+
         if self.cp_path is None:
             # NOTE: datapath is only used by ges, pc and hc which are
             #       not in the imported candidates_no_r
             self.C = cnd.algo[self.cp_algo](self.K, n=self.n,
-                                            scores=self.scores,
+                                            scores=self.l_score,
                                             datapath=self.datapath)
         else:
             self.C = read_candidates(self.cp_path)
 
-    def _build_scoring_structure(self):
-        self.scores = self.scores.all_scores_list(self.C)
+    def _precompute_scores_for_all_candidate_psets(self):
+        self.score_array = self.l_score.as_array(self.C)
 
-        # This needs to be initiated separately,
-        # instead of just setting self.scores.maxid = self.d,
-        # because the local score function is initialized
-        # in the __init__ of Score, and it needs maxid.
-        self.c_scorer = Score(self.datapath, scoref=self.scoref,
-                              maxid=self.d, ess=self.ess)
-        self.c_scorer = CScoreR(self.C, self.c_scorer, self.d)
+    def _precompute_candidate_restricted_scoring(self):
+        self.c_r_score = CandidateRestrictedScore(self.score_array, self.C,
+                                                  tolerance=self.tolerance,
+                                                  stats=self.stats)
 
-        # scores : special scoring structure for root-partition space
-        self.scorer = ScoreR(self.scores, self.C, tolerance=self.tolerance,
-                             cscores=self.c_scorer, stats=self.stats)
+    def _precompute_candidate_complement_scoring(self):
+        self.l_score = LocalScore(self.datapath, scoref=self.scoref,
+                                  maxid=self.d, ess=self.ess)
+        self.c_c_score = CandidateComplementScore(self.C, self.l_score, self.d)
+        del self.l_score
 
     def _init_mcmc(self):
+
+        self.score = Score(C=self.C,
+                           score_array=self.score_array,
+                           c_r_score=self.c_r_score,
+                           c_c_score=self.c_c_score)
+
         if self.mc3_chains > 1:
-            self.mcmc = MC3([PartitionMCMC(self.C, self.scorer, self.d,
+            self.mcmc = MC3([PartitionMCMC(self.C, self.score, self.d,
                                            temperature=i/(self.mc3_chains-1),
                                            stats=self.stats)
                              for i in range(self.mc3_chains)],
                             stats=self.stats)
         else:
-            self.mcmc = PartitionMCMC(self.C, self.scorer, self.d,
+            self.mcmc = PartitionMCMC(self.C, self.score, self.d,
                                       stats=self.stats)
 
     def _mcmc(self):
@@ -93,7 +98,7 @@ class Gadget():
                 self.mcmc.sample()
 
     def _sample_dags(self):
-        ds = DAGR(self.scorer, self.C, self.c_scorer, tolerance=self.tolerance,
+        ds = DAGR(self.score, self.C, tolerance=self.tolerance,
                   stats=self.stats)
         self.dags = [[] for i in range(len(self.Rs))]
         self.dag_scores = [0]*len(self.Rs)
@@ -109,26 +114,26 @@ class Gadget():
 
 class DAGR:
 
-    def __init__(self, scores, C, complementary_scores, tolerance=2**(-32), stats=None):
+    def __init__(self, score, C, tolerance=2**(-32), stats=None):
         self.stats = None
         if stats is not None:
             self.stats = stats
             self.stats[type(self).__name__] = dict()
             self.stats[type(self).__name__]["CC"] = 0
 
-        self.scores = scores
+        self.score = score
         self.C = C
-        self.cscores = complementary_scores
         self.tol = tolerance
 
     def precompute(self, v):
 
         K = len(self.C[v])
 
+        # TODO: Make this np.array
         self._f = [0]*2**K
         for X in range(2**K):
             self._f[X] = [-float("inf")]*2**(K-bin(X).count("1"))
-            self._f[X][0] = self.scores.scores[v][X]
+            self._f[X][0] = self.score.score_array[v][X]
 
         for k in range(1, K+1):
             for k_x in range(K-k+1):
@@ -146,7 +151,7 @@ class DAGR:
 
         if i == 0:
             family = (v,)
-            family_score = self.scores.scores[v][0]
+            family_score = self.score.score_array[v][0]
 
         else:
 
@@ -155,15 +160,20 @@ class DAGR:
 
             w_C = -float("inf")
             if len(T.intersection(self.C[v])) > 0:
-                w_C = self.scores.scoresum(v, U, T)
+                w_C = self.score.c_r_score.sum(v, U, T)
 
-            w_compl_sum, contribs = self.cscores.scoresum(v, U, T, -float("inf"), contribs=True)
+            w_compl_sum, contribs = self.score.c_c_score.sum(v, U, T, -float("inf"), contribs=True)
 
             if -np.random.exponential() < w_C - np.logaddexp(w_compl_sum, w_C):
                 family = (v, self._sample_pset(v, set().union(*R[:i]), R[i-1]))
-                family_score = self.scores.scores[v][bm(family[1], ix=self.C[v])]
+                family_score = self.score.score_array[v][bm(family[1], ix=self.C[v])]
             else:
-                pset, family_score = self.cscores.sample_pset(v, contribs, w_compl_sum)
+                p = np.array([self.score.c_c_score.ordered_scores[v][j]
+                              for j in contribs])
+                p = np.exp(p - w_compl_sum)
+                j = np.random.choice(contribs, p=p)
+                pset = np64_to_bm(self.score.c_c_score.ordered_psets[v][j])
+                family_score = self.score.c_c_score.ordered_scores[v][j]
                 family = (v, bm_to_ints(pset))
 
         if score is True:
@@ -210,12 +220,14 @@ class DAGR:
         U = U.intersection(self.C[v])
         T = T.intersection(self.C[v])
 
+        # TODO: These have known lengths so initialize them to np.arrays
+        #       of correct size.
         probs = list()
         psets = list()
         for T_set in subsets(T, 1, len(T)):
             for U_set in subsets(U.difference(T), 0, len(U.difference(T))):
                 pset = set(T_set).union(U_set)
-                probs.append(self.scores.scores[v][bm(pset, ix=self.C[v])])
+                probs.append(self.score.score_array[v][bm(pset, ix=self.C[v])])
                 psets.append(pset)
         probs = np.array(probs)
         probs -= np.logaddexp.reduce(probs)
@@ -223,7 +235,7 @@ class DAGR:
         return psets[np.random.choice(range(len(psets)), p=probs)]
 
 
-class Score:
+class LocalScore:
     """Class for computing local scores given input data.
 
     To compute the local scores the class depends on the
@@ -300,6 +312,7 @@ class Score:
         return cscores
 
     def all_scores_dict(self, C=None):
+        # NOTE: Not used anywhere.
         scores = dict()
         if C is None:
             C = {v: tuple(sorted(set(range(self.n)).difference({v}))) for v in range(self.n)}
@@ -310,33 +323,35 @@ class Score:
             scores[v] = tmp
         return scores
 
-    def all_scores_list(self, C):
-        scores = list()
-        for v in C:
-            tmp = [-float('inf')]*2**len(C[0])
+    def as_array(self, C):
+        scores = np.full((self.n, 2**len(C[0])), -float('inf'))
+        for v in range(self.n):
             for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
-                tmp[bm(pset, ix=C[v])] = self.local(v, pset)
-            scores.append(tmp)
+                scores[v, bm(pset, ix=C[v])] = self.local(v, pset)
+
         return scores
 
 
-class ScoreR:
-    """Class for computing the score of a root-partition efficiently.
+class Score:
 
-    The class is initialized by computing the look-up table for local
-    score sums for each node given all possible root-partitions restricted
-    to the candidate parents given as input.
+    def __init__(self, **kwargs):
 
-    :py:func:`scoresum` is the scoring method called during the MCMC runs.
-    It returns the score sum ...
+        self.C = arg("C", kwargs)
+        self.score_array = arg("score_array", kwargs)
+        self.c_r_score = arg("c_r_score", kwargs)
+        self.c_c_score = arg("c_c_score", kwargs)
+
+    def sum(self, v, U, T):
+
+        W_prime = self.c_r_score.sum(v, U, T)
+        return self.c_c_score.sum(v, U, T, W_prime)[0]
+
+
+class CandidateRestrictedScore:
+    """For computing the local score sum given root-partition and candidate parents.
     """
 
-    def __init__(self, scores, C, tolerance=2**(-32), D=2, cscores=None, stats=None):
-
-        # NOTE: D is not used?
-        #       Was supposed to be the d param for
-        #       complementary scores but wasn't needed
-        #       because it's already baked into cscores?
+    def __init__(self, score_array, C, tolerance=2**(-32), stats=None):
 
         self.stats = None
         if stats is not None:
@@ -346,18 +361,17 @@ class ScoreR:
             self.stats[type(self).__name__]["CC basecases"] = 0
             self.stats[type(self).__name__]["basecases"] = 0
 
-        self.scores = scores
+        self.score_array = score_array
         self.C = C
         self.tol = tolerance
-        self.cscores = cscores
         self._precompute_a()
         self._precompute_basecases()
         self._precompute_psum()
 
     def _precompute_a(self):
-        self._a = [0]*len(self.scores)
-        for v in range(len(self.scores)):
-            self._a[v] = zeta_transform(self.scores[v])
+        self._a = [0]*len(self.score_array)
+        for v in range(len(self.score_array)):
+            self._a[v] = zeta_transform(self.score_array[v])
 
     def _precompute_basecases(self):
         K = len(self.C[0])
@@ -367,12 +381,12 @@ class ScoreR:
                 x = 1 << k
                 U_minus_x = (2**K - 1) & ~x
                 tmp = [0]*2**(K-1)
-                tmp[0] = self.scores[v][x]
+                tmp[0] = self.score_array[v][x]
                 self._psum[v][x] = dict()
                 for S in ssets(U_minus_x):
                     if S | x not in self._psum[v]:
                         self._psum[v][S | x] = dict()
-                    tmp[dkbit(S, k)] = self.scores[v][S | x]
+                    tmp[dkbit(S, k)] = self.score_array[v][S | x]
                 tmp = zeta_transform(tmp)
                 if self.stats:
                     self.stats[type(self).__name__]["basecases"] += len(tmp)
@@ -399,42 +413,21 @@ class ScoreR:
                         U1 = U & ~T1
                         T2 = T & ~T1
 
-                        self._psum[v][U][T] = np.logaddexp(self.psum(v, U, T1),
-                                                           self.psum(v, U1, T2))
+                        self._psum[v][U][T] = np.logaddexp(self._sum(v, U, T1),
+                                                           self._sum(v, U1, T2))
         if self.stats:
             self.stats[type(self).__name__]["relative CC"] = self.stats[type(self).__name__]["CC"] / (n*3**K)
 
     def _cc(self, v, U, T):
         return close(self._a[v][U], self._a[v][U & ~T], self.tol)
-        # return self._a[v][U] == self._a[v][U & ~T]
 
-    def _scoresum(self, v, U, T):
-        return self.psum(v, bm(U, ix=self.C[v]), bm(T, ix=self.C[v]))
-
-    def scoresum(self, v, U, T, debug=False):
-        """Computes the local score sum of node v with parents from U and
-        at least one parent from T, taking into account the parent sets
-        with parents from both the candidate parents and up to some maximum
-        indegree d from the complementary parents.
-        """
-
-        if len(T) == 0:
-            return self.scores[v][0]
-
-        if len(T.intersection(self.C[v])) > 0:
-            W_prime = self.psum(v, bm(U.intersection(self.C[v]), ix=self.C[v]), bm(T.intersection(self.C[v]), ix=self.C[v]))
-        else:
-            W_prime = -float("inf")
-
-        #print("Y", W_prime)
-        # This does not have to check whether CScoreR.d == 0
-        # because if it is 0 the proposal is already rejected in
-        # PartitionMCMC.sample if it is invalid
-        return self.cscores.scoresum(v, U, T, W_prime, debug=debug)[0]
-
-    def psum(self, v, U, T):
+    def _sum(self, v, U, T):
+        # NOTE: As opposed to .sum() this functions takes as input
+        #       bitmaps in the space of candidate parents.
+        #       Presumably the two functions might merge, if the
+        #       root-partition representation is unified somehow.
         if U == 0 and T == 0:
-            return self.scores[v][0]
+            return self.score_array[v][0]
         if T == 0:  # special case for T2 in precompute
             return -float("inf")
         if v in self._psum and U in self._psum[v] and T in self._psum[v][U]:
@@ -442,15 +435,35 @@ class ScoreR:
         else:
             return log_minus_exp(self._a[v][U], self._a[v][U & ~T])
 
+    def sum(self, v, U, T):
+        """Computes the local score sum of node v with parents from U and
+        at least one parent from T.
 
-class CScoreR:
-    """Complementary scores
+        Args:
+           v (int) node label in part :math:`R_{t}`
+           U (set) set of node labels in parts :math:`R_{1,t-1}`
+           T (set) set of node labels in part :math:`R_{t-1}`
 
-    Scores complementary to those constrained
-    by the candidate parent sets"""
+        Returns:
+            double: sum of scores satisfying the constraints.
 
-    # NOTE: Is this really needed? Couldn't this be subsumed by
-    #       ScoreR?
+        """
+
+        if len(T) == 0:
+            return self.score_array[v][0]
+
+        if len(T.intersection(self.C[v])) > 0:
+            W_prime = self._sum(v, bm(U.intersection(self.C[v]), ix=self.C[v]),
+                                bm(T.intersection(self.C[v]), ix=self.C[v]))
+        else:
+            W_prime = -float("inf")
+
+        return W_prime
+
+
+class CandidateComplementScore:
+    """For computing the local score sum complementary to those obtained from :py:class:`.CandidateRestrictedScore` and constrained by maximum indegree.
+    """
 
     def __init__(self, C, scores, d):
 
@@ -461,6 +474,7 @@ class CScoreR:
         if self.n > 64:
             minwidth = 2
 
+        # object of class LocalScore
         scores = scores.complementary_scores_dict(C, d)
 
         ordered_psets = dict()
@@ -484,24 +498,10 @@ class CScoreR:
                 for i, pset in enumerate(ordered_psets[v]):
                     self.pset_to_idx[v][pset] = i
 
-        self.t_ub = np.zeros(shape=(len(C), len(C)), dtype=np.int32)
-        for u in range(1, len(C)+1):
+        self.t_ub = np.zeros(shape=(self.n, self.n), dtype=np.int32)
+        for u in range(1, self.n+1):
             for t in range(1, u+1):
                 self.t_ub[u-1][t-1] = self.n_valids_ub(u, t)
-
-    def sample_pset(self, v, pset_indices, w_sum):
-        i = np.random.choice(pset_indices, p=np.exp(self._scores(v, pset_indices)-w_sum))
-        return np64_to_bm(self.ordered_psets[v][i]), self.ordered_scores[v][i]
-
-    def _scores(self, v, indices):
-        return np.array([self.ordered_scores[v][i] for i in indices])
-        #return np.array([self.ordered_scores[v][i][1] for i in indices])
-
-    def _valids(self, v, U, T):
-        """This is used just for debugging I think, delete when unnecessary"""
-        return [i for i, pset_score in enumerate(self.ordered_scores[v])
-                if set(pset_score[0]).issubset(U)
-                and len(set(pset_score[0]).intersection(T)) > 0]
 
     def n_valids(self, v, U, T):
         n = 0
@@ -516,7 +516,9 @@ class CScoreR:
             n += comb(u, k) - comb(u - t, k)
         return n
 
-    def scoresum(self, v, U, T, W_prime, debug=False, contribs=False):
+    def sum(self, v, U, T, W_prime, debug=False, contribs=False):
+
+        # NOTE: This is the final score calculation.
 
         if self.d == 1:  # special case
             contribs = list()
@@ -539,20 +541,20 @@ class CScoreR:
         # contribs should be a param to weight_sum()
         if contribs is True:
             return weight_sum_contribs(W_prime,
-                                              self.ordered_psets[v],
-                                              self.ordered_scores[v],
-                                              self.n,
-                                              U_bm,
-                                              T_bm,
-                                              int(self.t_ub[len(U)][len(T)]))
+                                       self.ordered_psets[v],
+                                       self.ordered_scores[v],
+                                       self.n,
+                                       U_bm,
+                                       T_bm,
+                                       int(self.t_ub[len(U)][len(T)]))
 
         W_sum = weight_sum(W_prime,
-                                  self.ordered_psets[v],
-                                  self.ordered_scores[v],
-                                  self.n,
-                                  U_bm,
-                                  T_bm,
-                                  int(self.t_ub[len(U)][len(T)]))
+                           self.ordered_psets[v],
+                           self.ordered_scores[v],
+                           self.n,
+                           U_bm,
+                           T_bm,
+                           int(self.t_ub[len(U)][len(T)]))
 
         # TODO: replace this with some raise Error
         if W_sum == -float("inf"):

@@ -449,7 +449,7 @@ class PartitionMCMC:
     """Partition-MCMC sampler :cite:`kuipers:2017` with efficient scoring.
     """
 
-    def __init__(self, C, sr, d, temperature=1, stats=None):
+    def __init__(self, C, score, d, temperature=1, stats=None):
 
         self.stats = None
         if stats is not None:
@@ -480,7 +480,7 @@ class PartitionMCMC:
         self.n = len(C)
         self.C = C
         self.temp = temperature
-        self.sr = sr
+        self.score = score
         self.d = d
         self.stay_prob = 0.01
         self._moves = [R_basic_move, R_swap_any]
@@ -490,6 +490,7 @@ class PartitionMCMC:
         self.R_score = self.temp * sum(self.R_node_scores)
 
     def R_basic_move(self, **kwargs):
+        # NOTE: Is there value in having these as methods?
         return R_basic_move(**kwargs)
 
     def R_swap_any(self, **kwargs):
@@ -567,15 +568,14 @@ class PartitionMCMC:
             rescore = set().union(*R)
 
         for v in rescore:
-
             if inpart[v] == 0:
-                R_node_scores[v] = self.sr.scoresum(v, set(), set())
+                R_node_scores[v] = self.score.sum(v, set(), set())
 
             else:
+                R_node_scores[v] = self.score.sum(v,
+                                                  set().union(*R[:inpart[v]]),
+                                                  R[inpart[v]-1])
 
-                R_node_scores[v] = self.sr.scoresum(v,
-                                                    set().union(*R[:inpart[v]]),
-                                                    R[inpart[v]-1])
         if -float("inf") in R_node_scores:
             print("Something is wrong")
             u = R_node_scores.index(-float("inf"))
@@ -584,7 +584,7 @@ class PartitionMCMC:
             print("u = {},\tC[{}] = {}".format(u, u, self.C[u]))
             print("u = {},\tU = {},\tT = {}".format(u, set().union(*R[:inpart[u]]), R[inpart[u]-1]))
             print("")
-            self.sr.scoresum(u, set().union(*R[:inpart[u]]), R[inpart[u]-1], debug=True)
+            self.score.sum(u, set().union(*R[:inpart[u]]), R[inpart[u]-1], debug=True)
             exit()
 
         return R_node_scores
