@@ -149,6 +149,9 @@ def read_dsc(filepath, zerolabels = True):
         return str(msg) + '\n'
 
     def normalize(name, key, probs):
+
+        nonlocal maxerror
+
         # Numpy apparently uses tolerance of 1e-8
         if abs(probs.sum() - 1.) > 1e-8:
             if abs(probs.sum() - 1) > maxerror:
