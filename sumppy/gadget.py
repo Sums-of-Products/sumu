@@ -65,10 +65,13 @@ class Gadget():
                                                   stats=self.stats)
 
     def _precompute_candidate_complement_scoring(self):
-        self.l_score = LocalScore(self.datapath, scoref=self.scoref,
-                                  maxid=self.d, ess=self.ess)
-        self.c_c_score = CandidateComplementScore(self.C, self.l_score, self.d)
-        del self.l_score
+        self.c_c_score = None
+        if self.K < self.n - 1:
+            # NOTE: CandidateComplementScore gives error if K >= n-1.
+            self.l_score = LocalScore(self.datapath, scoref=self.scoref,
+                                      maxid=self.d, ess=self.ess)
+            self.c_c_score = CandidateComplementScore(self.C, self.l_score, self.d)
+            del self.l_score
 
     def _init_mcmc(self):
 
@@ -162,7 +165,9 @@ class DAGR:
             if len(T.intersection(self.C[v])) > 0:
                 w_C = self.score.c_r_score.sum(v, U, T)
 
-            w_compl_sum, contribs = self.score.c_c_score.sum(v, U, T, -float("inf"), contribs=True)
+            w_compl_sum = -float("inf")
+            if self.score.c_c_score is not None:
+                w_compl_sum, contribs = self.score.c_c_score.sum(v, U, T, -float("inf"), contribs=True)
 
             if -np.random.exponential() < w_C - np.logaddexp(w_compl_sum, w_C):
                 family = (v, self._sample_pset(v, set().union(*R[:i]), R[i-1]))
@@ -344,6 +349,8 @@ class Score:
     def sum(self, v, U, T):
 
         W_prime = self.c_r_score.sum(v, U, T)
+        if self.c_c_score is None:
+            return W_prime
         return self.c_c_score.sum(v, U, T, W_prime)[0]
 
 
