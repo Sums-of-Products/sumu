@@ -170,7 +170,8 @@ class DAGR:
                 w_compl_sum, contribs = self.score.c_c_score.sum(v, U, T, -float("inf"), contribs=True)
 
             if -np.random.exponential() < w_C - np.logaddexp(w_compl_sum, w_C):
-                family = (v, self._sample_pset(v, set().union(*R[:i]), R[i-1]))
+                pset = tuple(sorted(self._sample_pset(v, set().union(*R[:i]), R[i-1])))
+                family = (v, pset)
                 family_score = self.score.score_array[v][bm(family[1], ix=self.C[v])]
             else:
                 p = np.array([self.score.c_c_score.ordered_scores[v][j]
@@ -317,7 +318,8 @@ class LocalScore:
         return cscores
 
     def all_scores_dict(self, C=None):
-        # NOTE: Not used anywhere.
+        # NOTE: Not used in Gadget pipeline, but useful for example
+        # when computing input data for aps.
         scores = dict()
         if C is None:
             C = {v: tuple(sorted(set(range(self.n)).difference({v}))) for v in range(self.n)}

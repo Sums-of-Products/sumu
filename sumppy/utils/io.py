@@ -124,8 +124,8 @@ def write_jkl(scores, fpath):
     """
     with open(fpath, 'w') as f:
         lines = list()
-        n_vars = len(scores)
-        lines.append(str(n_vars) + "\n")
+        n = len(scores)
+        lines.append(str(n) + "\n")
         for v in sorted(scores):
             lines.append("{} {}\n".format(v, len(scores[v])))
             for pset in sorted(scores[v], key=lambda pset: len(pset)):
