@@ -10,17 +10,31 @@ import itertools
 import copy
 
 
-def partition(dag):
+def family_sequence_to_adj_mat(dag):
+    """Format a sequence of families representing a DAG into an adjacency matrix.
 
-    adjmat = np.zeros((len(dag), len(dag)))
+    Args:
+       dag (iterable): iterable like [(0), (1, 2), (2, 0, 1), ...] where first
+                       int is the node and the following, if any, the parents.
 
+    Returns:
+        adjacency matrix
+
+    """
+    adj_mat = np.zeros((len(dag), len(dag)))
     for f in dag:
         if len(f) > 1:
-            adjmat[f[1:], f[0]] = 1
+            adj_mat[f[1:], f[0]] = 1
+    return adj_mat
+
+
+def partition(dag):
+
+    adj_mat = family_sequence_to_adj_mat(dag)
 
     partitions = list()
-    matrix_pruned = adjmat
-    indices = np.arange(adjmat.shape[0])
+    matrix_pruned = adj_mat
+    indices = np.arange(adj_mat.shape[0])
     while True:
         pmask = np.sum(matrix_pruned, axis=0) == 0
         if not any(pmask):
