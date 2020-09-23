@@ -132,10 +132,9 @@ class DAGR:
 
         K = len(self.C[v])
 
-        # TODO: Make this np.array
         self._f = [0]*2**K
         for X in range(2**K):
-            self._f[X] = [-float("inf")]*2**(K-bin(X).count("1"))
+            self._f[X] = np.array([-float("inf")]*2**(K-bin(X).count("1")))
             self._f[X][0] = self.score.score_array[v][X]
 
         for k in range(1, K+1):
