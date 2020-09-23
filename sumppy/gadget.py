@@ -39,7 +39,7 @@ class Gadget():
         self._precompute_candidate_restricted_scoring()
         self._precompute_candidate_complement_scoring()
         self._init_mcmc()
-        self._mcmc()
+        self._run_mcmc()
         return self._sample_dags()
 
     def _find_candidate_parents(self):
@@ -90,7 +90,7 @@ class Gadget():
             self.mcmc = PartitionMCMC(self.C, self.score, self.d,
                                       stats=self.stats)
 
-    def _mcmc(self):
+    def _run_mcmc(self):
         for i in range(self.burn_in):
             self.mcmc.sample()
         self.Rs = list()
@@ -106,7 +106,7 @@ class Gadget():
         self.dags = [[] for i in range(len(self.Rs))]
         self.dag_scores = [0]*len(self.Rs)
         for v in self.C:
-            ds.precompute(v)
+            ds.precompute_pset_sampling(v)
             for i in range(len(self.Rs)):
                 family, family_score = ds.sample_pset(v, self.Rs[i],
                                                       score=True)
@@ -128,7 +128,7 @@ class DAGR:
         self.C = C
         self.tol = tolerance
 
-    def precompute(self, v):
+    def precompute_pset_sampling(self, v):
 
         K = len(self.C[v])
 
