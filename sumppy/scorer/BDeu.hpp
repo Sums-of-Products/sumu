@@ -1,7 +1,7 @@
 
 // Compile with g++ using options -Wall -O3 
 
-
+#include <algorithm>
 #include <iostream> 
 #include <iomanip> 
 #include <math.h> 
