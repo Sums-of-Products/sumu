@@ -10,6 +10,7 @@ from .utils.io import read_candidates, get_n
 from .utils.math_utils import log_minus_exp, close, comb, subsets
 
 from .scoring import DiscreteData, ContinuousData, BDeu, BGe
+from .scorer import BDeu as BDeu2
 
 import sumppy.candidates_no_r as cnd
 
@@ -242,13 +243,7 @@ class DAGR:
 
 class LocalScore:
     """Class for computing local scores given input data.
-
-    To compute the local scores the class depends on the
-    `Python version of Gobnilp <https://bitbucket.org/jamescussens/pygobnilp/>`_.
-
-    Currently BDeu and BGe scores are available.
     """
-
 
     def __init__(self, datapath, scoref="bdeu", maxid=-1, ess=10, stats=None):
         # NOTE: __init__ creates self.local(node, parents) function.
@@ -265,22 +260,33 @@ class LocalScore:
         if self.scoref == "bdeu":
 
             def local(node, parents):
-                if len(self.score._cache) > 1000000:
-                    self.score.clear_cache()
-                    if self.stats:
-                        self.stats[type(self).__name__]["clear_cache"] += 1
+                # NOTE: Cache is not emptied ever
+                node = np.int32(node)
+                p_cliq = np.sort(np.array(parents, dtype=np.int32))
+                idx = p_cliq.searchsorted(node)
+                pi_cliq = np.concatenate((p_cliq[:idx], [node], p_cliq[idx:]))
+                spi = self.cliq_cache.get(tuple(pi_cliq))
+                sp = self.cliq_cache.get(tuple(p_cliq))
+                if spi is None:
+                    spi = self.scorer.cliq(pi_cliq)
+                    self.cliq_cache[tuple(pi_cliq)] = spi
+                if not parents:
+                    return spi - np.log(comb(self.n - 1, len(parents)))
+                if sp is None:
+                    sp = self.scorer.cliq(p_cliq)
+                    self.cliq_cache[tuple(p_cliq)] = sp
+                return spi - sp - np.log(comb(self.n - 1, len(parents)))
 
-                if self.maxid == -1 or len(parents) <= self.maxid:
-                    score = self.score.bdeu_score(node, parents)[0]
-                else:
-                    return -float("inf")
-                # NOTE: consider putting the prior explicitly somewhere
-                return score - np.log(comb(self.n - 1, len(parents)))
+            d = np.loadtxt(self.datapath, dtype=np.int32)
+            r = d[1]
+            d = d[2:]
+            self.n = d.shape[1]
 
-            d = DiscreteData(self.datapath)
-            d._varidx = {v: v for v in d._varidx.values()}
-            self.n = len(d._variables)
-            self.score = BDeu(d, alpha=self.ess)
+            self.scorer = BDeu2()
+            self.scorer.read(d)
+            self.scorer.set_ess(self.ess)
+            # self.scorer.set_r(r)
+            self.cliq_cache = dict()
             self._local = local
 
         elif self.scoref == "bge":
@@ -302,8 +308,15 @@ class LocalScore:
             self._local = local
 
     def local(self, v, pset):
-        """Local score for input node v and pset, with score function self.scoref
+        """Local score for input node v and pset, with score function self.scoref.
+
+        This is the "safe" version, raising error if queried for variables not existing in data.
+        The unsafe self._local will just segfault.
         """
+        if v in pset:
+            return -float("inf")
+        if min(v, min(pset)) < 0 or max(v, max(pset)) >= self.n:
+            raise IndexError("Attempting to query score for non-existing variables")
         return self._local(v, pset)
 
     def complementary_scores_dict(self, C, d):
@@ -313,7 +326,7 @@ class LocalScore:
             cscores[v] = dict()
             for pset in subsets([u for u in C if u != v], 1, d):
                 if not (set(pset)).issubset(C[v]):
-                    cscores[v][pset] = self.local(v, pset)
+                    cscores[v][pset] = self._local(v, pset)
         return cscores
 
     def all_scores_dict(self, C=None):
@@ -325,7 +338,7 @@ class LocalScore:
         for v in C:
             tmp = dict()
             for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
-                tmp[pset] = self.local(v, pset)
+                tmp[pset] = self._local(v, pset)
             scores[v] = tmp
         return scores
 
@@ -333,7 +346,7 @@ class LocalScore:
         scores = np.full((self.n, 2**len(C[0])), -float('inf'))
         for v in range(self.n):
             for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
-                scores[v, bm(pset, ix=C[v])] = self.local(v, pset)
+                scores[v, bm(pset, ix=C[v])] = self._local(v, pset)
 
         return scores
 

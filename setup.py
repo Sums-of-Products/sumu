@@ -10,6 +10,13 @@ except AttributeError:
 exts = [
 
     Extension(
+        "sumppy.scorer",
+        sources=["sumppy/scorer/_scorer.pyx"],
+        include_dirs=["sumppy/scorer"],
+        language='c++',
+        extra_compile_args=['-std=c++11', '-Wall', '-O3']),
+
+    Extension(
         name='sumppy.zeta_transform',
         sources=['sumppy/zeta_transform/_zeta_transform.pyx',
                  'sumppy/zeta_transform/zeta_transform.cpp'],
@@ -25,11 +32,12 @@ exts = [
         language='c++',
         extra_compile_args=['-std=c++11']),
 
-    Extension("sumppy.alias",
-              sources=["sumppy/alias/_alias.pyx",
-                       "sumppy/alias/discrete_random_variable.cpp"],
-              language='c++',
-              extra_compile_args=['-std=c++17'])
+    Extension(
+        "sumppy.alias",
+        sources=["sumppy/alias/_alias.pyx",
+                 "sumppy/alias/discrete_random_variable.cpp"],
+        language='c++',
+        extra_compile_args=['-std=c++17'])
 
 ]
 
