@@ -148,7 +148,7 @@ def top(K, **kwargs):
 
     C = dict()
     for v in range(scores.n):
-        top_candidates = sorted([(parent, scores.local(v, (parent,)))
+        top_candidates = sorted([(parent, scores._local(v, (parent,)))
                                  for parent in range(scores.n) if parent != v],
                                 key=lambda item: item[1], reverse=True)[:K]
         top_candidates = tuple(sorted(c[0] for c in top_candidates))
@@ -163,7 +163,7 @@ def greedy(K, **kwargs):
     assert not [s, scores].count(None), "s (-gs) and scorepath (-s) required for algo == greedy"
 
     def unimportance(v, u, U):
-        pi_v = [scores.local(v, S) for S in subsets([m for m in U if m != u], 0, s)]
+        pi_v = [scores._local(v, S) for S in subsets([m for m in U if m != u], 0, s)]
         return max(pi_v)
 
     C = dict({v: list() for v in range(scores.n)})
@@ -184,7 +184,7 @@ def greedy_1(K, **kwargs):
     assert scores is not None, "scorepath (-s) required for algo == greedy-1"
 
     def highest_uncovered(v, U):
-        return max([(u, scores.local(v, S + (u,)))
+        return max([(u, scores._local(v, S + (u,)))
                     for S in subsets(C[v], 0, [len(C[v]) if scores.maxid == -1 else min(len(C[v]), scores.maxid-1)][0])
                     for u in U], key=lambda item: item[1])[0]
 
@@ -211,7 +211,7 @@ def greedy_lite(K, **kwargs):
 
     def k_highest_uncovered(v, U, k):
 
-        uncovereds = {(u, scores.local(v, S + (u,)))
+        uncovereds = {(u, scores._local(v, S + (u,)))
                       for S in subsets(C[v], 0, [len(C[v]) if scores.maxid == -1 else min(len(C[v]), scores.maxid-1)][0])
                       for u in U}
         k_highest = set()
@@ -445,13 +445,13 @@ def greedy_backward_forward(K, **kwargs):
     assert scores is not None, "scorepath (-s) required for algo == greedy-backward-forward"
 
     def min_max(v):
-        return min([max([(u, scores.local(v, tuple(set(S + (u,)))))
+        return min([max([(u, scores._local(v, tuple(set(S + (u,)))))
                          for S in subsets(C[v].difference({u}), 0, [len(C[v]) - 1 if scores.maxid == -1 else min(len(C[v]) - 1, scores.maxid-1)][0])],
                         key=lambda item: item[1])
                     for u in C[v]], key=lambda item: item[1])[0]
 
     def highest_uncovered(v, U):
-        return max([(u, scores.local(v, tuple(set(S + (u,)))))
+        return max([(u, scores._local(v, tuple(set(S + (u,)))))
                     for S in subsets(C[v], 0, [len(C[v]) if scores.maxid == -1 else min(len(C[v]), scores.maxid-1)][0])
                     for u in U],
                    key=lambda item: item[1])[0]
@@ -485,7 +485,7 @@ def pessy(K, **kwargs):
         for Y in subsets(sorted(C[v] + [u]),
                  min(len(C[v]) + 1, max(0, K - s)),
                  min(len(C[v]) + 1, max(0, K - s))):
-            sums.append(np.logaddexp.reduce([scores.local(v, S) for S in subsets(Y, 0, len(Y))]))
+            sums.append(np.logaddexp.reduce([scores._local(v, S) for S in subsets(Y, 0, len(Y))]))
         return min(sums)
 
     C = dict({v: list() for v in range(scores.n)})
