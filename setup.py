@@ -17,6 +17,14 @@ exts = [
         extra_compile_args=['-std=c++11', '-Wall', '-O3']),
 
     Extension(
+        "sumppy.CandidateRestrictedScore",
+        sources=["sumppy/CandidateRestrictedScore/_CandidateRestrictedScore.pyx",
+                 "sumppy/zeta_transform/zeta_transform.cpp"],
+        include_dirs=["sumppy/CandidateComplementScore"],
+        language='c++',
+        extra_compile_args=['-std=c++17']),
+
+    Extension(
         name='sumppy.zeta_transform',
         sources=['sumppy/zeta_transform/_zeta_transform.pyx',
                  'sumppy/zeta_transform/zeta_transform.cpp'],

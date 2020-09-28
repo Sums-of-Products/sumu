@@ -1,3 +1,4 @@
 #include <vector>
 
-std::vector<double> from_list(std::vector<double>);
+std::vector<double> zeta_transform_vector(std::vector<double>);
+void zeta_transform_array_inplace(double * a, int n);
