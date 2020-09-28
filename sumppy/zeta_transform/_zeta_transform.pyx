@@ -1,9 +1,11 @@
 # distutils: language=c++
 
-from libcpp.vector cimport vector
+cimport cpp_zeta_transform
 
-cdef extern from "zeta_transform.h":
-    vector[double] from_list(vector[double] arg)
+def zeta_transform_vector(arg):
+    return cpp_zeta_transform.zeta_transform_vector(arg)
 
-def solve(arg):
-    return from_list(arg)
+def zeta_transform_array_inplace(a):
+    cdef double[::1] memview_a
+    memview_a = a
+    return cpp_zeta_transform.zeta_transform_array_inplace(& memview_a[0], len(a))

@@ -1,6 +1,6 @@
 import numpy as np
 from .weight_sum import weight_sum, weight_sum_contribs
-from .zeta_transform import solve as zeta_transform
+from .zeta_transform import zeta_transform_array_inplace as zeta_transform
 
 from .mcmc import PartitionMCMC, MC3
 
@@ -11,6 +11,7 @@ from .utils.math_utils import log_minus_exp, close, comb, subsets
 
 from .scoring import DiscreteData, ContinuousData, BDeu, BGe
 from .scorer import BDeu as BDeu2
+from .CandidateRestrictedScore import CandidateRestrictedScore
 
 import sumppy.candidates_no_r as cnd
 
@@ -61,9 +62,17 @@ class Gadget():
         self.score_array = self.l_score.as_array(self.C)
 
     def _precompute_candidate_restricted_scoring(self):
-        self.c_r_score = CandidateRestrictedScore(self.score_array, self.C,
-                                                  tolerance=self.tolerance,
-                                                  stats=self.stats)
+        # TODO: New CandidateRestrictedScore takes candidate parents
+        # as np.array. Should adapt to this change everywhere else too.
+        C = np.empty((self.n, self.K), dtype=np.int32)
+        for v in self.C:
+            C[v] = np.array(self.C[v])
+
+        self.c_r_score = CandidateRestrictedScore(self.score_array, C, self.K)
+
+        # self.c_r_score = TOBEREMOVED_CandidateRestrictedScore(self.score_array, self.C,
+        #                                                       tolerance=self.tolerance,
+        #                                                       stats=self.stats)
 
     def _precompute_candidate_complement_scoring(self):
         self.c_c_score = None
@@ -161,9 +170,15 @@ class DAGR:
             U = set().union(*R[:i])
             T = R[i-1]
 
+            # NOTE: Current CandidateRestrictedScore requires these
+            # bitmap representations; probably better to move the
+            # logic to the c++ side for a cleaner interface.
+            U_bm = bm(U.intersection(self.C[v]), ix=self.C[v])
+            T_bm = bm(T.intersection(self.C[v]), ix=self.C[v])
+
             w_C = -float("inf")
             if len(T.intersection(self.C[v])) > 0:
-                w_C = self.score.c_r_score.sum(v, U, T)
+                w_C = self.score.c_r_score.sum(v, U_bm, T_bm)
 
             w_compl_sum = -float("inf")
             if self.score.c_c_score is not None:
@@ -362,13 +377,19 @@ class Score:
 
     def sum(self, v, U, T):
 
-        W_prime = self.c_r_score.sum(v, U, T)
+        # NOTE: Current CandidateRestrictedScore requires these
+        # bitmap representations; probably better to move the
+        # logic to the c++ side for a cleaner interface.
+        U_bm = bm(U.intersection(self.C[v]), ix=self.C[v])
+        T_bm = bm(T.intersection(self.C[v]), ix=self.C[v])
+
+        W_prime = self.c_r_score.sum(v, U_bm, T_bm)
         if self.c_c_score is None:
             return W_prime
         return self.c_c_score.sum(v, U, T, W_prime)[0]
 
 
-class CandidateRestrictedScore:
+class TOBEREMOVED_CandidateRestrictedScore:
     """For computing the local score sum given root-partition and candidate parents.
     """
 
@@ -483,7 +504,7 @@ class CandidateRestrictedScore:
 
 
 class CandidateComplementScore:
-    """For computing the local score sum complementary to those obtained from :py:class:`.CandidateRestrictedScore` and constrained by maximum indegree.
+    """For computing the local score sum complementary to those obtained from :py:class:`.old_CandidateRestrictedScore` and constrained by maximum indegree.
     """
 
     def __init__(self, C, scores, d):

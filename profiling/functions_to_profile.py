@@ -16,6 +16,7 @@ from config import params
 
 import sumppy
 from sumppy.gadget import *
+from sumppy.CandidateRestrictedScore import CandidateRestrictedScore
 
 import numpy as np
 from sumppy.weight_sum import weight_sum, weight_sum_contribs
@@ -60,9 +61,12 @@ def mem_gadget():
     self.score_array = self.l_score.as_array(self.C)
 
     # def _precompute_candidate_restricted_scoring(self):
-    self.c_r_score = CandidateRestrictedScore(self.score_array, self.C,
-                                              tolerance=self.tolerance,
-                                              stats=self.stats)
+    C = np.empty((self.n, self.K), dtype=np.int32)
+    for v in self.C:
+        C[v] = np.array(self.C[v])
+
+    self.c_r_score = CandidateRestrictedScore(self.score_array, C, self.K,
+                                              tolerance=self.tolerance)
 
     # def _precompute_candidate_complement_scoring(self):
     self.c_c_score = None
