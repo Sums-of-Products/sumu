@@ -20,7 +20,7 @@ from sumppy.CandidateRestrictedScore import CandidateRestrictedScore
 
 import numpy as np
 from sumppy.weight_sum import weight_sum, weight_sum_contribs
-from sumppy.zeta_transform import solve as zeta_transform
+# from sumppy.zeta_transform import solve as zeta_transform
 
 from sumppy.mcmc import PartitionMCMC, MC3
 
