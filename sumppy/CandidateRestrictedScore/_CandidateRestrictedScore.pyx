@@ -45,8 +45,6 @@ cdef class CandidateRestrictedScore:
         cdef int[:, ::1] memview_C
         memview_C = C
 
-        print("kiesus")
-
         self.thisptr = new CppCandidateRestrictedScore(& memview_score_array[0, 0],
                                                        & memview_C[0, 0],
                                                        score_array.shape[0],
