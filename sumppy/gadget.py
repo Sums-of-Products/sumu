@@ -12,6 +12,7 @@ from .utils.math_utils import log_minus_exp, close, comb, subsets
 from .scoring import DiscreteData, ContinuousData, BDeu, BGe
 from .scorer import BDeu as BDeu2
 from .CandidateRestrictedScore import CandidateRestrictedScore
+from .DAGR import DAGR as DAGR_precompute
 
 import sumppy.candidates_no_r as cnd
 
@@ -134,25 +135,33 @@ class DAGR:
             self.stats[type(self).__name__] = dict()
             self.stats[type(self).__name__]["CC"] = 0
 
+        C_m = np.empty((len(C), len(C[0])), dtype=np.int32)
+        for v in C:
+            C_m[v] = np.array(C[v])
+
+        self.pc = DAGR_precompute(score.score_array, C_m, len(C[0]))
+
         self.score = score
         self.C = C
         self.tol = tolerance
 
     def precompute_pset_sampling(self, v):
 
+        self.pc.precompute(v)
+
         K = len(self.C[v])
 
-        self._f = [0]*2**K
-        for X in range(2**K):
-            self._f[X] = np.array([-float("inf")]*2**(K-bin(X).count("1")))
-            self._f[X][0] = self.score.score_array[v][X]
+        # self._f = [0]*2**K
+        # for X in range(2**K):
+        #     self._f[X] = np.array([-float("inf")]*2**(K-bin(X).count("1")))
+        #     self._f[X][0] = self.score.score_array[v][X]
 
-        for k in range(1, K+1):
-            for k_x in range(K-k+1):
-                for X in subsets_size_k(k_x, K):
-                    for Y in subsets_size_k(k, K-k_x):
-                        i = fbit(Y)
-                        self._f[X][Y] = np.logaddexp(self._f[kzon(X, i)][dkbit(Y, i)], self._f[X][Y & ~(Y & -Y)])
+        # for k in range(1, K+1):
+        #     for k_x in range(K-k+1):
+        #         for X in subsets_size_k(k_x, K):
+        #             for Y in subsets_size_k(k, K-k_x):
+        #                 i = fbit(Y)
+        #                 self._f[X][Y] = np.logaddexp(self._f[kzon(X, i)][dkbit(Y, i)], self._f[X][Y & ~(Y & -Y)])
 
     def sample_pset(self, v, R, score=False):
 
@@ -210,8 +219,11 @@ class DAGR:
             U_bm = bm(U.difference(X), ix=sorted(set(self.C[v]).difference(X)))
             T_bm = bm(T.difference(X), ix=sorted(set(self.C[v]).difference(X)))
 
-            score_1 = [self._f[X_bm][U_bm & ~E_bm] if X.issubset(U.difference(E)) else -float("inf")][0]
-            score_2 = [self._f[X_bm][(U_bm & ~E_bm) & ~T_bm] if X.issubset(U.difference(E.union(T))) else -float("inf")][0]
+            # score_1 = [self._f[X_bm][U_bm & ~E_bm] if X.issubset(U.difference(E)) else -float("inf")][0]
+            # score_2 = [self._f[X_bm][(U_bm & ~E_bm) & ~T_bm] if X.issubset(U.difference(E.union(T))) else -float("inf")][0]
+
+            score_1 = [self.pc.f(X_bm, U_bm & ~E_bm) if X.issubset(U.difference(E)) else -float("inf")][0]
+            score_2 = [self.pc.f(X_bm, (U_bm & ~E_bm) & ~T_bm) if X.issubset(U.difference(E.union(T))) else -float("inf")][0]
 
             if not close(score_1, score_2, self.tol):
                 return log_minus_exp(score_1, score_2)

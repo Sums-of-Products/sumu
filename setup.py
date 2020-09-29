@@ -25,6 +25,14 @@ exts = [
         extra_compile_args=['-std=c++17']),
 
     Extension(
+        "sumppy.DAGR",
+        sources=["sumppy/DAGR/_DAGR.pyx",
+                 "sumppy/zeta_transform/zeta_transform.cpp"],
+        include_dirs=["sumppy/DAGR"],
+        language='c++',
+        extra_compile_args=['-std=c++17']),
+
+    Extension(
         name='sumppy.zeta_transform',
         sources=['sumppy/zeta_transform/_zeta_transform.pyx',
                  'sumppy/zeta_transform/zeta_transform.cpp'],
