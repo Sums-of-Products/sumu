@@ -1,7 +1,33 @@
 import numpy as np
+import re
 
 from .bitmap import bm_to_ints
 from ..bnet import family_sequence_to_adj_mat
+
+
+def cite(this):
+    ks = [k for kl in [k.split(",")
+                       for k in re.findall(r':cite:`(.+?(?=`))', this.__doc__)]
+          for k in kl]
+    bibtex = list()
+    inentry = False
+    with open("../sources.bib", "r") as f:
+        for row in f.readlines():
+            if inentry:
+                if row[0] == "@":
+                    bibtex.append("".join(entry).strip())
+                    inentry = False
+                    entry = list()
+                else:
+                    entry.append(row)
+            for k in ks:
+                if k in row:
+                    inentry = True
+                    entry = list()
+                    entry.append(row)
+
+    for entry in bibtex:
+        print(entry)
 
 
 def prune_scores(C, scores):
