@@ -1,7 +1,7 @@
 import os
 
 test_path = os.path.dirname(os.path.realpath(__file__))
-bn_path = "/".join(test_path.split("/")[:-1]) + "/sumppy/tests/insurance.dsc"
+bn_path = "/".join(test_path.split("/")[:-1]) + "/sumu/tests/insurance.dsc"
 data_path = test_path + "/test_data.csv"
 
 params = {"bn_path": bn_path,

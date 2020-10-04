@@ -1,8 +1,8 @@
 import sys
 import numpy as np
 
-from sumppy.samplers.MCMC import LayeringMCMC
-from sumppy.utils import read_jkl
+from sumu.samplers.MCMC import LayeringMCMC
+from sumu.utils import read_jkl
 
 if __name__ == '__main__':
     args = sys.argv[1:]

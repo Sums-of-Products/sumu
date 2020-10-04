@@ -101,14 +101,14 @@ def kzon(mask, k):
 
 
 def dkbit(mask, k):
-    """drop kth bith"""
+    """drop kth bit"""
     if mask == 0:
         return mask
     trunc = mask >> (k+1)
     #trunc <<= k
     trunc *= 2**k
     # return ((1 << k) - 1) & mask | trunc
-    return (2**k - 1) & mask | trunc
+    return ((2**k - 1) & mask) | trunc
 
 
 def ikbit(mask, k, bit):

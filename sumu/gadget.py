@@ -14,7 +14,7 @@ from .scorer import BDeu as BDeu2
 from .CandidateRestrictedScore import CandidateRestrictedScore
 from .DAGR import DAGR as DAGR_precompute
 
-import sumppy.candidates_no_r as cnd
+import sumu.candidates_no_r as cnd
 
 
 class Gadget():

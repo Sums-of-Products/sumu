@@ -3,9 +3,9 @@ import time
 
 import numpy as np
 
-import sumppy.candidates_no_R as cnd
-from sumppy import MCMC
-from sumppy.utils import pset_posteriors, write_jkl, DAG_to_str, read_candidates, pretty_dict
+import sumu.candidates_no_R as cnd
+from sumu import MCMC
+from sumu.utils import pset_posteriors, write_jkl, DAG_to_str, read_candidates, pretty_dict
 
 
 def main():

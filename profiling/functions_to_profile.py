@@ -1,7 +1,7 @@
 """ Collection of functions to profile.
 
 If it weren't for memory_profiler, this module could just import
-sumppy and use its functions like in time_gadget(). However, memory
+sumu and use its functions like in time_gadget(). However, memory
 profiling things accurately doesn't possible seem possible without
 expanding the functions inner workings like in mem_gadget(). That then
 results in the needs to
@@ -14,34 +14,34 @@ results in the needs to
 
 from config import params
 
-import sumppy
-from sumppy.gadget import *
-from sumppy.CandidateRestrictedScore import CandidateRestrictedScore
+import sumu
+from sumu.gadget import *
+from sumu.CandidateRestrictedScore import CandidateRestrictedScore
 
 import numpy as np
-from sumppy.weight_sum import weight_sum, weight_sum_contribs
-# from sumppy.zeta_transform import solve as zeta_transform
+from sumu.weight_sum import weight_sum, weight_sum_contribs
+# from sumu.zeta_transform import solve as zeta_transform
 
-from sumppy.mcmc import PartitionMCMC, MC3
+from sumu.mcmc import PartitionMCMC, MC3
 
-from sumppy.utils.bitmap import bm, bm_to_ints, msb, bm_to_pyint_chunks, bm_to_np64, bms_to_np64, np64_to_bm, fbit, kzon, dkbit, ikbit, subsets_size_k, ssets
-from sumppy.utils.core_utils import arg
-from sumppy.utils.io import read_candidates, get_n
-from sumppy.utils.math_utils import log_minus_exp, close, comb, subsets
+from sumu.utils.bitmap import bm, bm_to_ints, msb, bm_to_pyint_chunks, bm_to_np64, bms_to_np64, np64_to_bm, fbit, kzon, dkbit, ikbit, subsets_size_k, ssets
+from sumu.utils.core_utils import arg
+from sumu.utils.io import read_candidates, get_n
+from sumu.utils.math_utils import log_minus_exp, close, comb, subsets
 
-from sumppy.scoring import DiscreteData, ContinuousData, BDeu, BGe
+from sumu.scoring import DiscreteData, ContinuousData, BDeu, BGe
 
-import sumppy.candidates_no_r as cnd
+import sumu.candidates_no_r as cnd
 
 
 def time_gadget():
-    g = sumppy.Gadget(**params)
+    g = sumu.Gadget(**params)
     g.sample()
 
 
 def mem_gadget():
 
-    self = sumppy.Gadget(**params)
+    self = sumu.Gadget(**params)
 
     # def _find_candidate_parents(self):
     self.l_score = LocalScore(self.datapath, scoref=self.scoref,

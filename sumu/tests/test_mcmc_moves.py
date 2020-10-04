@@ -1,4 +1,4 @@
-from sumppy import mcmc_moves
+from sumu import mcmc_moves
 
 
 def test_R_basic_move():

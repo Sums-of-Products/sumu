@@ -1,6 +1,6 @@
 import os
 import numpy as np
-import sumppy
+import sumu
 
 
 def test_Gadget_empirical_edge_prob_error_decreases():
@@ -55,14 +55,14 @@ def test_Gadget_empirical_edge_prob_error_decreases():
                             6.49362145e-04, 8.91742946e-04, 1.32032527e-01,
                             2.81291471e-05, 0.00000000e+00]])
 
-    bn = sumppy.utils.io.read_dsc(bn_path)
+    bn = sumu.utils.io.read_dsc(bn_path)
 
     # NOTE: If the bn.sample() implementation is changed, the correct
     # edge probs will have to be recalculated as the data from which
     # they were calculated will not be identical to the data given to
     # Gadget anymore.
     data = bn.sample(200, seed=0)
-    sumppy.utils.io.write_data(data, data_path, bn)
+    sumu.utils.io.write_data(data, data_path, bn)
 
     params = {"datapath": data_path,
               "scoref": "bdeu",
@@ -79,11 +79,13 @@ def test_Gadget_empirical_edge_prob_error_decreases():
 
     # To set the seed for MCMC
     # np.random.seed(1)
-    g = sumppy.Gadget(**params)
+    g = sumu.Gadget(**params)
     dags, scores = g.sample()
 
-    max_errors = sumppy.utils.utils.edge_empirical_prob_max_error(dags,
+    max_errors = sumu.utils.utils.edge_empirical_prob_max_error(dags,
                                                                   edge_probs)
+
+    print(max_errors)
 
     # NOTE: This is more a sanity check rather than performance
     # test. The idea is to run the test frequently, and detect if
@@ -100,16 +102,22 @@ def test_Gadget_empirical_edge_prob_error_decreases():
     os.remove(data_path)
 
 
+def test_Gadget_runs_with_64_variables():
+    pass
+
+
+
+
 def test_Gadget_runs():
 
     test_path = os.path.dirname(os.path.realpath(__file__))
     bn_path = test_path + "/insurance.dsc"
     data_path = test_path + "/test_data.csv"
 
-    bn = sumppy.utils.io.read_dsc(bn_path)
+    bn = sumu.utils.io.read_dsc(bn_path)
 
     data = bn.sample(100)
-    sumppy.utils.io.write_data(data, data_path, bn)
+    sumu.utils.io.write_data(data, data_path, bn)
 
     params = {"datapath": data_path,
               "scoref": "bdeu",
@@ -124,7 +132,7 @@ def test_Gadget_runs():
               "thinning": 100,
               "tolerance": 2**(-32)}
 
-    g = sumppy.Gadget(**params)
+    g = sumu.Gadget(**params)
     dags, scores = g.sample()
 
     os.remove(data_path)
@@ -149,7 +157,7 @@ def test_gadget_weight_sum_leq_64():
     T_bm = 80
     t_ub = 9
 
-    result = sumppy.weight_sum.weight_sum(W_prime, ordered_psets, ordered_scores,
+    result = sumu.weight_sum.weight_sum(W_prime, ordered_psets, ordered_scores,
                                           n, U_bm, T_bm, t_ub)
 
     # NOTE: "correct answer" is the result returned by the version of
@@ -159,3 +167,7 @@ def test_gadget_weight_sum_leq_64():
     correct_answer = -13.416836930533735
 
     assert abs(result - correct_answer) < 1e-8
+
+
+if __name__ == '__main__':
+    test_Gadget_empirical_edge_prob_error_decreases()

@@ -11,7 +11,7 @@ import glob
 import memory_profiler
 import numpy as np
 
-import sumppy
+import sumu
 
 from config import params, keys
 from functions_to_profile import time_gadget, mem_gadget
@@ -30,9 +30,9 @@ def my_profiler(func=None, stream=None, precision=1, backend='psutil'):
 
 
 def create_test_data():
-    bn = sumppy.utils.io.read_dsc(params["bn_path"])
+    bn = sumu.utils.io.read_dsc(params["bn_path"])
     data = bn.sample(1000)
-    sumppy.utils.io.write_data(data, params["datapath"], bn)
+    sumu.utils.io.write_data(data, params["datapath"], bn)
 
 
 def delete_test_data():
