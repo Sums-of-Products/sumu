@@ -18,7 +18,7 @@ class BGe:
         aw = n + am + 1
         T0scale = am * (aw - n - 1) / (am + 1)
         T0 =  T0scale * np.eye(n)
-        TN = T0 + (N - 1) * np.cov(X.T) + ((am * N) / (am + N)) * (mu0 + np.mean(X, axis=0)) @ (mu0 - np.mean(X, axis=0))
+        TN = T0 + (N - 1) * np.cov(data.T) + ((am * N) / (am + N)) * (mu0 + np.mean(data, axis=0)) @ (mu0 - np.mean(data, axis=0))
         awpN = aw + N
         constscorefact = -(N / 2) * np.log(np.pi) + 0.5 * np.log(am / (am + N))
         scoreconstvec = np.zeros(n)
