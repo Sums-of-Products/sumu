@@ -342,6 +342,8 @@ class LocalScore:
         """
         if v in pset:
             return -float("inf")
+        if v in range(self.n) and len(pset) == 0:
+            return self._local(v, pset)
         if min(v, min(pset)) < 0 or max(v, max(pset)) >= self.n:
             raise IndexError("Attempting to query score for non-existing variables")
         return self._local(v, pset)
