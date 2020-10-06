@@ -1,68 +1,88 @@
 // Compile with g++ using options -Wall -O3 
 
+#ifndef BDEU_HPP
+#define BDEU_HPP
+
 #include <iostream> 
 #include <fstream> 
 #include <iomanip> 
 #include <math.h> 
-//#include <chrono> 
 #include <string.h>
 #include <stdlib.h>
 #include "Wsets.hpp"
 
 using namespace std;
 
-#define Tdat 		uint8_t
+// Param -- a fingerprint of the arguments used in the call for scoring a bunch of families (i, Y). 
+struct Param { 
+	vector<int>	C;		// The given set of candidates; the labeling of Y is relative to C.
+	int 		u;		// The given upper bound for the ize |Y|.
+	bool 		isdense;	// The truth value of (|C| <= 64); determines the encoding of Y. 
+};
+
+
+#define Tdat 		int //uint8_t
 #define BDEU_MAXN 	256
 #define BDEU_MAXARITY 	256
-#define BDEU_MAXM	65536	
+//#define BDEU_MAXM	1024*1024	
 class BDeu {
     public:
-	int    m;	// Number of data points.
-	int    n;	// Number of variables.
-	Tdat** dat;	// Data matrix of size n x m.
-	int*   r;	// Number of values per variable.
-	int*   w;	// Number of bits reserved per variable, floor of log2(r). 
-	double ess;	// Equivalent sample size parameter for the BDeu score.
+	int    		m;		// Number of data points.
+	int    		n;		// Number of variables.
+	Tdat** 		dat;		// Data matrix of size n x m.
+	int*   		r;		// Number of values per variable.
+	int*   		w;		// Number of bits reserved per variable, ceil of log2(r). 
+	double 		ess;		// Equivalent sample size parameter for the BDeu score.
+	vector<wset>* 	fscores;	// Lists of family scores.
+	vector<Param>	fparams;	// Parameters used in score computations.
 
-	BDeu ();
-	~BDeu ();
+	BDeu (); ~BDeu ();
 	void   test ();					// Shows some test runs. 
+	void   query_test ();				// Shows some test runs. 
 	int    read (int* datavec, int m0, int n0);	// Reads data matrix of size m0 x n0 given as vector datavec.
 	int    dear (int* datavec, int m0, int n0);	// Reads data matrix of size m0 x n0 given as vector datavec.
 	int    read (string fname);			// Reads data matrix given as a csv file.
-	void   set_ess(double val);			// Set the value of the ess parameter and base_delta_lgamma.
-	double cliq (int* var, int d);			// Scores clique var of size d.
-	double cliqc(int* var, int d);			// Scores clique var of size d, with caching.
-	double fami (int i, int* par, int d);		// Scores family (i, par), with par of size d.
+	void   set_ess(double val);			// Set the value of the ess parameter.
 
-	double cliq (int* S, int d, int u);		// Stores clique scores for all subsets of size at most u.
-	double fami (int* S, int d, int u);		// Stores family scores for all variables and all parent sets of size at most u.
+	double cliq (int* X, int lX);			// Scores clique X of size lX.
+	double cliq (int* S, int lS, int u);		// Scores and stores all subsets of S of size at most u.
+	double cliqc(int* X, int lX);			// Scores clique X of size lX, with caching.
+	void   clear_cliq ();				// Frees the memory reserved for indexing clique scores.
+	void   clear_cliqc();				// Frees the memory reserved for caching  clique scores.
+
+	double fami (int i, int* Y, int lY);		// Scores family (i, Y), with Y of size lY.
+	double fami (int* S, int lS, int u);		// Scores and stores for all variables and all parent sets of size at most u.
+	double fami (int i, int* C, int lC, int u);	// Scores and stores for all (i, Y) with Y a subset of C of size at most u.
+	void   clear_fami();				// Frees the memory reserved for indexing fami scores.
+	void   clear_fami(int i);			// Frees the memory reserved for indexing fami scores of node i.
+
+	double fscore(int i, int* Y, int lY);		// Fecthes an already compute score of family (i, Y), with Y of size lY.
 
 	friend ostream& operator<<(ostream& os, const BDeu& x); // Currently just prints out the data matrix.
 
     private:
 	vector<wset>  	cscores;		// List of clique scores.
-	vector<wset>* 	lscores;		// Array of size n of local scores.
-	Wsets         	sscores;		// Storage of set scores.
+	Wsets         	ascores;		// Storage for arbitrary (clique, score) pairs.
 	int**   	tmp;			// Helper array of size n x m;
 	uint16_t*	fre;			// Helper array of size m+1 to store a multiset of counts, indexed by counts. 
 	double* 	lng;			// Helper array of size m+1 to store ln(Gamma(j + ess')/Gamma(ess')).
 	int**   	prt;			// Helper array of size n x m, yet another;
-	int binomsum[BDEU_MAXN][BDEU_MAXN];	// Tail sums of binomial coefficients. Would be better make this static.
-	double 		base_delta_lgamma;	// lgamma(m+ess)-lgamma(ess);
+	int binomsum[BDEU_MAXN][32];		// Tail sums of binomial coefficients. Would be better make this static.
+	double 		base_delta_lgamma;	// lgamma(m + ess) - lgamma(ess);
 	bool 		initdone;		// Flag: whether mem dynamically allocated (to be released at the end). 	
 
 	double score_dfs (int d, int* X, int a, int b, double q);
 	void   score_dfs3(int d, int* X, int a, int b);
 	double score_dico(int d, int* X);
 	double score_hash(int d, int* X);
-	double score_all ();
+	double score_all ();			// Just for testing.
 
-	double dfo1(int* X, int sizeX, int sizemax, int* S, int nleft, int mleft, double rq);	// Bunch of scores rec.
-	double score_all1();
+	double cliqa(int* S, int lS, int u);	// Scores and stores all subsets of S of size at most u that contain the last of S.
+	double dfo2 (int* X, int lX, int lmax, int* S, int jmin, int jmax, int mleft, double rq, bool isdense); // Bunch of scores rec.
+	double score_all1();			// Just for testing.
 
-	int     index(int *X, int len, int u);	// Index to cscores, relative to the S used when built; X in dec order. 
-	int    iindex(int *X, int len, int u);	// Index to cscores, relative to the S used when built; X in inc order. 
+	int     index(int *X, int lX, int u);	// Index to cscores, relative to the S used when built; X in dec order. 
+	int    iindex(int *X, int lX, int u);	// Index to cscores, relative to the S used when built; X in inc order. 
 	void preindex(int umax);		// Computes the array binomsum[][].
 
 	int width(int d, int* X);
@@ -75,11 +95,11 @@ class BDeu {
 	void set_r(const vector<int> &v);
 };
 
-const string red("\033[0;31m"); const string green("\033[0;32m"); const string cyan("\033[0;36m"); const string reset("\033[0m");
-#define STRV(...) #__VA_ARGS__
-#define DEMO(command, comment) cout << green << STRV(command) << cyan << "  // " << comment << reset << endl; command 
-#define COMMA ,
 void BDeu_demo (){ // Demo of the usage of the class. Might define this as a static function of the class, but not done here.
+	const string red("\033[0;31m"); const string green("\033[0;32m"); const string cyan("\033[0;36m"); const string reset("\033[0m");
+#define STRV(...) #__VA_ARGS__
+#define DEMO(command, comment) cout << green << " " << STRV(command) << cyan << "  // " << comment << reset << endl; command 
+#define COMMA ,
 	cout<<" === DEMO of class BDeu === "<<endl;
 	DEMO(BDeu s;, "Introduce a BDeu object")
 	DEMO(int *x = new int[15 * 7];, "The original data matrix.")
@@ -91,15 +111,26 @@ void BDeu_demo (){ // Demo of the usage of the class. Might define this as a sta
 	DEMO(int par[4] = {4 COMMA 6 COMMA 0 COMMA 1};, "Create a parent set. Note: the order does not matter.")
 	DEMO(double score = s.fami(2 COMMA par COMMA 4);, "Get the score of variable 2 with parent set par.")
 	DEMO(cout << " Got score = " << score << endl;, "Print out the score we got.")
-	//s.read("child1000.csv"); s.set_ess(10.0);
-	//cout << s;
-	//int par2[2] = {3, 2};
-	//cout << " Score of (0, {3, 2}) = " << setprecision(17) << s.fami(0, par2, 2) << endl;
+	DEMO(int S[7] = {0 COMMA 1 COMMA 2 COMMA 3 COMMA 4 COMMA 5 COMMA 6};, "Define S simply as the set of all variables.")
+	DEMO(s.fami(S COMMA 7 COMMA 6);, "Compute the scores for all families (i, Y) with i an element of S and Y a subset, |Y| <= 6.")
+	DEMO(int Y[4] = {0 COMMA 1 COMMA 3 COMMA 5};, "Take Y to be the same as par above, but relative to S and in INC order.")
+	DEMO(score = s.fscore(2 COMMA Y COMMA 4);, "Get the score of variable 2 with parent set Y; notice the function name.")
+	DEMO(cout << " Got score = " << score << endl;, "The score is the same as before, as we expected.")
+	DEMO(score = s.fscores[2][1+2+8+32].weight;, "In fact, we may index directly by the bitmap representation of Y.")
+	DEMO(cout << " Got score = " << score << endl;, "Again, the score is the same as before, as we expected.")
+	DEMO(int C2[5] = {0 COMMA 1 COMMA 3 COMMA 4 COMMA 6};, "Define C2 as a set of candidate parents.")
+	DEMO(s.fami(2 COMMA C2 COMMA 5 COMMA 5);, "Compute the scores for all families (2, Y) and Y a subset of C2, |Y| <= 5.")
+	DEMO(int Z[4] = {0 COMMA 1 COMMA 3 COMMA 4};, "Take Z to be the same as par above, but relative to C2 and in INC order.")
+	DEMO(score = s.fscore(2 COMMA Z COMMA 4);, "Get the score of variable 2 with parent set Z; notice the function name.")
+	DEMO(cout << " Got score = " << score << endl;, "The score is the same as before, as we expected.")
+	DEMO(score = s.fscores[2][1+2+8+16].weight;, "In fact, we may index directly by the bitmap representation of Y.")
+	DEMO(cout << " Got score = " << score << endl;, "Again, the score is the same as before, as we expected.")
+
 	cout << " ======= end of demo  ===== " << endl;
-}
 #undef COMMA 
 #undef DEMO
 #undef STRV
+}
 
 //////////////////
 // Public methods:
@@ -128,62 +159,117 @@ int BDeu::read(const string fname){
 	}
 	read(values, m0, n0); delete[] values; set_r(arities); return 1;
 }
+void BDeu::set_ess(double val){ ess = val; base_delta_lgamma = lgamma(ess) - lgamma(m+ess); }
+
 // Returns the BDeu score of the clique X of size d. 
 double BDeu::cliq (int* X, int d){ 
+	if (d == 0) return 0;
 	int wc = width(d, X); 					 
 	if (0 < wc && wc < 64) return score_hash(d, X); 	// Very fast, but currently implemented only up to 64-bit data records.
 	else                   return score_dico(d, X);		// Somewhat carefully optimized divide & conquer algorithm.		
 }
 // Returns the BDeu score of the clique X of size d, with caching. Note: currently caching assumes the ground set has size at most 64. 
 double BDeu::cliqc(int* X, int d){ 
-	double val;   if (sscores.get(X, d, &val)) return val;	// If already stored, then just get and return it.
-	val = cliq(X, d); sscores.put(X, d,  val); return val;	// Push the computed score to the storage--requires mem!
+	double val;   if (ascores.get(X, d, &val)) return val;	// If already stored, then just get and return it.
+	val = cliq(X, d); ascores.put(X, d,  val); return val;	// Push the computed score to the storage--requires mem!
 }
+// Scores ALL subsets of S of size at most u. Returns the sum of the scores. Stores the scores.
+double BDeu::cliq (int* S, int d, int u){ 
+	int* X = new int[d]; for (int j = 0; j < d; ++j) X[j] = S[j]; // This loop should have no effect at the end.
+	for (int t = 0; t < m; ++t){ tmp[0][t] = t; } // Init tmp[0][]. No need to init prt[].
+	cscores.clear(); cscores.shrink_to_fit(); // Completely clears and resizes cscores.
+	preindex(31);	// Computes binomsum[][]. For some unknown reason not sufficient to do this in the init() function.
+	cscores.reserve(binomsum[d][u]); // Note: indexing will be relative to S. 
+	double scoresum = dfo2(X, 0, u, S, 0, d, m, 1.0, (d <= 64)); // Visit and score in depth-first order.
+	delete[] X; return scoresum;	
+}
+// Frees the memory allocated by ascores, a cahche for arbitrary clique score queries.
+void BDeu::clear_cliqc(){ ascores.clear(); /* Note that ascores is not a vector but a Wsets object.*/ }
+// Frees the memory allocated by cscores, an array indexing scores of regural clique collections.
+void BDeu::clear_cliq (){ cscores.clear(); cscores.shrink_to_fit(); }
+
+
 // Returns the BDeu score of the family (i, Y) where Y is of size d. 
 double BDeu::fami (int i, int* Y, int d){
 	double  sp = cliq(Y, d);
 	int*     X = new int[d+1]; X[d] = i; for (int j = 0; j < d; ++j) X[j] = Y[j]; 
 	double spi = cliq(X, d+1); 
+//cerr << "  [fami:] X: "; for (int j = 0; j <= d; ++j) cerr << " " << X[j];
+//cerr << ", spi = " << spi << ", sp = " << sp << endl;	
+
 	delete [] X; return spi - sp; 
 }
-// Scores ALL subsets of S of size at most u. Returns the sum of the scores. Stores the scores.
-double BDeu::cliq(int* S, int d, int u){ 
-	int* X = new int[d];  
-	for (int t = 0; t < m; ++t){ tmp[0][t] = t; } // Init tmp[0][]. No need to init prt[].
-	cscores.shrink_to_fit(); // Completely clears and resizes cscores.
-	preindex(u); cscores.reserve(iindex(S, d, u)+1); // We assume S is in INCreasing order. 
-	double scoresum = dfo1(X, 0, u, S, d, m, 1.0); // Visit and score in depth-first order.
-	delete[] X; return scoresum;	
-}
-// Scores ALL families (i, Y) where Y is a subset of S of size at most u.
-// *** *** NOTE: We currently assume that |S| = d = n <= 64. This is a strong, temporary assumption.
-double BDeu::fami(int* S, int d, int u){
-	int uu = u+1; if (uu > n) uu = n; 
-	double scoresum = cliq(S, d, uu); // Note: Need to compute clique scores with u+1.
-	int l = cscores.size(); int* X = new int[n]; int lenx; int* Y = new int[n];
-	for (int j = 0; j < d; ++j) lscores[j].reserve(l+1); // Note: Currently reserving a bit too much.
-	for (int c = 0; c < l; ++c){ // Go through all the cliques X.
-		wset xv = cscores.at(c); get_set(xv.set, X, lenx); // Note: X is in increasing order. Assumes dense mode.
-		//cout << " [fami:] c = " << c << ", len = " << len << endl;
-		int leny = lenx - 1;
-		for (int j = 0; j < lenx; ++j){
-			int i = X[j]; // Child i. Parents Y := X - {i}. *** NOTE: HERE i IS RELATIVE TO THE SET S, WHEREAS S[i] IS THE REAL VAR.
-			for (int h = 0; h < leny-j; ++h)    Y[h] = X[leny-h];	// Cannot do this incrementally as we need to preserve the order.
-			for (int h = leny-j; h < leny; ++h) Y[h] = X[leny-h-1];
-			int iy = index(Y, leny, uu);
-			wset yv = cscores.at(iy); 
-			//cout << " [fami:]  i = " << i << endl; cout << " X :: "; show(xv); cout << " Y :: "; show(yv); cout << endl; 
-			// Add (i, Y) to the list of i. 
-			wset iyv = { yv.set, xv.weight - yv.weight };
-			lscores[i].push_back(iyv);
+// Scores ALL families (i, Y) where i is an element of S and Y is a subset of S of size at most u.
+double BDeu::fami(int* S, int lS, int u){
+	clear_fami();
+	int uu = min(u+1, lS); bool isdense = (lS <= 64); 
+	double scoresum = cliq(S, lS, uu); // Note: Compute clique scores with u+1. Note: "isdense" not passed, but rediscovered.
+	int ll = cscores.size(); int* X = new int[uu]; int lX; int* Y = new int[uu]; int* Z = new int[uu];
+	for (int j = 0; j < lS; ++j) fscores[j].reserve(ll+1); // Note: Currently reserving a bit too much.
+	for (int k = 0; k < ll; ++k){ // Go through all the cliques X.
+		wset Xw = cscores.at(k); get_set(Xw.set, X, lX, isdense); // Note: X is in DEC order. Pass "isdense".
+		int lY = lX - 1;
+		for (int h = 0; h < lY; ++h){ Y[h] = X[h+1]; Z[h] = Y[h]; } // Init Y and its proxy Z with the smallest elements.
+		for (int j = 0; j < lX; ++j){
+			int i = X[j]; // Child i. Parents Y := X\{i}. *** NOTE: i IS RELATIVE TO S, WHEREAS S[i] IS THE REAL VAR.
+			if (j > 0){ Y[j-1] = X[j-1]; Z[j-1] = Y[j-1]-1; } //  A bit clumsy, but works.
+			int indY = index(Y, lY, uu); wset Yw = cscores.at(indY); // Note: computing the index does take O(lY) time.
+			// Now, indY and Yw are wrt S. However, we want to represent Y wrt S\{i}, for tight indexing etc...
+			wset Yiw = get_wset(Z, lY, Xw.weight - Yw.weight, isdense); fscores[i].push_back(Yiw);
+			// Sanity check:
+			if ((int) index(Z, lY, u) != (int) fscores[i].size()-1){ cerr << " *** ERROR *** EXIT NOW \n"; exit(1); }
 		}
 	}
-//	cout<<" [fami:] (i, lscores[i].size) = "; for (int i = 0; i < n; i ++){ cout<<"("<<i<<", "<<lscores[i].size()<<"); "; } cout<<endl;
-	delete[] X; delete[] Y; return scoresum;
+	for (int j = 0; j < lS; ++j){ // Set fparams.
+		fparams[j].u = u; fparams[j].isdense = isdense;
+		fparams[j].C.clear(); fparams[j].C.shrink_to_fit();
+		for (int h = 0; h < 5; ++h){ if (h != j) fparams[j].C.push_back(S[h]); } 
+	}
+	delete[] X; delete[] Y; delete[] Z; 
+	return scoresum;
 }
+// UNDER CONSTRUCTION...
+// Scores ALL families (i, Y) where i is NOT an element of C and Y is a subset of C of size at most u.
+// The current solution is efficient if and only if u is large compared to lC. 
+double BDeu::fami(int i, int* C, int lC, int u){
+	clear_fami(i);	
+	double scoresum = cliq (C, lC, u);	// Begin by simply computing clique scores over C. The scores are stored in cscores.
+	int l1 = cscores.size();		// This many scores were inserted.	
+//cout<<" [fami:] l1 = "<< l1 << endl;
+	int lS = lC+1; int* S = new int[lS]; for (int j = 0; j < lC; ++j) S[j] = C[j]; S[lC] = i; // S = C U {i}.
+	scoresum       += cliqa(S, lS, u+1);	// Continue by adding scores of cliques over S that contain the last element of S.
+	int l2 = cscores.size();		// The total number of computed clique scores. 
+//cout<<" [fami:] l2 = "<< l2 << ", capacity = "<< cscores.capacity() << endl;
 
+	fscores[i].reserve(l2/2); 		// Exactly what is needed, since (i, Y) is obtained from Y and Y U {i}. 
+	int* X = new int[u+1]; int lX; int* Y = new int[u]; int lY;	  
+	for (int k = l1; k < l2; ++k){ // Go through all the cliques X that contain i. In fact, i is encoded as lS-1.
+		wset Xw = cscores.at(k); get_set(Xw.set, X, lX, (lS <= 64));	// Note: X is in DEC order. Pass "isdense".
+		lY = lX - 1; for (int h = 0; h < lY; ++h) Y[h] = X[h+1];	// Get Y. Could simplify to "Y = X+1".
+		int indY = index(Y, lY, u); wset Yw = cscores.at(indY);		// Y is among the first list of cliques.		
+		wset Yiw = get_wset(Y, lY, Xw.weight - Yw.weight, (lC <= 64));	// The encoding of Y is wrt C. 
+		fscores[i].push_back(Yiw);
+//cout << " X: "; for (int h = 0; h < lX; ++h) cout << " " << S[X[h]]; cout << ", weight = " << Xw.weight;
+//cout << " Y: "; for (int h = 0; h < lY; ++h) cout << " " << S[Y[h]]; cout << ", weight = " << Yw.weight << ", wdiff = " << Yiw.weight << endl;
+		// Sanity check:
+		if (indY != (int) fscores[i].size()-1){ cerr << " *** ERROR, k = "<< k <<" *** EXIT NOW \n"; exit(1); }
+	}
+	//cout<<" [fami:] (i, fscores[i].size) = "; for (int i = 0; i < n; i ++){ cout<<"("<<i<<", "<<fscores[i].size()<<"); "; } cout<<endl;
+	// Set fparams.
+	fparams[i].u = u; fparams[i].isdense = (lC <= 64);
+	fparams[i].C.clear(); fparams[i].C.shrink_to_fit();
+	for (int h = 0; h < lC; ++h) fparams[i].C.push_back(S[h]); 
+	delete[] S; delete[] X; delete[] Y; 
+	return scoresum;
+}
+// Frees the memory allocated by cscores, an array indexing scores of regural family collections.
+void BDeu::clear_fami (int i){ fscores[i].clear(); fscores[i].shrink_to_fit(); }
+void BDeu::clear_fami (     ){ for (int i = 0; i < n; ++i) clear_fami(i); }
 
-void BDeu::set_ess(double val){ ess = val; base_delta_lgamma = lgamma(ess) - lgamma(m+ess); }
+double BDeu::fscore(int i, int* Y, int lY){ // We assume Y is in increasing order and relative to the given candidate set. 
+	int u = fparams[i].u; int ind = iindex(Y, lY, u); 
+	return fscores[i][ind].weight;
+}
 
 
 ///////////////////
@@ -202,13 +288,13 @@ void BDeu::fill_rnd(int maxr){ // For testing purposes. Could implement by calli
 }
 void BDeu::set_r(){ // Sets r according to the data.
 	for (int i = 0; i < n; ++i){
-		r[i] = 1; for (int t = 0; t < m; ++t){ if (dat[i][t] + 1 > r[i]) r[i] = dat[i][t] + 1; }
+		r[i] = 0; for (int t = 0; t < m; ++t){ if (dat[i][t] > r[i]) r[i] = dat[i][t]; } ++r[i];
 		int v = r[i] - 1; w[i] = 0; while (v) { ++w[i]; v >>= 1; } 
 	}
 }
-void BDeu::set_r(const vector<int> &v){ // Sets s according to the given vector.
-	for (int i = 0; i < (int) v.size(); ++i){ 
-		r[i] = v.at(i); int v = r[i] - 1; w[i] = 0; while (v) { ++w[i]; v >>= 1; }
+void BDeu::set_r(const vector<int> &vr){ // Sets s according to the given vector.
+	for (int i = 0; i < (int) vr.size(); ++i){ 
+		r[i] = vr.at(i); int v = r[i] - 1; w[i] = 0; while (v) { ++w[i]; v >>= 1; }
 	} 
 }
 
@@ -237,7 +323,7 @@ void BDeu::score_dfs3(int d, int* c, int a, int b){
 	const int i = c[d];	
 	// Partition tmp[] into sublists. First scan and count; then partition.
 	int num[BDEU_MAXARITY]; for (int k = 0; k < r[i]; ++k) num[k] = 0;
-	int pos[BDEU_MAXARITY]; pos[0] = 0; // Do this already here; free in practice, due to cpu-level parallelism.
+	int pos[BDEU_MAXARITY]; pos[0] = 0;
 	for (int t = a; t < b; ++t){ int k = dat[i][tmp[d][t]]; ++num[k]; }
 	if (d == 0){ for (int k = 0; k < r[i]; ++k) ++fre[num[k]]; return; } // Solve the base case here.
 	for (int k = 0; k < r[i]-1; ++k) pos[k+1] = pos[k] + num[k]; // Could get rid of pos[] and only use num[]; not implemented.
@@ -255,14 +341,13 @@ void BDeu::score_dfs3(int d, int* c, int a, int b){
 	return;
 }
 double BDeu::score_dico(int d, int* X){ // Divide and conquer.
-	for (int t = 0; t <  m; ++t) tmp[d-1][t] = t;	// Init tmp[d-1].
-	for (int c = 0; c <= m; ++c) fre[c] = 0;	// Init fre.
+	for (int t = 0; t < m; ++t) tmp[d-1][t] = t;					// Init tmp[d-1].
 	score_dfs3(d-1, X, 0, m);
 	int maxc = m; while (!fre[maxc]) --maxc;
 	double q = 1; for (int j = 0; j < d; ++j) q *= r[X[j]]; 
 	double essq = ess/q; lng[0] = 0; for (int c = 0; c < maxc; ++c) lng[c+1] = lng[c] + log(c + essq);		
-	double s = base_delta_lgamma;			// lgamma(ess) - lgamma(m + ess);
-	for (int c = 1; c <= maxc; ++c){ if (fre[c]) s += fre[c] * lng[c]; }	
+	double s = base_delta_lgamma;							// lgamma(ess) - lgamma(m + ess);
+	for (int c = 1; c <= maxc; ++c){ if (fre[c]) s += fre[c] * lng[c]; fre[c] = 0; }// Reset fre[].	
 	return s;
 }
 
@@ -285,7 +370,7 @@ class HashCounter { // Relatively huge hash range; active bins iterable. XOR has
 		int maxc = 0;
 		for (int j = 0; j < lact; ++j){
 			int p = act[j]; int q = ptrs[p]; ptrs[p] = 0; // Zero the static ptrs[]; we are about to delete the data structure.
-			while (q){ keycount kc = buck[q]; int c = buck[q].num; ++fre[c]; if (c > maxc) maxc = c; q = kc.nxt; }
+			while (q){ keycount kc = buck[q]; int c = buck[q].num; ++fre[c]; maxc = max(maxc, c); q = kc.nxt; }
 		} return maxc; 
 	}
 	int maxload(){ // Mainly for testing. Note: a slow routine; we don't want to slow down insert by additional bookkeeping.
@@ -303,7 +388,8 @@ class HashCounter { // Relatively huge hash range; active bins iterable. XOR has
 	static uint16_t ptrs[]; static const uint32_t mask, lmask;
 };
 //uint16_t HashCounter::ptrs[512*1024] { 0 }; const uint32_t HashCounter::mask = 0x7FFFF, HashCounter::lmask = 19; 
-uint16_t HashCounter::ptrs[64*1024] { 0 }; const uint32_t HashCounter::mask = 0xFFFF, HashCounter::lmask = 16; 
+uint16_t HashCounter::ptrs[256*1024] { 0 }; const uint32_t HashCounter::mask = 0x3FFFF, HashCounter::lmask = 18; 
+//uint16_t HashCounter::ptrs[64*1024] { 0 }; const uint32_t HashCounter::mask = 0xFFFF, HashCounter::lmask = 16; 
 
 double BDeu::score_hash(int d, int* X){ // By simply hashing. Does not work: unordered map does not support proper count queries.
 	HashCounter h(m); 								// Hash. Uses a self-made data structure.
@@ -313,14 +399,12 @@ double BDeu::score_hash(int d, int* X){ // By simply hashing. Does not work: uno
 		for (int t = 0; t < m; ++t){ z[t] <<= l; z[t] |= dat[i][t]; } 		// Simply encode the data.
 	}
 	for (int t = 0; t <  m; ++t) h.insert(z[t]);  					// Hash.
-	for (int c = 0; c <= m; ++c) fre[c] = 0;  					// Init frequencies of counts.
-	int maxc = h.get_freq_and_reset(fre); 						// Get the spectrum, i.e., the count frequency array. 
-	double q = 1; for (int j = 0; j < d; ++j) q *= r[X[j]]; double essq = ess/q;	// Compute lng[].
-	lng[0] = 0; for (int c = 0; c < maxc; ++c) lng[c+1] = lng[c] + log(c + essq); 	
-	double s = base_delta_lgamma; 							// lgamma(ess) - lgamma(m + ess);
-	for (int c = 1; c <= maxc; ++c){ if (fre[c]) s += fre[c] * lng[c]; }		// Finalize.	
+	int maxc = h.get_freq_and_reset(fre); 						// Get the count frequencies, member var fre[]. 
+	double q = 1; for (int j = 0; j < d; ++j) q *= r[X[j]]; double essq = ess/q;	
+	double baslg = lgamma(essq); double s = base_delta_lgamma; 			// lgamma(ess) - lgamma(m + ess);	
+	for (int c = 1; c <= maxc; ++c) if (fre[c]){ s += fre[c] * (lgamma(c + essq) - baslg); fre[c] = 0; } // Finalize, and reset fre[].	
 	delete[] z; return s;
-}// // // // // //
+}
 
 
 double BDeu::score_all(){ // Scoring all nonempty subsets of the n variables.
@@ -330,77 +414,125 @@ double BDeu::score_all(){ // Scoring all nonempty subsets of the n variables.
 	for (int x = 1; x < (1 << n); ++x){
 		int d = 0; // Size of x.
 		for (int i = 0; i < n; ++i){ if (x & (1 << i)){ X[d++] = i; } } // Set X.
-		if (x) s += cliqc(X, d);		
+		if (x) s += cliq(X, d);		
 		++count;
 	}
 	delete[] X; return s;
 }
-
+// Scores ALL subsets of S of size at most u that contain the last element of S. Adds the scores to the storage.
+// This is quite a special function, and therefore defined as private. In correct calls: lS >= 1 and u >= 1.
+double BDeu::cliqa(int* S, int lS, int u){ 
+	int* X = new int[lS];  
+	for (int t = 0; t < m; ++t){ tmp[0][t] = t; } // Init tmp[0][]. No need to init prt[].
+	int ll = cscores.size(); cscores.reserve(ll + binomsum[lS-1][u-1]); // Note: indexing will be relative to S. 
+//cerr << " [cliqa:] Reserved additional " << binomsum[lS-1][u-1] << ", lS-1 = " << lS-1 << ", u-1 = " << u-1 << endl;
+	double scoresum = dfo2(X, 0, u, S, lS-1, lS, m, 1.0, (lS <= 64)); // Argument lS-1 makes it put X[0] = lS-1.
+	delete[] X; return scoresum;	
+}
 // Subsets X of S in depth-first order. Gathers singleton into "dark material". This is quite a hack.  
-double BDeu::dfo1(int* X, int sizeX, int sizemax, int* S, int nleft, int mleft, double rq){ // Under construction...
+double BDeu::dfo2(int* X, int lX, int lmax, int* S, int jmin, int jmax, int mleft, double rq, bool isdense){
+//	if (lX == 1) cerr << " " << X[0];
 	double val = 0;
-	if (sizeX){ // This is not the time critical part at the moment. 		
+	if (lX){ // Score X based on the counts that can be read from prt[lX-1][]. 		
 		int p = 0; int maxc = 1; 
-		for (int tot = 0; tot < mleft; ){ int c = prt[sizeX-1][p]; ++p; if (c > maxc) maxc = c; tot += c; }
+		for (int tot = 0; tot < mleft; ){ int c = prt[lX-1][p]; ++p; maxc = max(maxc, c); tot += c; } 
 		for (int c = 0; c <= maxc; ++c) fre[c] = 0;
-		for (int q = 0; q < p; ++q){ int c = prt[sizeX-1][q]; ++fre[c]; }
+		for (int q = 0; q < p; ++q){ int c = prt[lX-1][q]; ++fre[c]; /*cerr << " " << c;*/ } //cerr << " <--counts\n";
 		fre[1] = m - mleft; // fre[1] = m - mleft, the "dark material"; other singletons should not exist.
-		double essrq = ess/rq; lng[0] = 0; for (int c = 0; c < maxc; ++c) lng[c+1] = lng[c] + log(c + essrq);
-		val = base_delta_lgamma; // lgamma(ess) - lgamma(m + ess); // NOTE: THE SAME FOR ALL, EACH AND EVERY !	
-		for (int c = 1; c <= maxc; ++c){ if (fre[c]) val += fre[c] * lng[c]; }
+		double essrq = ess/rq; val = base_delta_lgamma; // lgamma(ess) - lgamma(m + ess); // THE SAME FOR ALL.	
+		double baslg = lgamma(essrq); for (int c = 1; c <= maxc; ++c) if (fre[c]) val += fre[c] * (lgamma(c + essrq) - baslg); 
 	}
-//	wset xv = get_wset(X, sizeX, val); cscores.push_back(xv); 
-	sscores.put(X, sizeX, val); // Store the pair (X, val).
-	if (sizeX == sizemax) return val; 
+	if (jmin == 0){ wset xv = get_wset(X, lX, val, isdense); cscores.push_back(xv); } // When forcing X[0], don't store the empty set.
+	if (lX == lmax) return val; 
 	// Branch on "lower variables".
-	for (int j = 0; j < nleft; ++j){ // Alternatively, could consider the opposite order, from depth-1 downto 0.
-		int i = S[j]; X[sizeX] = j; // *** NOTE: WE USE RELATIVE INDEXING WRT S, NOT "X[sizeX] = i".
+	for (int j = jmin; j < jmax; ++j){ // Alternatively, could consider the opposite order, from depth-1 downto 0.
+		int i = S[j]; X[lX] = j; // *** NOTE: WE USE RELATIVE INDEXING WRT S, NOT "X[lX] = i".
 		// Find the counts based on tmp[] and prt[]; When X is empty, these are simply (0..m-1) and (m).
 		int p = 0; int tot = 0; int loc = 0; int pp = 0; // Here pp is the index of the next partition.
-		while (tot < mleft){
-			// Handle part p of the partition.
-			int qmax = mleft; if (sizeX) qmax = prt[sizeX-1][p];
-			// First, get num[].
-			int num[BDEU_MAXARITY]; for (int k = 0; k < r[i]; ++k) num[k] = 0; // Expensive !?
-			for (int q = 0; q < qmax; ++q){ int t = tmp[sizeX][tot+q]; int k = dat[i][t]; ++num[k]; }
-			// Second, get prt[].
-			int qact = 0; 
-			for (int k = 0; k < r[i]; ++k){ // Expensive if r[i] large !
-				switch (num[k]){
-					case 0: break; case 1: num[k] = 0; break; // Ignore singletons. Zero the num[] for a later use.
-					default: prt[sizeX][pp] = num[k]; ++pp; qact += num[k]; // Only here we can update qact.
+		int ri = r[i]; bool nextnotleaf = (lX+1 != lmax && j > jmin);
+		int num[BDEU_MAXARITY];
+		if (ri < 256){ // If the arity is low, then sparse stepping though the occuring valus k would not pay off.
+			while (tot < mleft){
+				// Handle part p of the partition.
+				int qmax = mleft; if (lX) qmax = prt[lX-1][p];
+				// First, get num[].
+				for (int k = 0; k < ri; ++k) num[k] = 0;
+				for (int q = 0; q < qmax; ++q){ int t = tmp[lX][tot+q]; int k = dat[i][t]; ++num[k]; }
+				// Second, get prt[].
+				int qact = 0; 
+				for (int k = 0; k < ri; ++k){							
+					switch (num[k]){ // *** NOTE: Here we fix the order of pp in relation to k !!!
+						case 0: break; case 1: num[k] = 0; break; // Ignore singletons.
+						default: prt[lX][pp] = num[k]; ++pp; qact += num[k]; // Only here we can update qact.
+					} 
+				} 
+				if (nextnotleaf){ // If the child node is not a leaf of the search tree.
+					// Third, get tmp[].
+					int pos[BDEU_MAXARITY]; pos[0] = num[0]; 
+					for (int k = 0; k < ri-1; ++k) pos[k+1] = pos[k] + num[k+1];
+					for (int q = 0; q < qmax; ++q){ 
+						int t = tmp[lX][tot+q]; int k = dat[i][t]; 
+						if (num[k]){ --pos[k]; tmp[lX+1][loc+pos[k]] = t; } // Note: may have num[k] == 0.  
+					}
 				}
+				++p; tot += qmax; loc += qact; 
 			}
-			++p;  
-			if (sizeX+1 == sizemax){ tot += qmax; loc += qact; continue; }
-			// Third, get tmp[].
-			int pos[BDEU_MAXARITY]; pos[0] = num[0]; 
-			for (int k = 0; k < r[i]-1; ++k) pos[k+1] = pos[k] + num[k+1]; // Expensive if r[i] large !
-			for (int q = 0; q < qmax; ++q){ 
-				int t = tmp[sizeX][tot+q]; int k = dat[i][t]; 
-				if (num[k]){ --pos[k]; tmp[sizeX+1][loc+pos[k]] = t; } // Note: may have num[k] == 0.  
+		} else { // Now the arity may be high, and so we resort to a more complicated indexing using hit[].
+			for (int k = 0; k < ri; ++k) num[k] = 0; // Expensive !?
+			int hit[BDEU_MAXARITY]; // Collects the active values k.
+			while (tot < mleft){
+				int qmax = mleft; if (lX) qmax = prt[lX-1][p]; int lhit = 0;
+				for (int q = 0; q < qmax; ++q){ 
+					int t = tmp[lX][tot+q]; int k = dat[i][t]; if (!num[k]) hit[lhit++] = k; ++num[k]; 
+				}
+				int qact = 0; 
+				for (int h = 0; h < lhit; ++h){
+					int k = hit[h];								
+					switch (num[k]){ // *** NOTE: Here we fix the order of pp in relation to k !!!
+						case 0: break; case 1: num[k] = 0; break; // Ignore singletons.
+						default: prt[lX][pp] = num[k]; ++pp; qact += num[k]; // Only here we can update qact.
+					} 
+				} 
+				if (nextnotleaf){ // If the child node is not a leaf of the search tree.
+					int pos[BDEU_MAXARITY]; pos[hit[0]] = num[hit[0]]; 
+					for (int h = 0; h < lhit-1; ++h) pos[hit[h+1]] = pos[hit[h]] + num[hit[h+1]];
+					for (int q = 0; q < qmax; ++q){ 
+						int t = tmp[lX][tot+q]; int k = dat[i][t]; 
+						if (num[k]){ --pos[k]; tmp[lX+1][loc+pos[k]] = t; } // Note: may have num[k] == 0.  
+					}
+				}
+				++p; tot += qmax; loc += qact; for (int h = 0; h < lhit; ++h) num[hit[h]] = 0; 
 			}
-			tot += qmax; loc += qact;
 		}
-		val += dfo1(X, sizeX+1, sizemax, S, j, loc, rq * r[i]); // Updated mleft to loc. 
+		val += dfo2(X, lX+1, lmax, S, 0, j, loc, rq * ri, isdense); // Updated mleft to loc. Forced jmin := 0. 
 	} 
 	return val;
 }
-int BDeu::index(int* X, int len, int u){ // We assume X[0] > X[1] > ...
-	int ix = 0; for (int j = 0; j < len; ++j) ix += binomsum[ X[j] ][ u-j ]; return ix;
+int BDeu::index(int* X, int l, int u){ // We assume X[0] > X[1] > ...  
+	// Note: could implement O(1) time update for 1-element, order-preserving replacements X -> X'. 
+	int ix = 0; for (int j = 0; j < l; ++j) ix += binomsum[ X[j] ][ u-j ]; return ix;
 }
-int BDeu::iindex(int* X, int len, int u){ // We assume X[0] < X[1] < ...
-	int ix = 0; for (int j = 0; j < len; ++j) ix += binomsum[ X[len-1-j] ][ u-j ]; return ix;
+int BDeu::iindex(int* X, int l, int u){ // We assume X[0] < X[1] < ...
+	int ix = 0; for (int j = 0; j < l; ++j) ix += binomsum[ X[l-1-j] ][ u-j ]; return ix;
 }
 void BDeu::preindex(int umax){
+//	cerr << " [preindex:] umax = " << umax << endl;
+	for (int j = 0; j <= n; ++j){
+		for (int u = 0; u <= umax; ++u){ 
+			binomsum[j][u] = 0; 
+		} 
+	}
 	binomsum[0][0] = 1; 	// First just bin coefficients.
 	for (int j = 1; j <= n; ++j){
 		binomsum[j][0] = 1; 
-		for (int k = 1; k <= j && k <= umax; ++k){ binomsum[j][k] = binomsum[j-1][k] + binomsum[j-1][k-1]; }
+		for (int k = 1; k <= j && k <= umax; ++k){ 
+			binomsum[j][k] = binomsum[j-1][k] + binomsum[j-1][k-1]; 
+//			cout << "binom["<<j<<"]["<<k<<"] = "<<binomsum[j][k]<<endl;
+		}
 	}
 	for (int j = 0; j <= n; ++j){ // Then cumulative sums. 
 		int u = 1; for (; u <= j && u <= umax; ++u){ binomsum[j][u] += binomsum[j][u-1]; }
-		for (; u <= n; ++u){ binomsum[j][u] = (1L << j); }
+		for (; u <= n && u < 32; ++u){ binomsum[j][u] = (1L << j); }
 	}
 }
 
@@ -408,51 +540,72 @@ double BDeu::score_all1(){ // Another approach to score all nonempty subsets of 
 	int* S = new int[n]; for (int i = 0; i < n; ++i) S[i] = i; // The set of variables.
 	int u = n; 
 	double scoresum = cliq(S, n, u);
-//	double scoresum = fami(S, n, u);
-/*
-	int *Y = new int[n];  for (int i = 0; i < n; ++i) Y[i] = n-1-i;
-	show(cscores.at(index(Y, n, u))); delete[] Y;
-*/
+//	double scoresum = fami(n-1, S, n-1, u);	// Now i should scores all possible subsets of S as its parent set.
 	delete[] S; return scoresum;
 }
 ostream& operator<<(ostream& os, const BDeu& x){
 	for (int t = 0; t < x.m; ++t){ for (int i = 0; i < x.n; ++i){ os << " " << x.dat[i][t]; } os << endl; }
 	return os;
 }
+void sizeunif(int* X, int& lX, int a, int b){
+	lX = 0; int e = rand() % (b - a);
+	for (int i = a; i < b; ++i){ int w = rand() % (b - a); if (w <= e) X[lX++] = i; }
+}
+void BDeu::query_test(){
+	int q = 1000; int arity = 4;
+	cout << " BDeu Speed Test: " << q << " random query sets X whose size |X| is uniformly distributed between 1 and n\n";
+	cout << " Testing Hash:\n";
+	for (int n0 = 20; n0 <= 60; n0 += 10){
+		int* X = new int[n0]; int lX;
+		for (int m0 = 1000; m0 <= 100000; m0 *= 10){
+			init(m0, n0); fill_rnd(arity); set_ess(10.0);
+			clock_t t1 = clock();
+			for (int rr = 0; rr < q; ++rr){ sizeunif(X, lX, 0, n0); cliq(X, lX); }
+			clock_t t2 = clock(); double micros = 1000000.0 * (t2 - t1)/CLOCKS_PER_SEC;
+			double count = q; 	
+			cout << fixed << " n = " << n0 << ", m = " << setw(7) << m0 << ", arity = " << arity;
+			cout << scientific << ", microsec per query = " << micros/count;
+			cout << scientific << ", queries per microsec = " << count/micros << endl;
+			fini();
+		}
+		delete[] X;
+	}
+}
 void BDeu::test(void){
-	//cout << "[test:] " << "rand() = " << rand() << " " << rand() << endl;
-	read("child5000.csv"); set_ess(10.0); 
+	//query_test();
+	read("child1000.csv"); set_ess(10.0); 
 	//int m0 = m; int n0 = n; // If we change the key parameters m or n, we need to put them back before the very end.
-	for (int round = 10; round <= 10; round += 1){
-		//init(100*round, 10+round); fill_rnd(4); set_ess(10.0);
+	for (int round = 37; round <= 37; round += 2){
+		//init(3, 2); fill_rnd(9); set_ess(10.0);
 		//m = m0 & ((1 << round) - 1); // Artificially trunctating the data matrix for testing purposes.
 		clock_t t1 = clock();
 		double s = score_all1(); int count = (1 << n) - 1; // Testing...
 		clock_t t2 = clock(); double micros = 1000000.0 * (t2 - t1)/CLOCKS_PER_SEC; 	
 		cout << " [test:] done, n = " << n << ", m = " << m << ", count = " << count;
 		cout << fixed << ", per microsecond = " << (double) count/micros <<", s = " << scientific << s;
-		cout << ", sscores.size = " << sscores.size() << endl;
+		cout << ", ascores.size = " << ascores.size() << endl;
 		//fini();	
-	}
-	//m = m0; n = n0;
+	} //m = m0; n = n0;
 }
 BDeu::BDeu(void){ initdone = false; }
 BDeu::~BDeu(void){ if (initdone) fini(); }
 void BDeu::init(int m0, int n0){
-	set_ess(1.0); m = m0; n = n0;
+	m = m0; n = n0; //set_ess(1.0); 
 	dat = new Tdat*[n]; tmp = new int*[n]; prt = new int*[n];
-	r = new int[n]; w = new int[n]; lng = new double[m+1]; fre = new uint16_t[m+1];
+	r = new int[n]; w = new int[n]; lng = new double[m+1]; fre = new uint16_t[m+1]();
 	for (int i = 0; i < n; ++i){ 
 		dat[i] = new Tdat[m]; tmp[i] = new int[m]; prt[i] = new int[m]; 
 		for (int t = 0; t < m; ++t) tmp[i][t] = 0; 
 	}
-	lscores = new vector<wset>[n]; sscores.init(n); //sscores.demo();
+	fscores = new vector<wset>[n]; fparams.resize(n);
+	ascores.init(n); //ascores.demo();
+	preindex(31);
 	initdone = true;
 }
 void BDeu::fini(){
 	for (int i = 0; i < n; ++i){ delete[] dat[i]; delete[] tmp[i]; delete[] prt[i]; }  
 	delete[] dat; delete[] tmp; delete[] r; delete[] w; delete[] lng; delete[] fre; delete[] prt;
-	delete[] lscores; 
+	delete[] fscores;
 	initdone = false; 
 }
 void BDeu::print_tmp(){
@@ -463,5 +616,4 @@ void BDeu::print_tmp(){
 	}
 }
 
-
-
+#endif
