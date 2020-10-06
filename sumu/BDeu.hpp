@@ -16,7 +16,7 @@ using namespace std;
 // Param -- a fingerprint of the arguments used in the call for scoring a bunch of families (i, Y). 
 struct Param { 
 	vector<int>	C;		// The given set of candidates; the labeling of Y is relative to C.
-	int 		u;		// The given upper bound for the ize |Y|.
+	int 		u;		// The given upper bound for the size |Y|.
 	bool 		isdense;	// The truth value of (|C| <= 64); determines the encoding of Y. 
 };
 
@@ -126,7 +126,7 @@ void BDeu_demo (){ // Demo of the usage of the class. Might define this as a sta
 	DEMO(score = s.fscores[2][1+2+8+16].weight;, "In fact, we may index directly by the bitmap representation of Y.")
 	DEMO(cout << " Got score = " << score << endl;, "Again, the score is the same as before, as we expected.")
 
-	cout << " ======= end of demo  ===== " << endl;
+	cout << " ======  end of demo  ===== " << endl;
 #undef COMMA 
 #undef DEMO
 #undef STRV
@@ -425,7 +425,6 @@ double BDeu::cliqa(int* S, int lS, int u){
 	int* X = new int[lS];  
 	for (int t = 0; t < m; ++t){ tmp[0][t] = t; } // Init tmp[0][]. No need to init prt[].
 	int ll = cscores.size(); cscores.reserve(ll + binomsum[lS-1][u-1]); // Note: indexing will be relative to S. 
-//cerr << " [cliqa:] Reserved additional " << binomsum[lS-1][u-1] << ", lS-1 = " << lS-1 << ", u-1 = " << u-1 << endl;
 	double scoresum = dfo2(X, 0, u, S, lS-1, lS, m, 1.0, (lS <= 64)); // Argument lS-1 makes it put X[0] = lS-1.
 	delete[] X; return scoresum;	
 }
@@ -437,7 +436,7 @@ double BDeu::dfo2(int* X, int lX, int lmax, int* S, int jmin, int jmax, int mlef
 		int p = 0; int maxc = 1; 
 		for (int tot = 0; tot < mleft; ){ int c = prt[lX-1][p]; ++p; maxc = max(maxc, c); tot += c; } 
 		for (int c = 0; c <= maxc; ++c) fre[c] = 0;
-		for (int q = 0; q < p; ++q){ int c = prt[lX-1][q]; ++fre[c]; /*cerr << " " << c;*/ } //cerr << " <--counts\n";
+		for (int q = 0; q < p; ++q){ int c = prt[lX-1][q]; ++fre[c]; }
 		fre[1] = m - mleft; // fre[1] = m - mleft, the "dark material"; other singletons should not exist.
 		double essrq = ess/rq; val = base_delta_lgamma; // lgamma(ess) - lgamma(m + ess); // THE SAME FOR ALL.	
 		double baslg = lgamma(essrq); for (int c = 1; c <= maxc; ++c) if (fre[c]) val += fre[c] * (lgamma(c + essrq) - baslg); 
@@ -449,9 +448,9 @@ double BDeu::dfo2(int* X, int lX, int lmax, int* S, int jmin, int jmax, int mlef
 		int i = S[j]; X[lX] = j; // *** NOTE: WE USE RELATIVE INDEXING WRT S, NOT "X[lX] = i".
 		// Find the counts based on tmp[] and prt[]; When X is empty, these are simply (0..m-1) and (m).
 		int p = 0; int tot = 0; int loc = 0; int pp = 0; // Here pp is the index of the next partition.
-		int ri = r[i]; bool nextnotleaf = (lX+1 != lmax && j > jmin);
+		int ri = r[i]; bool nextnotleaf = (lX+1 != lmax && j > 0);
 		int num[BDEU_MAXARITY];
-		if (ri < 256){ // If the arity is low, then sparse stepping though the occuring valus k would not pay off.
+		if (ri < 4){ // If the arity is low, then sparse stepping though the occuring valus k would not pay off.
 			while (tot < mleft){
 				// Handle part p of the partition.
 				int qmax = mleft; if (lX) qmax = prt[lX-1][p];
@@ -573,7 +572,7 @@ void BDeu::query_test(){
 }
 void BDeu::test(void){
 	//query_test();
-	read("child1000.csv"); set_ess(10.0); 
+	read("child5000.csv"); set_ess(10.0); 
 	//int m0 = m; int n0 = n; // If we change the key parameters m or n, we need to put them back before the very end.
 	for (int round = 37; round <= 37; round += 2){
 		//init(3, 2); fill_rnd(9); set_ess(10.0);
