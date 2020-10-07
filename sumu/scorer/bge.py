@@ -40,12 +40,15 @@ class BGe:
         self.constscorefact = constscorefact
         self.scoreconstvec = scoreconstvec
 
-        self._cache = {(): 0}
+        self._cache = {frozenset(): 0}
 
-    def precompute_dets(self):
+    def clear_cache(self):
+        self._cache = {frozenset(): 0}
+
+    def precompute_dets(self):  # Function of v and C
         self.det = mat2pm(self.TN)
 
-    def score_component(self, nodes):
+    def score_component_precomputed(self, nodes):
         try:
             return self._cache[nodes]
         except KeyError:
@@ -53,53 +56,33 @@ class BGe:
             self._cache[nodes] = component
             return component
 
-    def score_fast(self, v, pset):
+    def score_component(self, nodes):
+        try:
+            return self._cache[nodes]
+        except KeyError:
+            _nodes = np.array(list(nodes))
+            k = len(nodes)
+            component = -0.5*(self.awpN - self.n + k)
+            if k == 1:
+                D = self.TN[_nodes[:, None], _nodes]
+                component *= np.log(D)[0, 0]
+
+            else:
+                D = self.TN[_nodes[:, None], _nodes]
+                component *= np.linalg.slogdet(D)[1]
+
+            self._cache[nodes] = component
+            return component
+
+    def score_precomputed(self, v, pset):
         return self.scoreconstvec[len(pset)] \
-            + self.score_component(tuple(sorted(tuple(pset) + (v,)))) \
-            - self.score_component(tuple(sorted(pset)))
+            + self.score_component_precomputed(frozenset(pset).union({v})) \
+            - self.score_component_precomputed(frozenset(pset))
 
-    def score_fast_no_cache(self, v, pset):
-        lp = len(pset)
-        awpNd2 = (self.awpN - self.n + lp + 1) / 2
-
-        A = self.TN[v, v]
-
-        if lp == 0:
-            return self.scoreconstvec[lp] - awpNd2 * np.log(A)
-
-        logdetD = np.log(self.det[bm(tuple(pset)) - 1])
-        logdetpart2 = np.log(self.det[bm(tuple(pset) + (v,)) - 1]) - logdetD
-
-        return self.scoreconstvec[lp] - awpNd2 * logdetpart2 - logdetD / 2
-
-    def DAGcorescore(self, v, pset):
-        lp = len(pset)
-        awpNd2 = (self.awpN - self.n + lp + 1) / 2
-        A = self.TN[v, v]
-
-        if lp == 0:
-            return self.scoreconstvec[lp] - awpNd2 * np.log(A)
-        if lp == 1:
-            D = self.TN[pset[:, None], pset]
-            logdetD = np.log(D)[0, 0]
-            B = self.TN[v, pset]
-            logdetpart2 = np.log(A - B**2 / D)[0, 0]
-            return self.scoreconstvec[lp] - awpNd2 * logdetpart2 - logdetD / 2
-
-        if lp < 4:  # Note: The limit is a bit arbitrary?
-            D = self.TN[pset[:, None], pset]
-            logdetD = np.linalg.slogdet(D)[1]
-            B = self.TN[v, pset]
-            logdetpart2 = np.linalg.slogdet(D - np.outer(B, B) / A)[1] + np.log(A) - logdetD
-            return self.scoreconstvec[lp] - awpNd2 * logdetpart2 - logdetD / 2
-
-        else:  # This seems about 2x slower than the above
-            D = self.TN[pset[:, None], pset]
-            choltemp = np.linalg.cholesky(D).T
-            logdetD = 2 * np.log(np.prod(choltemp.flatten()[(lp + 1) * np.arange(lp)]))
-            B = self.TN[v, pset]
-            logdetpart2 = np.log(A - np.sum(solve_triangular(choltemp, B, trans=1)**2))
-            return self.scoreconstvec[lp] - awpNd2 * logdetpart2 - logdetD / 2
+    def score(self, v, pset):
+        return self.scoreconstvec[len(pset)] \
+            + self.score_component(frozenset(pset).union({v})) \
+            - self.score_component(frozenset(pset))
 
 
 def bm(ints, ix=None):
