@@ -211,7 +211,7 @@ def greedy_lite(K, **kwargs):
 
     def k_highest_uncovered(v, U, k):
 
-        uncovereds = {(u, scores._local(v, S + (u,)))
+        uncovereds = {(u, scores._local(v, np.array(S + (u,))))
                       for S in subsets(C[v], 0, [len(C[v]) if scores.maxid == -1 else min(len(C[v]), scores.maxid-1)][0])
                       for u in U}
         k_highest = set()

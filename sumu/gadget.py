@@ -37,6 +37,14 @@ class Data:
         else:
             self.data = np.loadtxt(datapath, dtype=np.float64, delimiter=' ')
 
+    @property
+    def n(self):
+        return self.data.shape[1]
+
+    @property
+    def N(self):
+        return self.data.shape[0]
+
 
 class Gadget():
 
@@ -108,7 +116,7 @@ class Gadget():
         self.c_c_score = None
         if self.K < self.n - 1:
             # NOTE: CandidateComplementScore gives error if K >= n-1.
-            self.l_score = LocalScore(self.datapath, scoref=self.scoref,
+            self.l_score = LocalScore(self.data, scoref=self.scoref,
                                       maxid=self.d, ess=self.ess)
             self.c_c_score = CandidateComplementScore(self.C, self.l_score, self.d)
             del self.l_score
@@ -306,7 +314,7 @@ class LocalScore:
 
     def __init__(self, data, scoref="bdeu", prior="fair", maxid=-1, ess=10, stats=None):
         self.data = data
-        self.n = data.shape[1]
+        self.n = data.n
         self.scoref = scoref
         self.prior = prior
         self.maxid = maxid
@@ -322,7 +330,7 @@ class LocalScore:
         if self.scoref == "bdeu":
             # TODO: Move all init to BDeu constructor
             self.scorer = BDeu(self.maxid)
-            self.scorer.read(self.data)
+            self.scorer.read(self.data.data)
             self.scorer.set_ess(self.ess)
             # self.scorer.set_r()
 
@@ -330,10 +338,10 @@ class LocalScore:
             self.scorer = BGe(self.data, self.maxid)
 
     def precompute_prior(self):
-        self._prior = np.zeros(self.n)
+        self._prior = np.zeros(self.data.n)
         if self.prior == "fair":
-            self._prior = np.array(list(map(np.log, [float(comb(self.n - 1, k))
-                                                     for k in range(self.n)])))
+            self._prior = np.array(list(map(np.log, [float(comb(self.data.n - 1, k))
+                                                     for k in range(self.data.n)])))
 
     def local(self, v, pset):
         """Local score for input node v and pset, with score function self.scoref.
@@ -344,9 +352,9 @@ class LocalScore:
         if v in pset:
             raise IndexError("Attempting to query score for (v, pset) where v \in pset")
         # Because min() will raise error with empty pset
-        if v in range(self.n) and len(pset) == 0:
+        if v in range(self.data.n) and len(pset) == 0:
             return self._local(v, pset)
-        if min(v, min(pset)) < 0 or max(v, max(pset)) >= self.n:
+        if min(v, min(pset)) < 0 or max(v, max(pset)) >= self.data.n:
             raise IndexError("Attempting to query score for (v, pset) where some variables don't exist in data")
         return self._local(v, pset)
 
@@ -361,7 +369,7 @@ class LocalScore:
             cscores[v] = dict()
             for pset in subsets([u for u in C if u != v], 1, d):
                 if not (set(pset)).issubset(C[v]):
-                    cscores[v][pset] = self._local(v, pset)
+                    cscores[v][pset] = self._local(v, np.array(pset))
         return cscores
 
     def all_candidate_restricted_scores(self, C):
@@ -372,7 +380,7 @@ class LocalScore:
 
     def as_array(self, C):
         # NOTE: This should be replaced with score specific implementation (i.e., in BDeu, Bge etc)
-        scores = np.full((self.n, 2**len(C[0])), -float('inf'))
+        scores = np.full((self.data.n, 2**len(C[0])), -float('inf'))
 
         for v in range(self.n):
             for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
@@ -385,7 +393,7 @@ class LocalScore:
         # when computing input data for aps.
         scores = dict()
         if C is None:
-            C = {v: tuple(sorted(set(range(self.n)).difference({v}))) for v in range(self.n)}
+            C = {v: tuple(sorted(set(range(self.data.n)).difference({v}))) for v in range(self.data.n)}
         for v in C:
             tmp = dict()
             for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
