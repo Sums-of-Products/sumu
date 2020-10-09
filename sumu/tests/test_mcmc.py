@@ -83,7 +83,7 @@ def test_Gadget_empirical_edge_prob_error_decreases():
     dags, scores = g.sample()
 
     max_errors = sumu.utils.utils.edge_empirical_prob_max_error(dags,
-                                                                  edge_probs)
+                                                                edge_probs)
 
     print(max_errors)
 

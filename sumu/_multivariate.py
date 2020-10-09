@@ -1,3 +1,6 @@
+# NOTE: This file is only necessary until
+# https://github.com/scipy/scipy/pull/12582
+# is included in some SciPy version.
 #
 # Author: Joris Vankerschaver 2013
 #
