@@ -1,10 +1,9 @@
 import numpy as np
 from .weight_sum import weight_sum, weight_sum_contribs
-from .zeta_transform import zeta_transform_array_inplace as zeta_transform
 
 from .mcmc import PartitionMCMC, MC3
 
-from .utils.bitmap import bm, bm_to_ints, msb, bm_to_pyint_chunks, bm_to_np64, bms_to_np64, np64_to_bm, fbit, kzon, dkbit, ikbit, subsets_size_k, ssets
+from .utils.bitmap import bm, bm_to_ints, bm_to_pyint_chunks, bms_to_np64, np64_to_bm
 from .utils.core_utils import arg
 from .utils.io import read_candidates, get_n
 from .utils.math_utils import log_minus_exp, close, comb, subsets
@@ -99,7 +98,6 @@ class Gadget():
         for v in self.C:
             self.C_array[v] = np.array(self.C[v])
 
-
     def _precompute_scores_for_all_candidate_psets(self):
         self.score_array = self.l_score.all_candidate_restricted_scores(self.C_array)
 
@@ -107,10 +105,6 @@ class Gadget():
 
         self.c_r_score = CandidateRestrictedScore(self.score_array,
                                                   self.C_array, self.K)
-
-        # self.c_r_score = TOBEREMOVED_CandidateRestrictedScore(self.score_array, self.C,
-        #                                                       tolerance=self.tolerance,
-        #                                                       stats=self.stats)
 
     def _precompute_candidate_complement_scoring(self):
         self.c_c_score = None
@@ -183,22 +177,7 @@ class DAGR:
         self.tol = tolerance
 
     def precompute_pset_sampling(self, v):
-
         self.pc.precompute(v)
-
-        # K = len(self.C[v])
-
-        # self._f = [0]*2**K
-        # for X in range(2**K):
-        #     self._f[X] = np.array([-float("inf")]*2**(K-bin(X).count("1")))
-        #     self._f[X][0] = self.score.score_array[v][X]
-
-        # for k in range(1, K+1):
-        #     for k_x in range(K-k+1):
-        #         for X in subsets_size_k(k_x, K):
-        #             for Y in subsets_size_k(k, K-k_x):
-        #                 i = fbit(Y)
-        #                 self._f[X][Y] = np.logaddexp(self._f[kzon(X, i)][dkbit(Y, i)], self._f[X][Y & ~(Y & -Y)])
 
     def sample_pset(self, v, R, score=False):
 
@@ -255,9 +234,6 @@ class DAGR:
             E_bm = bm(E, ix=sorted(set(self.C[v]).difference(X)))
             U_bm = bm(U.difference(X), ix=sorted(set(self.C[v]).difference(X)))
             T_bm = bm(T.difference(X), ix=sorted(set(self.C[v]).difference(X)))
-
-            # score_1 = [self._f[X_bm][U_bm & ~E_bm] if X.issubset(U.difference(E)) else -float("inf")][0]
-            # score_2 = [self._f[X_bm][(U_bm & ~E_bm) & ~T_bm] if X.issubset(U.difference(E.union(T))) else -float("inf")][0]
 
             score_1 = [self.pc.f(X_bm, U_bm & ~E_bm) if X.issubset(U.difference(E)) else -float("inf")][0]
             score_2 = [self.pc.f(X_bm, (U_bm & ~E_bm) & ~T_bm) if X.issubset(U.difference(E.union(T))) else -float("inf")][0]
@@ -378,16 +354,6 @@ class LocalScore:
         prior = np.array(list(map(lambda k: self._prior[k], prior)))
         return self.scorer.all_candidate_restricted_scores(C) - prior
 
-    def as_array(self, C):
-        # NOTE: This should be replaced with score specific implementation (i.e., in BDeu, Bge etc)
-        scores = np.full((self.data.n, 2**len(C[0])), -float('inf'))
-
-        for v in range(self.n):
-            for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
-                scores[v, bm(pset, ix=C[v])] = self._local(v, np.array(pset))
-
-        return scores
-
     def all_scores_dict(self, C=None):
         # NOTE: Not used in Gadget pipeline, but useful for example
         # when computing input data for aps.
@@ -423,120 +389,6 @@ class Score:
         if self.c_c_score is None:
             return W_prime
         return self.c_c_score.sum(v, U, T, W_prime)[0]
-
-
-class TOBEREMOVED_CandidateRestrictedScore:
-    """For computing the local score sum given root-partition and candidate parents.
-    """
-
-    def __init__(self, score_array, C, tolerance=2**(-32), stats=None):
-
-        self.stats = None
-        if stats is not None:
-            self.stats = stats
-            self.stats[type(self).__name__] = dict()
-            self.stats[type(self).__name__]["CC"] = 0
-            self.stats[type(self).__name__]["CC basecases"] = 0
-            self.stats[type(self).__name__]["basecases"] = 0
-
-        self.score_array = score_array
-        self.C = C
-        self.tol = tolerance
-        self._precompute_a()
-        self._precompute_basecases()
-        self._precompute_psum()
-
-    def _precompute_a(self):
-        self._a = [0]*len(self.score_array)
-        for v in range(len(self.score_array)):
-            self._a[v] = zeta_transform(self.score_array[v])
-
-    def _precompute_basecases(self):
-        K = len(self.C[0])
-        self._psum = {v: dict() for v in range(len(self.C))}
-        for v in self.C:
-            for k in range(K):
-                x = 1 << k
-                U_minus_x = (2**K - 1) & ~x
-                tmp = [0]*2**(K-1)
-                tmp[0] = self.score_array[v][x]
-                self._psum[v][x] = dict()
-                for S in ssets(U_minus_x):
-                    if S | x not in self._psum[v]:
-                        self._psum[v][S | x] = dict()
-                    tmp[dkbit(S, k)] = self.score_array[v][S | x]
-                tmp = zeta_transform(tmp)
-                if self.stats:
-                    self.stats[type(self).__name__]["basecases"] += len(tmp)
-                for S in range(len(tmp)):
-                    # only save basecase if it can't be computed as difference
-                    # makes a bit slower, makes require a bit less space
-                    if self._cc(v, ikbit(S, k, 1), x):
-                        if self.stats:
-                            self.stats[type(self).__name__]["CC basecases"] += 1
-                        self._psum[v][ikbit(S, k, 1)][x] = tmp[S]
-
-    def _precompute_psum(self):
-
-        K = len(self.C[0])
-        n = len(self.C)
-
-        for v in self.C:
-            for U in range(1, 2**K):
-                for T in ssets(U):
-                    if self._cc(v, U, T):
-                        if self.stats:
-                            self.stats[type(self).__name__]["CC"] += 1
-                        T1 = T & -T
-                        U1 = U & ~T1
-                        T2 = T & ~T1
-
-                        self._psum[v][U][T] = np.logaddexp(self._sum(v, U, T1),
-                                                           self._sum(v, U1, T2))
-        if self.stats:
-            self.stats[type(self).__name__]["relative CC"] = self.stats[type(self).__name__]["CC"] / (n*3**K)
-
-    def _cc(self, v, U, T):
-        return close(self._a[v][U], self._a[v][U & ~T], self.tol)
-
-    def _sum(self, v, U, T):
-        # NOTE: As opposed to .sum() this functions takes as input
-        #       bitmaps in the space of candidate parents.
-        #       Presumably the two functions might merge, if the
-        #       root-partition representation is unified somehow.
-        if U == 0 and T == 0:
-            return self.score_array[v][0]
-        if T == 0:  # special case for T2 in precompute
-            return -float("inf")
-        if v in self._psum and U in self._psum[v] and T in self._psum[v][U]:
-            return self._psum[v][U][T]
-        else:
-            return log_minus_exp(self._a[v][U], self._a[v][U & ~T])
-
-    def sum(self, v, U, T):
-        """Computes the local score sum of node v with parents from U and
-        at least one parent from T.
-
-        Args:
-           v (int) node label in part :math:`R_{t}`
-           U (set) set of node labels in parts :math:`R_{1,t-1}`
-           T (set) set of node labels in part :math:`R_{t-1}`
-
-        Returns:
-            double: sum of scores satisfying the constraints.
-
-        """
-
-        if len(T) == 0:
-            return self.score_array[v][0]
-
-        if len(T.intersection(self.C[v])) > 0:
-            W_prime = self._sum(v, bm(U.intersection(self.C[v]), ix=self.C[v]),
-                                bm(T.intersection(self.C[v]), ix=self.C[v]))
-        else:
-            W_prime = -float("inf")
-
-        return W_prime
 
 
 class CandidateComplementScore:

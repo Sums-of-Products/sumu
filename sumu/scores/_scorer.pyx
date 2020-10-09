@@ -1,13 +1,3 @@
-"""
-import numpy as np
-import scorer
-a = scorer.BDeu()
-data = np.ones((50,10), dtype=np.int32)
-a.read(data)
-a.set_ess(10)
-a.cliq(np.array([1,2,3], dtype=np.int32))
-a.fami(4, np.array([1,2,3,7,9,10], dtype=np.int32))
-"""
 import numpy as np
 cimport numpy as np
 from libcpp.vector cimport vector
@@ -37,25 +27,23 @@ cdef extern from "BDeu.hpp":
         double fami(int i, int * par, int d)
         double fami(int i, int * par, int K, int d)
         void clear_fami(int i)
+        void clear_cliqc()
         double test(int v, int pset)
 
 cdef class BDeu:
 
     cdef CppBDeu * thisptr
     cdef int maxid
-    cdef dict cache
 
     def __cinit__(self, maxid):
         self.thisptr = new CppBDeu()
         self.maxid = maxid
 
-        self.cache = {frozenset(): 0}
-
     def __dealloc__(self):
         del self.thisptr
 
     def clear_cache(self):
-        self.cache = {frozenset(): 0}
+        self.thisptr.clear_cliqc()
 
     def read(self, data):
         # NOTE: BDeu.hpp uses int type for data, which requires data
@@ -81,30 +69,7 @@ cdef class BDeu:
         node = np.int32(node)
         pset = pset.astype(np.int32)
         vset = np.append(pset, node)
-        #return
         return self.cliq(vset) - self.cliq(pset)
-
-    def local_old(self, node, pset):
-        node = np.int32(node)
-        pset = pset.astype(np.int32)
-        vset = np.append(pset, node)
-        print(node, pset, vset)
-        try:
-            spi = self.cache[frozenset(vset)]
-            print("vset cache")
-        except KeyError:
-            print("vset missing")
-            spi = self.cliq(vset)
-            self.cache[frozenset(vset)] = spi
-        try:
-            sp = self.cache[frozenset(pset)]
-            print("pset cache")
-        except KeyError:
-            print("pset missing")
-            sp = self.cliq(pset)
-            self.cache[frozenset(pset)] = sp
-        print(spi, sp)
-        return spi - sp
 
     @cython.boundscheck(False)
     def fami(self, node, pset):
