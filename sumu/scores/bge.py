@@ -2,13 +2,18 @@ import numpy as np
 from scipy.special import loggamma as lgamma
 from scipy.linalg import solve_triangular
 
+from ..utils.math_utils import subsets
+
 
 class BGe:
     """Ported to Python from the R version by Jack Kuipers and Giusi Moffa
     :cite:`kuipers:2014`.
     """
 
-    def __init__(self, data):
+    def __init__(self, data, maxid):
+
+        self.maxid = maxid
+
         n = data.shape[1]
         N = data.shape[0]
         mu0 = np.zeros(n)
@@ -45,8 +50,8 @@ class BGe:
     def clear_cache(self):
         self._cache = {frozenset(): 0}
 
-    def precompute_dets(self):  # Function of v and C
-        self.det = mat2pm(self.TN)
+    def precompute_dets(self, nodes):
+        self.det = mat2pm(self.TN[nodes[:, None], nodes])
 
     def score_component_precomputed(self, nodes):
         try:
@@ -74,19 +79,36 @@ class BGe:
             self._cache[nodes] = component
             return component
 
-    def score_precomputed(self, v, pset):
+    def local_precomputed(self, v, pset):
         return self.scoreconstvec[len(pset)] \
             + self.score_component_precomputed(frozenset(pset).union({v})) \
             - self.score_component_precomputed(frozenset(pset))
 
-    def score(self, v, pset):
+    def local(self, v, pset):
         return self.scoreconstvec[len(pset)] \
             + self.score_component(frozenset(pset).union({v})) \
             - self.score_component(frozenset(pset))
 
+    def all_candidate_restricted_scores(self, C_array):
+
+        C = dict({v: tuple(C_array[v]) for v in range(C_array.shape[0])})
+
+        scores = np.full((self.n, 2**len(C[0])), -float('inf'))
+        for v in range(self.n):
+            vset = tuple(sorted(C[v] + (v,)))
+            self.precompute_dets(np.array(vset))
+            for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
+                pset_ = index(pset, vset)
+                scores[v, bm(pset, ix=C[v])] = self.local_precomputed(v, pset_)
+        return scores
+
+
+def index(from_, to_):
+    return tuple(map(lambda k: to_.index(k), from_))
+
 
 def bm(ints, ix=None):
-    if type(ints) not in [set, tuple]:
+    if type(ints) not in [frozenset, set, tuple]:
         ints = {int(ints)}
     if ix is not None:
         ints = [ix.index(i) for i in ints]

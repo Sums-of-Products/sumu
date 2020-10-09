@@ -11,8 +11,8 @@ exts = [
 
     Extension(
         "sumu.scorer",
-        sources=["sumu/scorer/_scorer.pyx"],
-        include_dirs=["sumu/scorer"],
+        sources=["sumu/scores/_scorer.pyx"],
+        include_dirs=["sumu/scores", numpy_include],
         language='c++',
         extra_compile_args=['-std=c++11', '-Wall', '-O3']),
 
@@ -62,8 +62,6 @@ setup(
     author="Jussi Viinikka",
     author_email="jussi.viinikka@helsinki.fi",
     packages=["sumu"],
-    # Pygobnilp scoring requires scipy, sklearn, pandas, numba.
-    # With better scoring can get rid of these requirements.
-    install_requires=["numpy", "scipy", "sklearn", "pandas", "numba"],
+    install_requires=["numpy", "scipy"],
     ext_modules=cythonize(exts, language_level="3")
 )

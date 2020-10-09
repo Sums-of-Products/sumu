@@ -9,12 +9,33 @@ from .utils.core_utils import arg
 from .utils.io import read_candidates, get_n
 from .utils.math_utils import log_minus_exp, close, comb, subsets
 
-from .scoring import DiscreteData, ContinuousData, BDeu, BGe
-from .scorer import BDeu as BDeu2
+from .scorer import BDeu, BGe
+
 from .CandidateRestrictedScore import CandidateRestrictedScore
 from .DAGR import DAGR as DAGR_precompute
 
 import sumu.candidates_no_r as cnd
+
+
+class Data:
+    """Class for data.
+
+    At the moment, for discrete data it is assumed first row is node
+    names, second is arities, and the rest is the actual data (though
+    names are not used for now).
+
+    For continuous data it is assumed that every row represents data.
+
+    Todo: logical treatment of names.
+    """
+
+    def __init__(self, datapath, discrete=True):
+        if discrete:
+            self.data = np.loadtxt(datapath, dtype=np.int32, delimiter=' ')
+            self.arities = self.data[1]
+            self.data = self.data[2:]
+        else:
+            self.data = np.loadtxt(datapath, dtype=np.float64, delimiter=' ')
 
 
 class Gadget():
@@ -46,7 +67,13 @@ class Gadget():
         return self._sample_dags()
 
     def _find_candidate_parents(self):
-        self.l_score = LocalScore(self.datapath, scoref=self.scoref,
+
+        if self.scoref == "bdeu":
+            self.data = Data(self.datapath)
+        elif self.scoref == "bge":
+            self.data = Data(self.datapath, discrete=False)
+
+        self.l_score = LocalScore(self.data, scoref=self.scoref,
                                   maxid=self.maxid, ess=self.ess,
                                   stats=self.stats)
 
@@ -59,17 +86,19 @@ class Gadget():
         else:
             self.C = read_candidates(self.cp_path)
 
+        # TODO: Use this everywhere instead of the dict
+        self.C_array = np.empty((self.n, self.K), dtype=np.int32)
+        for v in self.C:
+            self.C_array[v] = np.array(self.C[v])
+
+
     def _precompute_scores_for_all_candidate_psets(self):
-        self.score_array = self.l_score.as_array(self.C)
+        self.score_array = self.l_score.all_candidate_restricted_scores(self.C_array)
 
     def _precompute_candidate_restricted_scoring(self):
-        # TODO: New CandidateRestrictedScore takes candidate parents
-        # as np.array. Should adapt to this change everywhere else too.
-        C = np.empty((self.n, self.K), dtype=np.int32)
-        for v in self.C:
-            C[v] = np.array(self.C[v])
 
-        self.c_r_score = CandidateRestrictedScore(self.score_array, C, self.K)
+        self.c_r_score = CandidateRestrictedScore(self.score_array,
+                                                  self.C_array, self.K)
 
         # self.c_r_score = TOBEREMOVED_CandidateRestrictedScore(self.score_array, self.C,
         #                                                       tolerance=self.tolerance,
@@ -149,7 +178,7 @@ class DAGR:
 
         self.pc.precompute(v)
 
-        K = len(self.C[v])
+        # K = len(self.C[v])
 
         # self._f = [0]*2**K
         # for X in range(2**K):
@@ -270,12 +299,16 @@ class DAGR:
 
 class LocalScore:
     """Class for computing local scores given input data.
+
+    This is responsible for structure prior? Could get rid of whole
+    class if adds unnecessary overhead.
     """
 
-    def __init__(self, datapath, scoref="bdeu", maxid=-1, ess=10, stats=None):
-        # NOTE: __init__ creates self.local(node, parents) function.
-        self.datapath = datapath
+    def __init__(self, data, scoref="bdeu", prior="fair", maxid=-1, ess=10, stats=None):
+        self.data = data
+        self.n = data.shape[1]
         self.scoref = scoref
+        self.prior = prior
         self.maxid = maxid
         self.ess = ess
         self.stats = None
@@ -284,69 +317,42 @@ class LocalScore:
             self.stats[type(self).__name__] = dict()
             self.stats[type(self).__name__]["clear_cache"] = 0
 
+        self.precompute_prior()
+
         if self.scoref == "bdeu":
-
-            def local(node, parents):
-                # NOTE: Cache is not emptied ever
-                node = np.int32(node)
-                p_cliq = np.sort(np.array(parents, dtype=np.int32))
-                idx = p_cliq.searchsorted(node)
-                pi_cliq = np.concatenate((p_cliq[:idx], [node], p_cliq[idx:]))
-                spi = self.cliq_cache.get(tuple(pi_cliq))
-                sp = self.cliq_cache.get(tuple(p_cliq))
-                if spi is None:
-                    spi = self.scorer.cliq(pi_cliq)
-                    self.cliq_cache[tuple(pi_cliq)] = spi
-                if not parents:
-                    return spi - np.log(comb(self.n - 1, len(parents)))
-                if sp is None:
-                    sp = self.scorer.cliq(p_cliq)
-                    self.cliq_cache[tuple(p_cliq)] = sp
-                return spi - sp - np.log(comb(self.n - 1, len(parents)))
-
-            d = np.loadtxt(self.datapath, dtype=np.int32)
-            r = d[1]
-            d = d[2:]
-            self.n = d.shape[1]
-
-            self.scorer = BDeu2()
-            self.scorer.read(d)
+            # TODO: Move all init to BDeu constructor
+            self.scorer = BDeu(self.maxid)
+            self.scorer.read(self.data)
             self.scorer.set_ess(self.ess)
-            # self.scorer.set_r(r)
-            self.cliq_cache = dict()
-            self._local = local
+            # self.scorer.set_r()
 
         elif self.scoref == "bge":
+            self.scorer = BGe(self.data, self.maxid)
 
-            def local(node, parents):
-                if len(self.score._cache) > 1000000:
-                    self.score._cache = dict()
-                    if self.stats:
-                        self.stats[type(self).__name__]["clear_cache"] += 1
-                if self.maxid == -1 or len(parents) <= self.maxid:
-                    return self.score.bge_score(node, parents)[0] - np.log(comb(self.n - 1, len(parents)))
-                else:
-                    return -float("inf")
-
-            d = ContinuousData(self.datapath, header=False)
-            d._varidx = {v: v for v in d._varidx.values()}
-            self.n = len(d._variables)
-            self.score = BGe(d)
-            self._local = local
+    def precompute_prior(self):
+        self._prior = np.zeros(self.n)
+        if self.prior == "fair":
+            self._prior = np.array(list(map(np.log, [float(comb(self.n - 1, k))
+                                                     for k in range(self.n)])))
 
     def local(self, v, pset):
         """Local score for input node v and pset, with score function self.scoref.
 
-        This is the "safe" version, raising error if queried for variables not existing in data.
+        This is the "safe" version, raising error if queried with invalid input.
         The unsafe self._local will just segfault.
         """
         if v in pset:
-            return -float("inf")
+            raise IndexError("Attempting to query score for (v, pset) where v \in pset")
+        # Because min() will raise error with empty pset
         if v in range(self.n) and len(pset) == 0:
             return self._local(v, pset)
         if min(v, min(pset)) < 0 or max(v, max(pset)) >= self.n:
-            raise IndexError("Attempting to query score for non-existing variables")
+            raise IndexError("Attempting to query score for (v, pset) where some variables don't exist in data")
         return self._local(v, pset)
+
+    def _local(self, v, pset):
+        # NOTE: How expensive are nested function calls?
+        return self.scorer.local(v, pset) - self._prior[len(pset)]
 
     def complementary_scores_dict(self, C, d):
         """C candidates, d indegree for complement psets"""
@@ -357,6 +363,22 @@ class LocalScore:
                 if not (set(pset)).issubset(C[v]):
                     cscores[v][pset] = self._local(v, pset)
         return cscores
+
+    def all_candidate_restricted_scores(self, C):
+        # NOTE: This now hardcodes prior "fair"
+        prior = np.array([bin(i).count("1") for i in range(2**len(C[0]))])
+        prior = np.array(list(map(lambda k: self._prior[k], prior)))
+        return self.scorer.all_candidate_restricted_scores(C) - prior
+
+    def as_array(self, C):
+        # NOTE: This should be replaced with score specific implementation (i.e., in BDeu, Bge etc)
+        scores = np.full((self.n, 2**len(C[0])), -float('inf'))
+
+        for v in range(self.n):
+            for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
+                scores[v, bm(pset, ix=C[v])] = self._local(v, np.array(pset))
+
+        return scores
 
     def all_scores_dict(self, C=None):
         # NOTE: Not used in Gadget pipeline, but useful for example
@@ -369,14 +391,6 @@ class LocalScore:
             for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
                 tmp[pset] = self._local(v, pset)
             scores[v] = tmp
-        return scores
-
-    def as_array(self, C):
-        scores = np.full((self.n, 2**len(C[0])), -float('inf'))
-        for v in range(self.n):
-            for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
-                scores[v, bm(pset, ix=C[v])] = self._local(v, pset)
-
         return scores
 
 
