@@ -10,6 +10,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "Wsets.hpp"
+#include "HashCounter.hpp"
 
 using namespace std;
 
@@ -64,7 +65,7 @@ class BDeu {
 	vector<wset>  	cscores;		// List of clique scores.
 	Wsets         	ascores;		// Storage for arbitrary (clique, score) pairs.
 	int**   	tmp;			// Helper array of size n x m;
-	uint16_t*	fre;			// Helper array of size m+1 to store a multiset of counts, indexed by counts. 
+	uint32_t*	fre;			// Helper array of size m+1 to store a multiset of counts, indexed by counts. 
 	double* 	lng;			// Helper array of size m+1 to store ln(Gamma(j + ess')/Gamma(ess')).
 	int**   	prt;			// Helper array of size n x m, yet another;
 	int binomsum[BDEU_MAXN][32];		// Tail sums of binomial coefficients. Would be better make this static.
@@ -75,6 +76,8 @@ class BDeu {
 	void   score_dfs3(int d, int* X, int a, int b);
 	double score_dico(int d, int* X);
 	double score_hash(int d, int* X);
+	double score_has2(int d, int* X);
+	double score_radi(int d, int* X);
 	double score_all ();			// Just for testing.
 
 	double cliqa(int* S, int lS, int u);	// Scores and stores all subsets of S of size at most u that contain the last of S.
@@ -163,10 +166,12 @@ void BDeu::set_ess(double val){ ess = val; base_delta_lgamma = lgamma(ess) - lga
 
 // Returns the BDeu score of the clique X of size d. 
 double BDeu::cliq (int* X, int d){ 
-	if (d == 0) return 0;
-	int wc = width(d, X); 					 
-	if (0 < wc && wc < 64) return score_hash(d, X); 	// Very fast, but currently implemented only up to 64-bit data records.
-	else                   return score_dico(d, X);		// Somewhat carefully optimized divide & conquer algorithm.		
+	if (d == 0) return 0; 
+	int wc = width(d, X);					// Number of bits needed to encode a data point. 			
+	if      (1 < d && wc < 64)  return score_hash(d, X);	// Very fast, implemented only up to 64-bit data records.
+	else if (1 < d && wc < 128) return score_has2(d, X);	// Fast, currently implemented up to 128-bit data records.
+	else if (d < 2)             return score_radi(d, X);	// Might be fastest for very small d. 		
+	else                        return score_dico(d, X);	// Somewhat carefully optimized divide & conquer.		
 }
 // Returns the BDeu score of the clique X of size d, with caching. Note: currently caching assumes the ground set has size at most 64. 
 double BDeu::cliqc(int* X, int d){ 
@@ -194,9 +199,6 @@ double BDeu::fami (int i, int* Y, int d){
 	double  sp = cliq(Y, d);
 	int*     X = new int[d+1]; X[d] = i; for (int j = 0; j < d; ++j) X[j] = Y[j]; 
 	double spi = cliq(X, d+1); 
-//cerr << "  [fami:] X: "; for (int j = 0; j <= d; ++j) cerr << " " << X[j];
-//cerr << ", spi = " << spi << ", sp = " << sp << endl;	
-
 	delete [] X; return spi - sp; 
 }
 // Scores ALL families (i, Y) where i is an element of S and Y is a subset of S of size at most u.
@@ -228,18 +230,14 @@ double BDeu::fami(int* S, int lS, int u){
 	delete[] X; delete[] Y; delete[] Z; 
 	return scoresum;
 }
-// UNDER CONSTRUCTION...
 // Scores ALL families (i, Y) where i is NOT an element of C and Y is a subset of C of size at most u.
-// The current solution is efficient if and only if u is large compared to lC. 
 double BDeu::fami(int i, int* C, int lC, int u){
 	clear_fami(i);	
 	double scoresum = cliq (C, lC, u);	// Begin by simply computing clique scores over C. The scores are stored in cscores.
 	int l1 = cscores.size();		// This many scores were inserted.	
-//cout<<" [fami:] l1 = "<< l1 << endl;
 	int lS = lC+1; int* S = new int[lS]; for (int j = 0; j < lC; ++j) S[j] = C[j]; S[lC] = i; // S = C U {i}.
 	scoresum       += cliqa(S, lS, u+1);	// Continue by adding scores of cliques over S that contain the last element of S.
 	int l2 = cscores.size();		// The total number of computed clique scores. 
-//cout<<" [fami:] l2 = "<< l2 << ", capacity = "<< cscores.capacity() << endl;
 
 	fscores[i].reserve(l2/2); 		// Exactly what is needed, since (i, Y) is obtained from Y and Y U {i}. 
 	int* X = new int[u+1]; int lX; int* Y = new int[u]; int lY;	  
@@ -249,8 +247,6 @@ double BDeu::fami(int i, int* C, int lC, int u){
 		int indY = index(Y, lY, u); wset Yw = cscores.at(indY);		// Y is among the first list of cliques.		
 		wset Yiw = get_wset(Y, lY, Xw.weight - Yw.weight, (lC <= 64));	// The encoding of Y is wrt C. 
 		fscores[i].push_back(Yiw);
-//cout << " X: "; for (int h = 0; h < lX; ++h) cout << " " << S[X[h]]; cout << ", weight = " << Xw.weight;
-//cout << " Y: "; for (int h = 0; h < lY; ++h) cout << " " << S[Y[h]]; cout << ", weight = " << Yw.weight << ", wdiff = " << Yiw.weight << endl;
 		// Sanity check:
 		if (indY != (int) fscores[i].size()-1){ cerr << " *** ERROR, k = "<< k <<" *** EXIT NOW \n"; exit(1); }
 	}
@@ -351,71 +347,94 @@ double BDeu::score_dico(int d, int* X){ // Divide and conquer.
 	return s;
 }
 
-struct keycount { uint64_t key; int num; int nxt; }; // The int fields could be replaced by uint16_t for most practical purposes.
+double BDeu::score_radi(int d, int* X){ // Non-recursive radix partitioning.
+	if (d == 0) return 0;
+	for (int t = 0; t < m; ++t) tmp[0][t] = t;					
+	int mleft = m; 
+	for (int j = 0; j < d; ++j){
+		int i = X[j]; int ri = r[i]; int tot = 0; int loc = 0; int p = 0; int pp = 0;
+		int num[BDEU_MAXARITY];		
+		while (tot < mleft){
+			// Handle part p of the partition.
+			int qmax = mleft; if (j) qmax = prt[j-1][p];
+			// First, get num[].
+			for (int k = 0; k < ri; ++k) num[k] = 0;
+			for (int q = 0; q < qmax; ++q){ int t = tmp[j][tot+q]; int k = dat[i][t]; ++num[k]; }
+			// Second, get prt[].
+			int qact = 0; 
+			for (int k = 0; k < ri; ++k){							
+				switch (num[k]){ // *** NOTE: Here we fix the order of pp in relation to k !!!
+					case 0: break; case 1: num[k] = 0; break; // Ignore singletons.
+					default: prt[j][pp] = num[k]; ++pp; qact += num[k]; // Only here we can update qact.
+				} 
+			} 
+			if (j < d-1){ 
+				// Third, get tmp[].
+				int pos[BDEU_MAXARITY]; pos[0] = num[0]; 
+				for (int k = 0; k < ri-1; ++k) pos[k+1] = pos[k] + num[k+1];
+				for (int q = 0; q < qmax; ++q){ 
+					int t = tmp[j][tot+q]; int k = dat[i][t]; 
+					if (num[k]){ --pos[k]; tmp[j+1][loc+pos[k]] = t; } 
+				}
+			}
+			++p; tot += qmax; loc += qact; 
+		}
+		mleft = loc;
+	}	
+	// Finally, the case j = d-1.
+	int p = 0; int maxc = 1; 
+	for (int tot = 0; tot < mleft; ){ int c = prt[d-1][p]; ++p; maxc = max(maxc, c); tot += c; } 
+	for (int c = 0; c <= maxc; ++c) fre[c] = 0;
+	for (int q = 0; q < p; ++q){ int c = prt[d-1][q]; ++fre[c]; }
+	fre[1] = m - mleft; // fre[1] = m - mleft, the "dark material"; other singletons should not exist.
+	double rq = 1; for (int j = 0; j < d; ++j) rq *= r[X[j]]; 
+	double essrq = ess/rq; double val = base_delta_lgamma; // lgamma(ess) - lgamma(m + ess); // THE SAME FOR ALL.	
+	double baslg = lgamma(essrq); for (int c = 1; c <= maxc; ++c) if (fre[c]) val += fre[c] * (lgamma(c + essrq) - baslg); 
+	for (int c = 0; c <= maxc; ++c) fre[c] = 0; 
+	return val; 
+}
 
-class HashCounter { // Relatively huge hash range; active bins iterable. XOR hashing. Currently the count functions not used at all.
-    public:
-	void insert(uint64_t key){ int p = hash(key); insert(key, p); }
-	int   count(uint64_t key){ int p = hash(key); return count(key, p); }
-	int    hash(uint64_t k  ){ uint32_t p = k & mask; k >>= lmask; p ^= k & mask; k >>= lmask; return (p ^ k) & mask; } 
-	void insert(uint64_t key, int p){
-		uint16_t q = ptrs[p]; if (q == 0){ buck[nex] = { key, 1, 0 }; ptrs[p] = nex; act[lact] = p; ++lact; ++nex; return; }
-		do { keycount kc = buck[q]; if (kc.key == key){ ++buck[q].num; return; } q = kc.nxt; } while (q); 
-		buck[nex] = { key, 1, ptrs[p] }; ptrs[p] = nex; ++nex; // Not found. Becomes the *head*.
-	}
-	int   count(uint64_t key, int p){
-	 	int q = ptrs[p]; while (q){ keycount kc = buck[q]; if (kc.key == key){ return kc.num; } q = kc.nxt; } return 0; 
-	}
-	int get_freq_and_reset(uint16_t* fre){ // We assume fre[] has been initialized to zero. Returns the largest count encountered.
-		int maxc = 0;
-		for (int j = 0; j < lact; ++j){
-			int p = act[j]; int q = ptrs[p]; ptrs[p] = 0; // Zero the static ptrs[]; we are about to delete the data structure.
-			while (q){ keycount kc = buck[q]; int c = buck[q].num; ++fre[c]; maxc = max(maxc, c); q = kc.nxt; }
-		} return maxc; 
-	}
-	int maxload(){ // Mainly for testing. Note: a slow routine; we don't want to slow down insert by additional bookkeeping.
-		int maxl = 0; 
-		for (int j = 0; j < lact; ++j){
-			int l = 0; int p = act[j]; int q = ptrs[p]; 
-			while (q){ ++l; keycount kc = buck[q]; q = kc.nxt; } if (l > maxl) maxl = l;
-		} return maxl; 
-	}
-	HashCounter (int m){ buck = new keycount[m+1]; nex = 1; act = new int[m]; lact = 0; } 
-	~HashCounter(){ delete[] buck; delete[] act; }
-    private:
-	int* act;		int lact;	// Active bins.
-	keycount* buck;		int nex;	// The count of *unique* keys + 1; also the index of the next free slot in buck.
-	static uint16_t ptrs[]; static const uint32_t mask, lmask;
-};
-//uint16_t HashCounter::ptrs[512*1024] { 0 }; const uint32_t HashCounter::mask = 0x7FFFF, HashCounter::lmask = 19; 
-uint16_t HashCounter::ptrs[256*1024] { 0 }; const uint32_t HashCounter::mask = 0x3FFFF, HashCounter::lmask = 18; 
-//uint16_t HashCounter::ptrs[64*1024] { 0 }; const uint32_t HashCounter::mask = 0xFFFF, HashCounter::lmask = 16; 
-
-double BDeu::score_hash(int d, int* X){ // By simply hashing. Does not work: unordered map does not support proper count queries.
+double BDeu::score_hash(int d, int* X){ // By simply hashing. (Unordered map does not support proper count queries.)
 	HashCounter h(m); 								// Hash. Uses a self-made data structure.
-	uint64_t* z = new uint64_t[m]; for (int t = 0; t < m; ++t) z[t] = dat[X[0]][t]; // Form a list of keys. 
+	uint64_t* z = new uint64_t[m]; 
+	for (int t = 0; t < m; ++t) z[t] = dat[X[0]][t]; // Form a list of keys. 
 	for (int j = 1; j < d; ++j){
 		int i = X[j]; int l = w[i]; 
 		for (int t = 0; t < m; ++t){ z[t] <<= l; z[t] |= dat[i][t]; } 		// Simply encode the data.
 	}
-	for (int t = 0; t <  m; ++t) h.insert(z[t]);  					// Hash.
+	for (int t = 0; t < m; ++t) h.insert(z[t]);  					// Hash.
 	int maxc = h.get_freq_and_reset(fre); 						// Get the count frequencies, member var fre[]. 
 	double q = 1; for (int j = 0; j < d; ++j) q *= r[X[j]]; double essq = ess/q;	
 	double baslg = lgamma(essq); double s = base_delta_lgamma; 			// lgamma(ess) - lgamma(m + ess);	
-	for (int c = 1; c <= maxc; ++c) if (fre[c]){ s += fre[c] * (lgamma(c + essq) - baslg); fre[c] = 0; } // Finalize, and reset fre[].	
+	for (int c = 1; c <= maxc; ++c) if (fre[c]){ s += fre[c] * (lgamma(c + essq) - baslg); fre[c] = 0; } // Finalize, reset fre[].	
 	delete[] z; return s;
 }
-
+double BDeu::score_has2(int d, int* X){ // A bit slow.... By simply hashing, allowing for arbitrarily long keys.
+	Has2Counter h(m); 								// Hash. Uses a self-made data structure.
+	hc2key* zz = new hc2key[m]; 
+	for (int t = 0; t < m; ++t) zz[t] = { (uint64_t) dat[X[0]][t], 0L }; // Form a list of keys. 	
+	int ll = w[X[0]]; 
+	for (int j = 1; j < d; ++j){
+		int i = X[j]; int l = w[i]; ll += l; 
+		if (ll <= 64) for (int t = 0; t < m; ++t){ zz[t].k1 <<= l; zz[t].k1 |= dat[i][t]; } 
+		else          for (int t = 0; t < m; ++t){ zz[t].k2 <<= l; zz[t].k2 |= dat[i][t]; } 	
+	}
+//	delete[] zz; return 0;
+	for (int t = 0; t < m; ++t) h.insert(zz[t]);  					// Hash.
+	int maxc = h.get_freq_and_reset(fre); 						// Get the count frequencies, member var fre[]. 
+	double q = 1; for (int j = 0; j < d; ++j) q *= r[X[j]]; double essq = ess/q;	
+	double baslg = lgamma(essq); double s = base_delta_lgamma; 			// lgamma(ess) - lgamma(m + ess);	
+	for (int c = 1; c <= maxc; ++c) if (fre[c]){ s += fre[c] * (lgamma(c + essq) - baslg); fre[c] = 0; } // Finalize, reset fre[].	 
+	delete[] zz; return s;
+}
 
 double BDeu::score_all(){ // Scoring all nonempty subsets of the n variables.
 	int* X = new int[n]; // Set of variables.
 	for (int i = 0; i < n; ++i) X[i] =  i;
 	double s = 0; int count = 0;
 	for (int x = 1; x < (1 << n); ++x){
-		int d = 0; // Size of x.
-		for (int i = 0; i < n; ++i){ if (x & (1 << i)){ X[d++] = i; } } // Set X.
-		if (x) s += cliq(X, d);		
-		++count;
+		int d = 0; for (int i = 0; i < n; ++i){ if (x & (1 << i)){ X[d++] = i; } } // Set X.
+		s += cliq(X, d); ++count;
 	}
 	delete[] X; return s;
 }
@@ -551,13 +570,13 @@ void sizeunif(int* X, int& lX, int a, int b){
 	for (int i = a; i < b; ++i){ int w = rand() % (b - a); if (w <= e) X[lX++] = i; }
 }
 void BDeu::query_test(){
-	int q = 1000; int arity = 4;
-	cout << " BDeu Speed Test: " << q << " random query sets X whose size |X| is uniformly distributed between 1 and n\n";
-	cout << " Testing Hash:\n";
+	double q; int arity = 9;
+	cout << " BDeu Speed Test: random query sets X whose size |X| is uniformly distributed between 1 and n\n";
+	cout << " Testing cliq():\n";
 	for (int n0 = 20; n0 <= 60; n0 += 10){
 		int* X = new int[n0]; int lX;
 		for (int m0 = 1000; m0 <= 100000; m0 *= 10){
-			init(m0, n0); fill_rnd(arity); set_ess(10.0);
+			init(m0, n0); fill_rnd(arity); set_ess(10.0); q = 50000*1000/m0;
 			clock_t t1 = clock();
 			for (int rr = 0; rr < q; ++rr){ sizeunif(X, lX, 0, n0); cliq(X, lX); }
 			clock_t t2 = clock(); double micros = 1000000.0 * (t2 - t1)/CLOCKS_PER_SEC;
@@ -570,9 +589,29 @@ void BDeu::query_test(){
 		delete[] X;
 	}
 }
+void dd_test(){
+	BDeu s;
+	s.read("dd.csv"); s.set_ess(10.0);
+	int C0[4] = {1, 2, 3, 4};
+	int C1[4] = {0, 2, 3, 4};
+	int C2[4] = {0, 1, 3, 4};
+	int C3[4] = {0, 1, 2, 4};
+	int C4[4] = {0, 1, 2, 3};
+	int  E[0] = { };
+	s.fami(0, C0, 4, 4);
+	s.fami(1, C1, 4, 4);
+	s.fami(2, C2, 4, 4);
+	s.fami(3, C3, 4, 4);
+	s.fami(4, C4, 4, 4);
+	double val0 = s.fami  (0, E, 0);
+	double wal0 = s.fscore(0, E, 0);
+	cout << fixed << " Score of (0, E) = " << val0 << " = " << s.fscores[0][0].weight << " = " << wal0 << endl;
+
+}
 void BDeu::test(void){
+	dd_test();
 	//query_test();
-	read("child5000.csv"); set_ess(10.0); 
+	read("child1000.csv"); set_ess(10.0); 
 	//int m0 = m; int n0 = n; // If we change the key parameters m or n, we need to put them back before the very end.
 	for (int round = 37; round <= 37; round += 2){
 		//init(3, 2); fill_rnd(9); set_ess(10.0);
@@ -580,9 +619,10 @@ void BDeu::test(void){
 		clock_t t1 = clock();
 		double s = score_all1(); int count = (1 << n) - 1; // Testing...
 		clock_t t2 = clock(); double micros = 1000000.0 * (t2 - t1)/CLOCKS_PER_SEC; 	
-		cout << " [test:] done, n = " << n << ", m = " << m << ", count = " << count;
-		cout << fixed << ", per microsecond = " << (double) count/micros <<", s = " << scientific << s;
-		cout << ", ascores.size = " << ascores.size() << endl;
+		cout << " [test:] n = " << n << ", m = " << m << ", count = " << count;
+		cout << fixed << ", per microsec = " << (double) count/micros <<", s = " << scientific << s;
+		cout << ", #ascores = " << ascores.size() << ", #cscores = " << cscores.size() << endl;
+
 		//fini();	
 	} //m = m0; n = n0;
 }
@@ -591,21 +631,18 @@ BDeu::~BDeu(void){ if (initdone) fini(); }
 void BDeu::init(int m0, int n0){
 	m = m0; n = n0; //set_ess(1.0); 
 	dat = new Tdat*[n]; tmp = new int*[n]; prt = new int*[n];
-	r = new int[n]; w = new int[n]; lng = new double[m+1]; fre = new uint16_t[m+1]();
+	r = new int[n]; w = new int[n]; lng = new double[m+1]; fre = new uint32_t[m+1]();
 	for (int i = 0; i < n; ++i){ 
 		dat[i] = new Tdat[m]; tmp[i] = new int[m]; prt[i] = new int[m]; 
 		for (int t = 0; t < m; ++t) tmp[i][t] = 0; 
 	}
-	fscores = new vector<wset>[n]; fparams.resize(n);
-	ascores.init(n); //ascores.demo();
-	preindex(31);
-	initdone = true;
+	fscores = new vector<wset>[n]; fparams.resize(n); ascores.init(n); //ascores.demo();
+	preindex(31); initdone = true;
 }
 void BDeu::fini(){
 	for (int i = 0; i < n; ++i){ delete[] dat[i]; delete[] tmp[i]; delete[] prt[i]; }  
 	delete[] dat; delete[] tmp; delete[] r; delete[] w; delete[] lng; delete[] fre; delete[] prt;
-	delete[] fscores;
-	initdone = false; 
+	delete[] fscores; initdone = false; 
 }
 void BDeu::print_tmp(){
 	cout << "tmp:" << endl;
