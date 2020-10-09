@@ -89,7 +89,7 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array, int* C, 
     }
 
     for (int c = 0; c < K; ++c) {
-      m_C[v][c] = C[++j];
+      m_C[v][c] = C[j++];
     }
 
   }

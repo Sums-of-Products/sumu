@@ -73,7 +73,7 @@ DAGR::DAGR(double* score_array, int* C, int n, int K, double tolerance) {
   for (int v = 0; v < n; ++v) {
     m_C[v] = new int[K];
     for (int c = 0; c < K; ++c) {
-      m_C[v][c] = C[++i];
+      m_C[v][c] = C[i++];
     }
   }
 
