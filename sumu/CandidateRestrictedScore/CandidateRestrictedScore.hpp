@@ -50,6 +50,7 @@ public:
   double m_tolerance; // Used as threshold for preparing for cc.
 
   CandidateRestrictedScore(double* scores, int* C, int n, int K, double tolerance);
+  ~CandidateRestrictedScore();
   double sum(int v, bm32 U, bm32 T);
   double get_cc(int v, bm64 key);
   double get_tau_simple(int v, bm32 U);
@@ -97,6 +98,16 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array, int* C, 
   precompute_tau_simple();
   precompute_tau_cc_basecases();
   precompute_tau_cc();
+}
+
+CandidateRestrictedScore::~CandidateRestrictedScore() {
+
+  delete [] m_tau_cc;
+  for (int v = m_n - 1; v > -1; --v) {
+    delete[] m_tau_simple[v];
+    delete[] m_C[v];
+  }
+
 }
 
 

@@ -10,6 +10,7 @@ cdef extern from "DAGR.hpp":
 
         CppDAGR(double* score_array, int* C, int n, int K, double tolerance)
         void precompute(int v)
+        void clear();
         double ** m_f
         double f(bm32 X, bm32 Y)
 
@@ -48,6 +49,9 @@ cdef class DAGR:
             for Y in np.arange(k_Y, dtype=np.int32):
                 f[X][Y] = self.thisptr.m_f[X][Y]
         return f
+
+    def clear(self):
+        self.thisptr.clear()
 
     def f(self, bm32 X, bm32 Y):
         return self.thisptr.f(X, Y)

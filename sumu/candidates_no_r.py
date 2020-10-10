@@ -230,6 +230,7 @@ def greedy_lite(K, **kwargs):
             U = [u for u in U if u not in u_hat]
         C[v].update(k_highest_uncovered(v, U, k))
         C[v] = tuple(sorted(C[v]))
+        scores.clear_cache()
 
     return C
 

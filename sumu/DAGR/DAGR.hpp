@@ -41,7 +41,9 @@ class DAGR {
 public:
 
   DAGR(double* score_array, int* C, int n, int K, double tolerance);
+  ~DAGR();
   void precompute(int v);
+  void clear();
   double f(bm32 X, bm32 Y);
   double** m_f; // 2^K arrays of varying lengths
 
@@ -68,7 +70,6 @@ DAGR::DAGR(double* score_array, int* C, int n, int K, double tolerance) {
   m_K = K;
 
   m_C = new int*[n];
-  m_f = new double*[((bm32) 1 << m_K)];
 
   int i = 0;
   for (int v = 0; v < n; ++v) {
@@ -80,6 +81,22 @@ DAGR::DAGR(double* score_array, int* C, int n, int K, double tolerance) {
 
 }
 
+DAGR::~DAGR() {
+
+  clear();
+
+  for (int v = m_n - 1; v > -1; --v) {
+    delete[] m_C[v];
+  }
+
+}
+
+void DAGR::clear() {
+  for (bm32 X = ((bm32) 1 << m_K) - 1; X > -1; --X) {
+    delete[] & m_f[X];
+  }
+}
+
 
 void DAGR::precompute(int v) {
 
@@ -87,6 +104,8 @@ void DAGR::precompute(int v) {
   bm32 r_X;
   bm32 c_Y;
   bm32 r_Y;
+
+  m_f = new double*[((bm32) 1 << m_K)];
 
   for (bm32 X = 0; X < ((bm32) 1 << m_K); ++X) {
     int k = count_32(X);

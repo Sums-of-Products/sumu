@@ -154,6 +154,7 @@ class Gadget():
                                                       score=True)
                 self.dags[i].append(family)
                 self.dag_scores[i] += family_score
+            ds.clear()
         return self.dags, self.dag_scores
 
 
@@ -179,6 +180,9 @@ class DAGR:
 
     def precompute_pset_sampling(self, v):
         self.f = self.pc.precompute(v, self.K)
+
+    def clear(self):
+        self.pc.clear()
 
     def sample_pset(self, v, R, score=False):
 
@@ -338,6 +342,9 @@ class LocalScore:
     def _local(self, v, pset):
         # NOTE: How expensive are nested function calls?
         return self.scorer.local(v, pset) - self._prior[len(pset)]
+
+    def clear_cache(self):
+        self.scorer.clear_cache()
 
     def complementary_scores_dict(self, C, d):
         """C candidates, d indegree for complement psets"""
