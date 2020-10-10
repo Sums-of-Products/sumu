@@ -43,6 +43,7 @@ public:
   DAGR(double* score_array, int* C, int n, int K, double tolerance);
   void precompute(int v);
   double f(bm32 X, bm32 Y);
+  double** m_f; // 2^K arrays of varying lengths
 
 private:
 
@@ -50,7 +51,7 @@ private:
   int m_K; // Number of candidate parents.
 
   double* m_score_array;
-  double** m_f; // 2^K arrays of varying lengths
+  // double** m_f; // 2^K arrays of varying lengths
   bm32* m_f_n; // need to store the lenghts?
 
   int** m_C; // Matrix of size n x K.
