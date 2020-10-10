@@ -109,10 +109,13 @@ def combine_results():
 if __name__ == '__main__':
     args = sys.argv[1:]
     if args[0] == "profile":
-        create_test_data()
+        # Creating and deleting test data creates concurrency problems
+        # -- better to just create up front and delete later if
+        # necessary.
+        # create_test_data()
         mem_use = mem_profile(mem_gadget, print_all=False)
         time_use = time_profile(time_gadget, print_all=False)
-        delete_test_data()
+        # delete_test_data()
 
         print(" ".join(map(str, time_use + mem_use)))
 
