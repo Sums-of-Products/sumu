@@ -60,7 +60,7 @@ inline bm32 kzon_32(bm32 bitmap, int k)
 {
   bm32 nbitmap = ~bitmap;
   for (int i = 0; i < k; ++i) {
-    nbitmap &= ~(nbitmap & ~nbitmap);
+    nbitmap &= ~(nbitmap & -nbitmap);
   }
-  return bitmap | (nbitmap & ~nbitmap);
+  return bitmap | (nbitmap & -nbitmap);
 }

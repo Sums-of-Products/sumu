@@ -132,7 +132,7 @@ void DAGR::precompute(int v) {
 	while (Y < limit_Y) {
 
 	  int i = fbit_32(Y);
-	  m_f[X][Y] = log_add_exp(m_f[kzon_32(X, i)][dkbit_32(Y, i)], m_f[X][Y & ~(Y & ~Y)]);
+	  m_f[X][Y] = log_add_exp(m_f[kzon_32(X, i)][dkbit_32(Y, i)], m_f[X][Y & ~(Y & -Y)]);
 
 	  // Next subset Y
 	  c_Y = Y & - Y;
