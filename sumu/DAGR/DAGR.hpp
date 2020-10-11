@@ -45,7 +45,6 @@ public:
   void precompute(int v);
   void clear();
   double f(bm32 X, bm32 Y);
-  double** m_f; // 2^K arrays of varying lengths
 
 private:
 
@@ -53,8 +52,7 @@ private:
   int m_K; // Number of candidate parents.
 
   double* m_score_array;
-  // double** m_f; // 2^K arrays of varying lengths
-  bm32* m_f_n; // need to store the lenghts?
+  double** m_f; // 2^K arrays of varying lengths
 
   int** m_C; // Matrix of size n x K.
   double m_tolerance; // Used as threshold for preparing for cc.
@@ -79,24 +77,31 @@ DAGR::DAGR(double* score_array, int* C, int n, int K, double tolerance) {
     }
   }
 
+  m_f = new double*[((bm32) 1 << m_K)];
+  for (bm32 X = 0; X < ((bm32) 1 << m_K); ++X) {
+    int k = count_32(X);
+    m_f[X] = new double[(bm32) 1 << (m_K - k)];
+  }
+
+
 }
 
 DAGR::~DAGR() {
 
   clear();
 
-  for (int v = m_n - 1; v > -1; --v) {
+  for (int v = 0; v < m_n; ++v) {
     delete[] m_C[v];
   }
-
+  delete[] m_C;
 }
 
 void DAGR::clear() {
-  for (bm32 X = ((bm32) 1 << m_K) - 1; X > -1; --X) {
-    delete[] & m_f[X];
+  for (bm32 X = 0; X < ((bm32) 1 << m_K); ++X) {
+    delete[] m_f[X];
   }
+  delete[] m_f;
 }
-
 
 void DAGR::precompute(int v) {
 
@@ -105,11 +110,8 @@ void DAGR::precompute(int v) {
   bm32 c_Y;
   bm32 r_Y;
 
-  m_f = new double*[((bm32) 1 << m_K)];
-
   for (bm32 X = 0; X < ((bm32) 1 << m_K); ++X) {
     int k = count_32(X);
-    m_f[X] = new double[(bm32) 1 << (m_K - k)];
     m_f[X][0] = m_score_array[v*((bm32) 1 << m_K) + X];
     for (bm32 i = 1; i < (bm32) 1 << (m_K - k); ++i) {
       m_f[X][i] = -inf;

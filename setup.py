@@ -28,7 +28,7 @@ exts = [
         "sumu.DAGR",
         sources=["sumu/DAGR/_DAGR.pyx",
                  "sumu/zeta_transform/zeta_transform.cpp"],
-        include_dirs=["sumu/DAGR", numpy_include],
+        include_dirs=["sumu/DAGR"],
         language='c++',
         extra_compile_args=['-std=c++17']),
 

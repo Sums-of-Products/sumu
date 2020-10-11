@@ -154,7 +154,7 @@ class Gadget():
                                                       score=True)
                 self.dags[i].append(family)
                 self.dag_scores[i] += family_score
-            ds.clear()
+            # ds.clear()
         return self.dags, self.dag_scores
 
 
@@ -179,7 +179,7 @@ class DAGR:
         self.tol = tolerance
 
     def precompute_pset_sampling(self, v):
-        self.f = self.pc.precompute(v, self.K)
+        self.pc.precompute(v)
 
     def clear(self):
         self.pc.clear()
@@ -240,8 +240,8 @@ class DAGR:
             U_bm = bm(U.difference(X), ix=sorted(set(self.C[v]).difference(X)))
             T_bm = bm(T.difference(X), ix=sorted(set(self.C[v]).difference(X)))
 
-            score_1 = [self.f[X_bm][U_bm & ~E_bm] if X.issubset(U.difference(E)) else -float("inf")][0]
-            score_2 = [self.f[X_bm][(U_bm & ~E_bm) & ~T_bm] if X.issubset(U.difference(E.union(T))) else -float("inf")][0]
+            score_1 = [self.pc.f(X_bm, U_bm & ~E_bm) if X.issubset(U.difference(E)) else -float("inf")][0]
+            score_2 = [self.pc.f(X_bm, (U_bm & ~E_bm) & ~T_bm) if X.issubset(U.difference(E.union(T))) else -float("inf")][0]
 
             if not close(score_1, score_2, self.tol):
                 return log_minus_exp(score_1, score_2)
