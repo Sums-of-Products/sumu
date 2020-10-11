@@ -119,7 +119,7 @@ void DAGR::precompute(int v) {
   }
 
   for (int k = 1; k < m_K + 1; ++k) {
-    for (int k_x = 0; k < m_K - k + 1; ++k) {
+    for (int k_x = 0; k_x < m_K - k + 1; ++k_x) {
 
       // Loop through subsets X of size k_x of K bits
       bm32 X = ((bm32) 1 << k_x) - 1;
