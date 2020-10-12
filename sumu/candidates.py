@@ -93,8 +93,8 @@ def _most_freq_candidates(K, Cs):
 
 def hybrid(K, **kwargs):
 
-    algos = arg("halgos", kwargs)
-    fill = arg("hfill", kwargs)
+    algos = kwargs.get("halgos")
+    fill = kwargs.get("hfill")
     assert not [algos, fill].count(None), "list of algorithms to use (-ha) and tie breaking method (-hf) required for algo == hybrid"
 
     if fill == "top":
@@ -146,7 +146,7 @@ def hybrid(K, **kwargs):
 
 def rnd(K, **kwargs):
 
-    n = arg("n", kwargs)
+    n = kwargs.get("n")
     assert n is not None, "nvars (-n) required for algo == rnd"
 
     C = dict()
@@ -207,15 +207,15 @@ def pcalg(method, K, data):
 
 def pc(K, **kwargs):
 
-    datapath = arg("datapath", kwargs)
-    alpha = arg("alpha", kwargs)
-    max_sx = arg("max_sx", kwargs)
+    datapath = kwargs.get("datapath")
+    alpha = kwargs.get("alpha")
+    max_sx = kwargs.get("max_sx")
 
     assert not [datapath, alpha, max_sx].count(None), "datapath (-d), alpha (-a) and maxsx (-m) required for algo == pc"
 
-    B = arg("B", kwargs)
-    fill = arg("fill", kwargs)
-    scores = arg("scores", kwargs)
+    B = kwargs.get("B")
+    fill = kwargs.get("fill")
+    scores = kwargs.get("scores")
 
     data = r['load_dat'](datapath)
 
@@ -234,15 +234,15 @@ def pc(K, **kwargs):
 
 def mb(K, **kwargs):
 
-    datapath = arg("datapath", kwargs)
-    alpha = arg("alpha", kwargs)
-    max_sx = arg("max_sx", kwargs)
+    datapath = kwargs.get("datapath")
+    alpha = kwargs.get("alpha")
+    max_sx = kwargs.get("max_sx")
 
     assert not [datapath, alpha, max_sx].count(None), "datapath (-d), alpha (-a) and maxsx (-m) required for algo == mb"
 
-    B = arg("B", kwargs)
-    fill = arg("fill", kwargs)
-    scores = arg("scores", kwargs)
+    B = kwargs.get("B")
+    fill = kwargs.get("fill")
+    scores = kwargs.get("scores")
 
     data = r['load_dat'](datapath)
 
@@ -261,15 +261,15 @@ def mb(K, **kwargs):
 
 def hc(K, **kwargs):
 
-    datapath = arg("datapath", kwargs)
+    datapath = kwargs.get("datapath")
     assert datapath is not None, "datapath (-d) required for algo == hc"
-    B = arg("B", kwargs)
+    B = kwargs.get("B")
     if B is None:
         B = 20
-    fill = arg("fill", kwargs)
+    fill = kwargs.get("fill")
     if fill is None:
         fill = "top"
-    scores = arg("scores", kwargs)
+    scores = kwargs.get("scores")
 
     data = r['load_dat'](datapath)
 
@@ -329,7 +329,7 @@ def bnlearn(method, K, data, **kwargs):
 
 def opt(K, **kwargs):
 
-    pset_posteriors = arg("pset_posteriors", kwargs)
+    pset_posteriors = kwargs.get("pset_posteriors")
     assert pset_posteriors is not None, "pset posteriors path (-p) required for algo == opt"
 
     C = dict()
@@ -359,8 +359,8 @@ def top(K, **kwargs):
 
 def greedy(K, **kwargs):
 
-    s = arg("s", kwargs)
-    scores = arg("scores", kwargs)
+    s = kwargs.get("s")
+    scores = kwargs.get("scores")
     assert not [s, scores].count(None), "s (-gs) and scorepath (-s) required for algo == greedy"
 
     def unimportance(v, u, U):
@@ -381,7 +381,7 @@ def greedy(K, **kwargs):
 
 def greedy_1(K, **kwargs):
 
-    scores = arg("scores", kwargs)
+    scores = kwargs.get("scores")
     assert scores is not None, "scorepath (-s) required for algo == greedy-1"
 
     def highest_uncovered(v, U):
@@ -403,8 +403,8 @@ def greedy_1(K, **kwargs):
 
 def greedy_lite(K, **kwargs):
 
-    scores = arg("scores", kwargs)
-    k = arg("k", kwargs)
+    scores = kwargs.get("scores")
+    k = kwargs.get("k")
     assert scores is not None
     if k is None:
         k = min(6, K)
@@ -437,7 +437,7 @@ def greedy_lite(K, **kwargs):
 
 def greedy_1_sum(K, **kwargs):
 
-    scores = arg("scores", kwargs)
+    scores = kwargs.get("scores")
     assert scores is not None, "scorepath (-s) required for algo == greedy-1"
 
     def highest_uncovered_sum(v, U):
@@ -461,7 +461,7 @@ def greedy_1_sum(K, **kwargs):
 
 def greedy_1_double(K, **kwargs):
 
-    scores = arg("scores", kwargs)
+    scores = kwargs.get("scores")
     assert scores is not None, "scorepath (-s) required for algo == greedy-1-double"
 
     def highest_uncovered(v, U):
@@ -494,7 +494,7 @@ def greedy_1_double(K, **kwargs):
 
 def greedy_1_double_sum(K, **kwargs):
 
-    scores = arg("scores", kwargs)
+    scores = kwargs.get("scores")
     assert scores is not None, "scorepath (-s) required for algo == greedy-1"
 
     def highest_uncovered_sum(v, U):
@@ -532,7 +532,7 @@ def greedy_1_double_sum(K, **kwargs):
 
 def greedy_2(K, **kwargs):
 
-    scores = arg("scores", kwargs)
+    scores = kwargs.get("scores")
     assert scores is not None, "scorepath (-s) required for algo == greedy-2"
 
     C = dict({v: set() for v in scores})
@@ -557,8 +557,8 @@ def greedy_2(K, **kwargs):
 
 def greedy_2_s(K, **kwargs):
 
-    s = arg("s", kwargs)
-    scores = arg("scores", kwargs)
+    s = kwargs.get("s")
+    scores = kwargs.get("scores")
     assert not [s, scores].count(None), "s (-gs) and scorepath (-s) required for algo == greedy-2-s"
 
     C = dict({v: set() for v in scores})
@@ -582,14 +582,14 @@ def greedy_2_s(K, **kwargs):
 
 
 def greedy_3(K, **kwargs):
-    pset_posteriors = arg("pset_posteriors", kwargs)
+    pset_posteriors = kwargs.get("pset_posteriors")
     assert pset_posteriors is not None, "pset posteriors path (-p) required for algo == greedy-3"
     return greedy_2(K, scores=pset_posteriors)
 
 
 def greedy_2_inverse(K, **kwargs):
 
-    scores = arg("scores", kwargs)
+    scores = kwargs.get("scores")
     assert scores is not None, "scorepath (-s) required for algo == greedy-2-inverse"
 
     n = len(scores)
@@ -615,8 +615,8 @@ def greedy_2_inverse(K, **kwargs):
 
 def greedy_2_s_inverse(K, **kwargs):
 
-    s = arg("s", kwargs)
-    scores = arg("scores", kwargs)
+    s = kwargs.get("s")
+    scores = kwargs.get("scores")
     assert not [s, scores].count(None), "s (-gs) and scorepath (-s) required for algo == greedy-2-s-inverse"
 
     n = len(scores)
@@ -642,7 +642,7 @@ def greedy_2_s_inverse(K, **kwargs):
 
 def greedy_backward_forward(K, **kwargs):
 
-    scores = arg("scores", kwargs)
+    scores = kwargs.get("scores")
     assert scores is not None, "scorepath (-s) required for algo == greedy-backward-forward"
 
     def min_max(v):
@@ -677,8 +677,8 @@ def greedy_backward_forward(K, **kwargs):
 
 def pessy(K, **kwargs):
 
-    s = arg("s", kwargs)
-    scores = arg("scores", kwargs)
+    s = kwargs.get("s")
+    scores = kwargs.get("scores")
     assert not [s, scores].count(None), "s (-gs) and scorepath (-s) required for algo == pessy"
 
     def sum_scores(v, u):

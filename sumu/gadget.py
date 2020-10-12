@@ -53,20 +53,20 @@ class Data:
 class Gadget():
 
     def __init__(self, **kwargs):
-        self.datapath = arg("datapath", kwargs)
-        self.scoref = arg("scoref", kwargs)
-        self.ess = arg("ess", kwargs)
-        self.maxid = arg("max_id", kwargs)
-        self.K = arg("K", kwargs)
-        self.d = arg("d", kwargs)
+        self.datapath = kwargs.get("datapath")
+        self.scoref = kwargs.get("scoref")
+        self.ess = kwargs.get("ess")
+        self.maxid = kwargs.get("max_id")
+        self.K = kwargs.get("K")
+        self.d = kwargs.get("d")
         self.n = get_n(self.datapath)
-        self.cp_algo = arg("cp_algo", kwargs)
-        self.cp_path = arg("cp_path", kwargs)
-        self.mc3_chains = arg("mc3_chains", kwargs)
-        self.burn_in = arg("burn_in", kwargs)
-        self.iterations = arg("iterations", kwargs)
-        self.thinning = arg("thinning", kwargs)
-        self.tolerance = arg("tolerance", kwargs)
+        self.cp_algo = kwargs.get("cp_algo")
+        self.cp_path = kwargs.get("cp_path")
+        self.mc3_chains = kwargs.get("mc3_chains")
+        self.burn_in = kwargs.get("burn_in")
+        self.iterations = kwargs.get("iterations")
+        self.thinning = kwargs.get("thinning")
+        self.tolerance = kwargs.get("tolerance")
         self.stats = dict()
 
     def sample(self):
@@ -385,10 +385,10 @@ class Score:
 
     def __init__(self, **kwargs):
 
-        self.C = arg("C", kwargs)
-        self.score_array = arg("score_array", kwargs)
-        self.c_r_score = arg("c_r_score", kwargs)
-        self.c_c_score = arg("c_c_score", kwargs)
+        self.C = kwargs.get("C")
+        self.score_array = kwargs.get("score_array")
+        self.c_r_score = kwargs.get("c_r_score")
+        self.c_c_score = kwargs.get("c_c_score")
 
     def sum(self, v, U, T):
 
