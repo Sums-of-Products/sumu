@@ -61,7 +61,7 @@ setup(
     name="sumu",
     author="Jussi Viinikka",
     author_email="jussi.viinikka@helsinki.fi",
-    packages=["sumu"],
+    packages=["sumu", "sumu.utils", "sumu.scores"],
     install_requires=["numpy", "scipy"],
     ext_modules=cythonize(exts, language_level="3")
 )
