@@ -4,7 +4,6 @@ from .weight_sum import weight_sum, weight_sum_contribs
 from .mcmc import PartitionMCMC, MC3
 
 from .utils.bitmap import bm, bm_to_ints, bm_to_pyint_chunks, bms_to_np64, np64_to_bm
-from .utils.core_utils import arg
 from .utils.io import read_candidates, get_n
 from .utils.math_utils import log_minus_exp, close, comb, subsets
 
