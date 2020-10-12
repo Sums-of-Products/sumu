@@ -14,8 +14,9 @@ class BGe:
 
         self.maxid = maxid
 
-        n = data.shape[1]
-        N = data.shape[0]
+        n = data.n
+        N = data.N
+        data = data.data
         mu0 = np.zeros(n)
 
         # Scoring parameters.
@@ -80,6 +81,7 @@ class BGe:
             return component
 
     def local_precomputed(self, v, pset):
+        # Both v and pset in the index of sorted( C[v] + [v] )
         return self.scoreconstvec[len(pset)] \
             + self.score_component_precomputed(frozenset(pset).union({v})) \
             - self.score_component_precomputed(frozenset(pset))
@@ -94,12 +96,20 @@ class BGe:
         C = dict({v: tuple(C_array[v]) for v in range(C_array.shape[0])})
 
         scores = np.full((self.n, 2**len(C[0])), -float('inf'))
+
         for v in range(self.n):
-            vset = tuple(sorted(C[v] + (v,)))
-            self.precompute_dets(np.array(vset))
             for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
-                pset_ = index(pset, vset)
-                scores[v, bm(pset, ix=C[v])] = self.local_precomputed(v, pset_)
+                scores[v, bm(pset, ix=C[v])] = self.local(v, pset)
+
+        # NOTE: This does not seem to work reliably yet
+        # for v in range(self.n):
+        #     vset = tuple(sorted(C[v] + (v,)))
+        #     self.precompute_dets(np.array(vset))
+        #     for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
+        #         pset_ = index(pset, vset)
+        #         v_ = vset.index(v)
+        #         scores[v, bm(pset, ix=C[v])] = self.local_precomputed(v_, pset_)
+
         return scores
 
 
@@ -131,6 +141,9 @@ def msb(n):
 
 
 def mat2pm(a, thresh=None):
+    """Compute all principal minors of input matrix :cite:`griffin:2006`.
+    """
+
     n = a.shape[0]
     scale = np.abs(a).mean()
     if scale == 0:
@@ -183,7 +196,7 @@ def mat2pm(a, thresh=None):
         if ipm1 == 0:
             pm[mask] -= ppivot
         else:
-            pm[mask] = (pm[mask] / pm[imp1] - ppivot) * pm[ipm1]
+            pm[mask] = (pm[mask] / pm[ipm1] - ppivot) * pm[ipm1]
         for j in range(mask+delta2, 2**n, delta2):
             pm[j] -= ppivot*pm[j - delta]
 

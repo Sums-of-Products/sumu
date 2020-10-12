@@ -35,7 +35,7 @@ class Data:
                 self.data = np.loadtxt(data_or_path, dtype=np.int32, delimiter=' ')
             self.arities = self.data[1]
             self.data = self.data[2:]
-        else:
+        else:  # Continuous
             self.data = data_or_path
             if path:
                 self.data = np.loadtxt(data_or_path, dtype=np.float64, delimiter=' ')
@@ -52,13 +52,13 @@ class Data:
 class Gadget():
 
     def __init__(self, **kwargs):
-        self.datapath = kwargs.get("datapath")
+        self.data = kwargs.get("data")
         self.scoref = kwargs.get("scoref")
         self.ess = kwargs.get("ess")
         self.maxid = kwargs.get("max_id")
         self.K = kwargs.get("K")
         self.d = kwargs.get("d")
-        self.n = get_n(self.datapath)
+        self.n = self.data.n
         self.cp_algo = kwargs.get("cp_algo")
         self.cp_path = kwargs.get("cp_path")
         self.mc3_chains = kwargs.get("mc3_chains")
@@ -79,11 +79,6 @@ class Gadget():
 
     def _find_candidate_parents(self):
 
-        if self.scoref == "bdeu":
-            self.data = Data(self.datapath)
-        elif self.scoref == "bge":
-            self.data = Data(self.datapath, discrete=False)
-
         self.l_score = LocalScore(self.data, scoref=self.scoref,
                                   maxid=self.maxid, ess=self.ess,
                                   stats=self.stats)
@@ -93,7 +88,7 @@ class Gadget():
             #       not in the imported candidates_no_r
             self.C = cnd.algo[self.cp_algo](self.K, n=self.n,
                                             scores=self.l_score,
-                                            datapath=self.datapath)
+                                            data=self.data)
         else:
             self.C = read_candidates(self.cp_path)
 

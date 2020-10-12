@@ -10,12 +10,14 @@ import itertools
 import copy
 
 
-def family_sequence_to_adj_mat(dag):
+def family_sequence_to_adj_mat(dag, row_parents=False):
     """Format a sequence of families representing a DAG into an adjacency matrix.
 
     Args:
        dag (iterable): iterable like [(0), (1, 2), (2, 0, 1), ...] where first
                        int is the node and the following, if any, the parents.
+       row_parents (bool): If true A[i,j] == 1 if :math:`i` is parent of :math:`j`,
+                           otherwise a transpose.
 
     Returns:
         adjacency matrix
@@ -25,6 +27,8 @@ def family_sequence_to_adj_mat(dag):
     for f in dag:
         if len(f) > 1:
             adj_mat[f[1:], f[0]] = 1
+    if row_parents is False:
+        adj_mat = adj_mat.T
     return adj_mat
 
 

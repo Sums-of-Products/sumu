@@ -1,10 +1,11 @@
 import numpy as np
-from _multivariate import multivariate_t as mvt
+from ._multivariate import multivariate_t as mvt
 
 
 def BEEBS(dags, data, joint=False):
 
-    n = data.shape[1]
+    n = data.n
+    N = data.N
     As = np.zeros((len(dags), n*n - n))
     if joint:
         pairs = np.array([np.array(pair)
@@ -20,8 +21,8 @@ def BEEBS(dags, data, joint=False):
     Tmat = np.identity(n) * (aw - n - 1) / (am + 1)
 
     # Sufficient statistics
-    xN = np.mean(X, axis=0)
-    SN = (X - xN).T @ (X - xN)
+    xN = np.mean(data.data, axis=0)
+    SN = (data.data - xN).T @ (data.data - xN)
 
     # Parameters for the posterior are.
     nuN = (am * nu + N * xN) / (am + N)
