@@ -28,13 +28,18 @@ class Data:
     Todo: logical treatment of names.
     """
 
-    def __init__(self, datapath, discrete=True):
+    def __init__(self, data_or_path, discrete=True):
+        path = type(data_or_path) == str
         if discrete:
-            self.data = np.loadtxt(datapath, dtype=np.int32, delimiter=' ')
+            self.data = data_or_path
+            if path:
+                self.data = np.loadtxt(data_or_path, dtype=np.int32, delimiter=' ')
             self.arities = self.data[1]
             self.data = self.data[2:]
         else:
-            self.data = np.loadtxt(datapath, dtype=np.float64, delimiter=' ')
+            self.data = data_or_path
+            if path:
+                self.data = np.loadtxt(data_or_path, dtype=np.float64, delimiter=' ')
 
     @property
     def n(self):
