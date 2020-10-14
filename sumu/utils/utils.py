@@ -130,7 +130,7 @@ def edge_empirical_prob_max_error(dags, exact_probs):
     n_dags = 0
     dag_sum = np.zeros((n, n))
     for dag in dags:
-        dag = family_sequence_to_adj_mat(dag)
+        dag = family_sequence_to_adj_mat(dag, row_parents=True)
         n_dags += 1
         dag_sum += dag
         max_abs_errors.append(np.max(np.abs(dag_sum/n_dags - exact_probs)))

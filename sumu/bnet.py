@@ -34,7 +34,7 @@ def family_sequence_to_adj_mat(dag, row_parents=False):
 
 def partition(dag):
 
-    adj_mat = family_sequence_to_adj_mat(dag)
+    adj_mat = family_sequence_to_adj_mat(dag, row_parents=True)
 
     partitions = list()
     matrix_pruned = adj_mat
