@@ -4,5 +4,5 @@ from .mcmc import PartitionMCMC, MC3
 from .bnet import BNet
 from .CandidateRestrictedScore import CandidateRestrictedScore
 from .utils.utils import cite
-from .beebs import BEEBS
+from .beeps import beeps
 from .gadget import Data

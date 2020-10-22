@@ -2,7 +2,7 @@ import numpy as np
 from ._multivariate import multivariate_t as mvt
 
 
-def BEEBS(dags, data, joint=False):
+def beeps(dags, data, joint=False):
 
     n = data.n
     N = data.N
