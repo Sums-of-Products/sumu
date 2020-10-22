@@ -22,7 +22,7 @@ exts = [
                  "sumu/zeta_transform/zeta_transform.cpp"],
         include_dirs=["sumu/CandidateComplementScore"],
         language='c++',
-        extra_compile_args=['-std=c++17']),
+        extra_compile_args=['-std=c++11']),
 
     Extension(
         "sumu.DAGR",
@@ -30,7 +30,7 @@ exts = [
                  "sumu/zeta_transform/zeta_transform.cpp"],
         include_dirs=["sumu/DAGR"],
         language='c++',
-        extra_compile_args=['-std=c++17']),
+        extra_compile_args=['-std=c++11']),
 
     Extension(
         name='sumu.zeta_transform',
@@ -53,7 +53,7 @@ exts = [
         sources=["sumu/alias/_alias.pyx",
                  "sumu/alias/discrete_random_variable.cpp"],
         language='c++',
-        extra_compile_args=['-std=c++17'])
+        extra_compile_args=['-std=c++11'])
 
 ]
 
