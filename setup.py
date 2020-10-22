@@ -48,13 +48,6 @@ exts = [
         language='c++',
         extra_compile_args=['-std=c++11']),
 
-    Extension(
-        "sumu.alias",
-        sources=["sumu/alias/_alias.pyx",
-                 "sumu/alias/discrete_random_variable.cpp"],
-        language='c++',
-        extra_compile_args=['-std=c++11'])
-
 ]
 
 setup(
