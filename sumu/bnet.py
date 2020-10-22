@@ -177,7 +177,7 @@ class BNet:
     def sample(self, n, **kwargs):
         if 'seed' in kwargs and isinstance(kwargs['seed'], int):
             np.random.seed(kwargs['seed'] * n)
-        data = np.zeros(shape=(n, len(self.nodes)), dtype=np.int)
+        data = np.zeros(shape=(n, len(self.nodes)), dtype=np.int32)
         for i in range(n):
             for node in self.nodes:
                 node.clear()

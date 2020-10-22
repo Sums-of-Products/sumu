@@ -18,23 +18,27 @@ import sumu.candidates_no_r as cnd
 class Data:
     """Class for data.
 
-    At the moment, for discrete data it is assumed first row is node
-    names, second is arities, and the rest is the actual data (though
-    names are not used for now).
+    At the moment, for discrete data one can specify whether the data
+    includes names and arities, but for continuous data it is assumed
+    that every row represents data.
 
-    For continuous data it is assumed that every row represents data.
+    Also "names" here means just integers.
 
-    Todo: logical treatment of names.
+    Todo: Better handling of arbitrary names.
     """
 
-    def __init__(self, data_or_path, discrete=True):
+    def __init__(self, data_or_path, discrete=True, names=False, arities=False):
         path = type(data_or_path) == str
         if discrete:
             self.data = data_or_path
             if path:
                 self.data = np.loadtxt(data_or_path, dtype=np.int32, delimiter=' ')
-            self.arities = self.data[1]
-            self.data = self.data[2:]
+            if names:
+                self.names = self.data[0]
+                self.data = self.data[1:]
+            if arities:
+                self.arities = self.data[0]
+                self.data = self.data[1:]
         else:  # Continuous
             self.data = data_or_path
             if path:

@@ -7,7 +7,6 @@ def test_Gadget_empirical_edge_prob_error_decreases():
 
     test_path = os.path.dirname(os.path.realpath(__file__))
     bn_path = test_path + "/sachs.dsc"
-    data_path = test_path + "/test_data.csv"
 
     # NOTE: Computed with aps
     edge_probs = np.array([[0.00000000e+00, 3.48408525e-01, 4.02665559e-06,
@@ -61,10 +60,9 @@ def test_Gadget_empirical_edge_prob_error_decreases():
     # edge probs will have to be recalculated as the data from which
     # they were calculated will not be identical to the data given to
     # Gadget anymore.
-    data = bn.sample(200, seed=0)
-    sumu.utils.io.write_data(data, data_path, bn)
+    data = sumu.Data(bn.sample(200, seed=0), discrete=True)
 
-    params = {"datapath": data_path,
+    params = {"data": data,
               "scoref": "bdeu",
               "ess": 10,
               "max_id": -1,
@@ -99,27 +97,20 @@ def test_Gadget_empirical_edge_prob_error_decreases():
     # things seem to break.
     assert max_errors[-1] < 0.5
 
-    os.remove(data_path)
-
 
 def test_Gadget_runs_with_64_variables():
     pass
-
-
 
 
 def test_Gadget_runs():
 
     test_path = os.path.dirname(os.path.realpath(__file__))
     bn_path = test_path + "/insurance.dsc"
-    data_path = test_path + "/test_data.csv"
 
     bn = sumu.utils.io.read_dsc(bn_path)
+    data = sumu.Data(bn.sample(100), discrete=True)
 
-    data = bn.sample(100)
-    sumu.utils.io.write_data(data, data_path, bn)
-
-    params = {"datapath": data_path,
+    params = {"data": data,
               "scoref": "bdeu",
               "ess": 10,
               "max_id": -1,
@@ -134,8 +125,6 @@ def test_Gadget_runs():
 
     g = sumu.Gadget(**params)
     dags, scores = g.sample()
-
-    os.remove(data_path)
 
 
 def test_gadget_weight_sum_leq_64():
@@ -158,7 +147,7 @@ def test_gadget_weight_sum_leq_64():
     t_ub = 9
 
     result = sumu.weight_sum.weight_sum(W_prime, ordered_psets, ordered_scores,
-                                          n, U_bm, T_bm, t_ub)
+                                        n, U_bm, T_bm, t_ub)
 
     # NOTE: "correct answer" is the result returned by the version of
     # the code used in the NeurIPS publication, and its correctness is
