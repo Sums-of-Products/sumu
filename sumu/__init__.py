@@ -1,5 +1,4 @@
 from .candidates import candidate_parent_algorithm
-from .candidates_no_r import Candidates
 from .gadget import Gadget, LocalScore, CandidateComplementScore
 from .mcmc import PartitionMCMC, MC3
 from .bnet import BNet

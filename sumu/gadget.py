@@ -12,7 +12,7 @@ from .scorer import BDeu, BGe
 from .CandidateRestrictedScore import CandidateRestrictedScore
 from .DAGR import DAGR as DAGR_precompute
 
-from sumu.candidates import candidate_parent_algorithm
+from .candidates import candidate_parent_algorithm
 
 
 class Data:
