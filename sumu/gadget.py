@@ -16,26 +16,27 @@ from sumu.candidates import candidate_parent_algorithm
 
 
 class Data:
-    """Class for data.
+    """Class for holding data.
 
-    At the moment, for discrete data one can specify whether the data
-    includes names and arities, but for continuous data it is assumed
-    that every row represents data.
+    Assumes the input data is either discrete or continuous. In the
+    discrete case the first row of the data can optionally hold the
+    arities of the variables, or they can be inferred as the number of
+    distinct values in the data columns. In the continuous case all
+    rows represent data. All variable name handling should be managed
+    separately, somewhere else.
 
-    Also "names" here means just integers.
-
-    Todo: Better handling of arbitrary names.
+    The data can be input as either a path to a space delimited csv
+    file or as a numpy array.
     """
 
-    def __init__(self, data_or_path, discrete=True, names=False, arities=False):
+    def __init__(self, data_or_path, discrete=True, arities=False):
+        self.discrete = discrete
+        self.arities = arities
         path = type(data_or_path) == str
         if discrete:
             self.data = data_or_path
             if path:
                 self.data = np.loadtxt(data_or_path, dtype=np.int32, delimiter=' ')
-            if names:
-                self.names = self.data[0]
-                self.data = self.data[1:]
             if arities:
                 self.arities = self.data[0]
                 self.data = self.data[1:]
@@ -51,6 +52,14 @@ class Data:
     @property
     def N(self):
         return self.data.shape[0]
+
+    def all(self):
+        # This is to simplify passing data to R
+        data = self.data
+        if self.arities is not False:
+            arities = np.reshape(self.arities, (-1, len(self.n)))
+            data = np.append(arities, data, axis=0)
+        return data
 
 
 class Gadget():
