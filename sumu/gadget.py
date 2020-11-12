@@ -12,7 +12,7 @@ from .scorer import BDeu, BGe
 from .CandidateRestrictedScore import CandidateRestrictedScore
 from .DAGR import DAGR as DAGR_precompute
 
-import sumu.candidates_no_r as cnd
+from sumu.candidates import candidate_parent_algorithm
 
 
 class Data:
@@ -88,11 +88,9 @@ class Gadget():
                                   stats=self.stats)
 
         if self.cp_path is None:
-            # NOTE: datapath is only used by ges, pc and hc which are
-            #       not in the imported candidates_no_r
-            self.C = cnd.algo[self.cp_algo](self.K, n=self.n,
-                                            scores=self.l_score,
-                                            data=self.data)
+            self.C = candidate_parent_algorithm[self.cp_algo](self.K, n=self.n,
+                                                              scores=self.l_score,
+                                                              data=self.data)
         else:
             self.C = read_candidates(self.cp_path)
 

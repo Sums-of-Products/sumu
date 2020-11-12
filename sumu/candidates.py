@@ -1,35 +1,97 @@
 import numpy as np
-from rpy2.robjects.packages import importr
-from rpy2.robjects import r
-
 from .utils.math_utils import subsets
+from .aps import aps
+
+r_is_initialized = False
 
 
-r(
-'''
-load_dat <- function(dat_path) {
+class GlobalImport:
 
-  # check if categorical data
-  if (all(sapply(read.csv(dat_path, sep=" ", header=FALSE),is.integer))) {
-    data <- read.table(dat_path, header = TRUE)
-    arities <- data[1,]
-    data <- data[2:nrow(data),]
-    data[] <- lapply(data, as.factor)
-    for(i in 1:length(arities)) {
-      levels(data[, i]) <- as.character(0:(arities[[i]] - 1))
+    # https://stackoverflow.com/a/53255802
+    # This doesn't seem to like to be imported from elsewhere, e.g.,
+    # from utils. Maybe with some work it might be possible too.
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        import inspect
+        self.collector = inspect.getargvalues(inspect.getouterframes(inspect.currentframe())[1].frame).locals
+        globals().update(self.collector)
+
+
+def init_r():
+
+    global r_is_initialized
+    if r_is_initialized:
+        return
+
+    with GlobalImport() as gi:
+        try:
+            from rpy2.robjects import r
+            from rpy2.robjects import numpy2ri
+            from rpy2.robjects.packages import importr
+        except ImportError as e:
+            msg = ["To use the candidate parent algorithms pc, mb or ges you",
+                   "need to have R installed. Pc and mb require the R-package",
+                   "bnlearn; ges requires pcalg. Finally, you also need to",
+                   "have the Python package rpy2 installed to interface with R."]
+            raise Exception(' '.join(msg)) from e
+
+    load_funcs = """
+    datapath_or_matrix_to_numeric_dataframe <- function(data_path_or_matrix,
+                                                        discrete=TRUE,
+                                                        arities=FALSE)
+    {
+      if (typeof(data_path_or_matrix) == "character") {
+        data <- read.table(data_path_or_matrix, header = FALSE)
+      }
+      else {
+        data <- data_path_or_matrix
+        mode(data) = "numeric"
+        data <- data.frame(data)
+      }
+      if (discrete) {
+        if (arities) {
+          arities <- data[1,]
+          data <- data[2:nrow(data),]
+        } else {
+          arities <- lapply(data, function(x) length(unique(x)))
+        }
+        data[] <- lapply(data, as.factor)
+        for(i in 1:length(arities)) {
+          levels(data[, i]) <- as.character(0:(arities[[i]] - 1))
+        }
+      }
+
+      colnames(data) <- 0:(ncol(data)-1)
+      return(data)
     }
-  }
+    """
 
-  # else continuous data
-  else {
-    data <- read.csv(dat_path, sep=" ", header=FALSE)
-  }
+    r(load_funcs)
+    r_is_initialized = True
 
-  colnames(data) <- 0:(ncol(data)-1)
-  return(data)
-}
-'''
-)
+
+def convert_to_r_data(data):
+    # Input is sumu.Data
+
+    init_r()
+
+    numpy2ri.activate()
+    datar = r.matrix(data.all().flatten(),
+                     nrow=data.N,
+                     ncol=data.n,
+                     byrow=True)
+    numpy2ri.deactivate()
+
+    discrete = data.discrete
+    arities = True if data.arities is not False else False
+
+    datar = r['datapath_or_matrix_to_numeric_dataframe'](datar,
+                                                         discrete=discrete,
+                                                         arities=arities)
+    return datar
 
 
 def candidates_to_str(C):
@@ -59,13 +121,13 @@ def _adjust_number_candidates(K, C, method, scores=None):
                 C[v] = np.random.choice(C[v], K, replace=False)
         if method == 'top':
             if len(C[v]) < K:
-                C_v_top = sorted([(parent, scores.local(v, (parent,)))
+                C_v_top = sorted([(parent, scores.local(v, np.array([parent])))
                                   for parent in add_from],
                                  key=lambda item: item[1], reverse=True)[:add_n]
                 C_v_top = tuple([c[0] for c in C_v_top])
                 C[v] = C[v] + C_v_top
             elif len(C[v]) > K:
-                C[v] = sorted([(parent, scores.local(v, (parent,)))
+                C[v] = sorted([(parent, scores.local(v, np.array([parent])))
                                for parent in C[v]],
                               key=lambda item: item[1], reverse=True)[:K]
                 C[v] = [c[0] for c in C[v]]
@@ -154,14 +216,21 @@ def rnd(K, **kwargs):
     return C
 
 
-def ges(K, fill=None, scores=None, **kwargs):
+def ges(K, **kwargs):
     """Greedy equivalence search :cite:`chickering:2002`.
 
     GES is implemented in the R package pcalg :cite:`hauser:2012,kalisch:2012`,
     for which the function :py:func:`pcalg` provides a Python wrapping.
     """
-    datapath = kwargs["datapath"]
-    data = r["load_dat"](datapath)
+
+    init_r()
+
+    data = kwargs["data"]
+    data = convert_to_r_data(data)
+
+    B = kwargs.get("B", 20)
+    fill = kwargs.get("fill", "top")
+    scores = kwargs.get("scores")
 
     if "B" in kwargs:
         Cs = list()
@@ -177,6 +246,8 @@ def ges(K, fill=None, scores=None, **kwargs):
 
 
 def pcalg(method, K, data):
+
+    init_r()
 
     base = importr("base")
     importr('pcalg')
@@ -206,22 +277,23 @@ def pcalg(method, K, data):
 
 def pc(K, **kwargs):
 
-    datapath = kwargs.get("datapath")
-    alpha = kwargs.get("alpha")
-    max_sx = kwargs.get("max_sx")
+    init_r()
 
-    assert not [datapath, alpha, max_sx].count(None), "datapath (-d), alpha (-a) and maxsx (-m) required for algo == pc"
+    data = kwargs.get("data")
+    data = convert_to_r_data(data)
+    alpha = kwargs.get("alpha", 0.1)
+    max_sx = kwargs.get("max_sx", 1)
 
-    B = kwargs.get("B")
-    fill = kwargs.get("fill")
+    B = kwargs.get("B", 20)
+    fill = kwargs.get("fill", "top")
     scores = kwargs.get("scores")
-
-    data = r['load_dat'](datapath)
 
     if B is not None:
         Cs = list()
         for i in range(B):
-            bsample = data.rx(r["sample"](data.nrow,data.nrow,replace=True), True)
+            bsample = data.rx(r["sample"](data.nrow,
+                                          data.nrow,
+                                          replace=True), True)
             Cs.append(bnlearn("pc", K, bsample, alpha=alpha, max_sx=max_sx))
         C = _most_freq_candidates(K, Cs)
     else:
@@ -233,21 +305,20 @@ def pc(K, **kwargs):
 
 def mb(K, **kwargs):
 
-    datapath = kwargs.get("datapath")
-    alpha = kwargs.get("alpha")
-    max_sx = kwargs.get("max_sx")
+    init_r()
 
-    assert not [datapath, alpha, max_sx].count(None), "datapath (-d), alpha (-a) and maxsx (-m) required for algo == mb"
+    data = kwargs.get("data")
+    data = convert_to_r_data(data)
+    alpha = kwargs.get("alpha", 0.1)
+    max_sx = kwargs.get("max_sx", 1)
 
-    B = kwargs.get("B")
-    fill = kwargs.get("fill")
+    B = kwargs.get("B", 20)
+    fill = kwargs.get("fill", "top")
     scores = kwargs.get("scores")
-
-    data = r['load_dat'](datapath)
 
     if B is not None:
         Cs = list()
-        for i in range(kwargs["B"]):
+        for i in range(B):
             bsample = data.rx(r["sample"](data.nrow,data.nrow,replace=True), True)
             Cs.append(bnlearn("mb", K, bsample, alpha=alpha, max_sx=max_sx))
         C = _most_freq_candidates(K, Cs)
@@ -259,6 +330,8 @@ def mb(K, **kwargs):
 
 
 def hc(K, **kwargs):
+
+    init_r()
 
     datapath = kwargs.get("datapath")
     assert datapath is not None, "datapath (-d) required for algo == hc"
@@ -286,6 +359,8 @@ def hc(K, **kwargs):
 
 
 def bnlearn(method, K, data, **kwargs):
+
+    init_r()
 
     R_bnlearn = importr('bnlearn')
 
@@ -328,8 +403,12 @@ def bnlearn(method, K, data, **kwargs):
 
 def opt(K, **kwargs):
 
-    pset_posteriors = kwargs.get("pset_posteriors")
-    assert pset_posteriors is not None, "pset posteriors path (-p) required for algo == opt"
+    scores = kwargs.get("scores")
+    n = kwargs.get("n")
+
+    C = np.array([[v for v in range(n) if v != u] for u in range(n)], dtype=np.int32)
+    pset_posteriors = aps(scores.all_candidate_restricted_scores(C),
+                          as_dict=True, normalize=True)
 
     C = dict()
     for v in pset_posteriors:
@@ -384,7 +463,7 @@ def greedy_1(K, **kwargs):
     assert scores is not None, "scorepath (-s) required for algo == greedy-1"
 
     def highest_uncovered(v, U):
-        return max([(u, scores.local(v, S + (u,)))
+        return max([(u, scores.local(v, np.array(S + (u,))))
                     for S in subsets(C[v], 0, [len(C[v]) if scores.maxid == -1 else min(len(C[v]), scores.maxid-1)][0])
                     for u in U], key=lambda item: item[1])[0]
 
@@ -411,7 +490,7 @@ def greedy_lite(K, **kwargs):
 
     def k_highest_uncovered(v, U, k):
 
-        uncovereds = {(u, scores.local(v, S + (u,)))
+        uncovereds = {(u, scores._local(v, np.array(S + (u,))))
                       for S in subsets(C[v], 0, [len(C[v]) if scores.maxid == -1 else min(len(C[v]), scores.maxid-1)][0])
                       for u in U}
         k_highest = set()
@@ -430,7 +509,7 @@ def greedy_lite(K, **kwargs):
             U = [u for u in U if u not in u_hat]
         C[v].update(k_highest_uncovered(v, U, k))
         C[v] = tuple(sorted(C[v]))
-
+        scores.clear_cache()
     return C
 
 
@@ -703,27 +782,29 @@ def pessy(K, **kwargs):
     return C
 
 
-algo = {
-    "rnd": rnd,
+candidate_parent_algorithm = {
+    "opt": opt,
+    # "rnd": rnd,
     "top": top,
     "pc": pc,
     "mb": mb,
-    "hc": hc,
-    "greedy": greedy,
+    "ges": ges,
+    # "hc": hc,
+    # "greedy": greedy,
+    # "pessy": pessy,
+    "greedy": greedy_1,
     "greedy-lite": greedy_lite,
-    "pessy": pessy,
-    "greedy-1": greedy_1,
-    "greedy-2": greedy_2,
-    "greedy-3": greedy_3,
-    "greedy-1-double": greedy_1_double,
-    "greedy-1-sum": greedy_1_sum,
-    "greedy-1-double-sum": greedy_1_double_sum,
-    "greedy-2-inverse": greedy_2_inverse,
-    "greedy-2-s": greedy_2_s,
-    "greedy-2-s-inverse": greedy_2_s_inverse,
-    "greedy-backward-forward": greedy_backward_forward,
-    "hybrid": hybrid,
-    "opt": opt
+    # "greedy-2": greedy_2,
+    # "greedy-3": greedy_3,
+    # "greedy-1-double": greedy_1_double,
+    # "greedy-1-sum": greedy_1_sum,
+    # "greedy-1-double-sum": greedy_1_double_sum,
+    # "greedy-2-inverse": greedy_2_inverse,
+    # "greedy-2-s": greedy_2_s,
+    # "greedy-2-s-inverse": greedy_2_s_inverse,
+    "back-forth": greedy_backward_forward,
+    # "hybrid": hybrid,
+
 }
 
 
