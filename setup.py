@@ -11,7 +11,7 @@ import numpy
 HERE = pathlib.Path(__file__).parent
 
 # The text of the README file
-README = (HERE / "README.md").read_text()
+README = (HERE / "README.md").read_text(encoding='utf-8')
 
 
 COMPILE_OPTIONS = []
@@ -22,7 +22,7 @@ if os.name == "nt":
     # This is for Windows.
     # Assumes MSVC, which doesn't seem to support c++11:
     # https://docs.microsoft.com/en-us/cpp/build/reference/std-specify-language-standard-version?view=msvc-160
-    COMPILE_OPTIONS += ["/std:c++14", "/W4", "/O2"]
+    COMPILE_OPTIONS += ["/std:c++14", "/W4", "/O2", "/Zc:__cplusplus"]
 if os.name == "posix":
     # This is for OS X and Linux.
     # Assumes GNU (compatible?) compiler.
@@ -113,7 +113,7 @@ exts = [
                  'sumu/aps/aps-0.9.1/aps/simple_modular.cpp'],
         include_dirs=["sumu/aps/aps-0.9.1/aps", numpy_include],
         language='c++',
-        extra_compile_args=COMPILE_OPTIONS + ["-MMD"],
+        extra_compile_args=COMPILE_OPTIONS,
         extra_link_args=LINK_OPTIONS)
 
 ]
