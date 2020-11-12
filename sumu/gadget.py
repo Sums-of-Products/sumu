@@ -281,16 +281,16 @@ class DAGR:
         U = U.intersection(self.C[v])
         T = T.intersection(self.C[v])
 
-        # TODO: These have known lengths so initialize them to np.arrays
-        #       of correct size.
-        probs = list()
-        psets = list()
+        l = (2**(len(T)) - 1) * (2**(len(U.difference(T))))
+        probs = np.empty(l)
+        psets = [None]*l
+        i = 0
         for T_set in subsets(T, 1, len(T)):
             for U_set in subsets(U.difference(T), 0, len(U.difference(T))):
                 pset = set(T_set).union(U_set)
-                probs.append(self.score.score_array[v][bm(pset, ix=self.C[v])])
-                psets.append(pset)
-        probs = np.array(probs)
+                probs[i] = self.score.score_array[v][bm(pset, ix=self.C[v])]
+                psets[i] = pset
+                i += 1
         probs -= np.logaddexp.reduce(probs)
         probs = np.exp(probs)
         return psets[np.random.choice(range(len(psets)), p=probs)]

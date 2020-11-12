@@ -1,12 +1,13 @@
 import os
+import pathlib
 import numpy as np
 import sumu
 
 
 def test_Gadget_empirical_edge_prob_error_decreases():
 
-    test_path = os.path.dirname(os.path.realpath(__file__))
-    bn_path = test_path + "/sachs.dsc"
+    test_path = pathlib.Path(__file__).parent
+    bn_path = test_path / "sachs.dsc"
 
     # NOTE: Computed with aps
     edge_probs = np.array([[0.00000000e+00, 3.48408525e-01, 4.02665559e-06,

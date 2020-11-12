@@ -8,6 +8,24 @@ import numpy as np
 from ..bnet import BNet, Node
 
 
+def pretty_dict(d, n=1):
+    for k in d:
+        if type(d[k]) == dict:
+            print("{}{}".format(" "*n, k))
+        else:
+            print("{}{}: {}".format(" "*n, k, d[k]))
+        if type(d[k]) == dict:
+            pretty_dict(d[k], n=n+4)
+
+
+def dag_to_str(dag):
+    return "|".join([str(f[0]) if len(f) == 1 else " ".join([str(f[0]), *[str(v) for v in sorted(f[1])]]) for f in dag])
+
+
+def str_to_dag(dag_str):
+    return [tuple(map(int, family_str.split())) for family_str in dag_str.split("|")]
+
+
 def write_data(data, datapath, bn=None):
     """Write data to datapath with variable names and arities if provided.
 
