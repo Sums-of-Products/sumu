@@ -2,12 +2,18 @@ import numpy as np
 cimport numpy as np
 from libcpp.vector cimport vector
 from libc.stdint cimport uint64_t as bm64
+from libc.stdint cimport uint32_t as bm32
+from .utils.math_utils import subsets
+from .utils.bitmap import bm
 
 cimport cython
 
 # A bit of a hack to make BGe available at sumu.scorer.BGe
 # Unnecessary after BGe is implemented in C++ similarly to BDeu
 from .scores.bge import BGe
+
+cdef extern from "../bitmap/bitmap.hpp":
+    int count_32(bm32 bitmap)
 
 cdef extern from "Wsets.hpp":
     cdef struct wset:
@@ -21,6 +27,7 @@ cdef extern from "BDeu.hpp":
         int m
         int n
         vector[wset] * fscores
+        double fscore(int i, int * Y, int lY)
         void read(int * data, int m, int n)
         void set_ess(double val)
         double cliq(int * var, int d)
@@ -78,20 +85,35 @@ cdef class BDeu:
                                  & memview_pset[0],
                                  memview_pset.shape[0])
 
+    @cython.boundscheck(False)
     def all_candidate_restricted_scores(self, C):
+        cdef int[::1] memview_pset
         cdef int[:, ::1] memview_C
         cdef int v, i, n, K
         n = len(C)
         K = len(C[0])
-        # TODO: Option for maximum indegree: 4th param of fami and
-        #       skip |i| > maxid in score_array loop
         cdef np.ndarray score_array = np.full((n, 2**K), -np.inf)
         memview_C = C
         for v in np.arange(memview_C.shape[0], dtype=np.int32):
             self.thisptr.fami(v, & memview_C[v, 0],
-                              memview_C.shape[1], memview_C.shape[1])
-            for i in np.arange(2**K, dtype=np.int32):
-                score_array[v][i] = self.thisptr.fscores[v][i].weight
+                              memview_C.shape[1],
+                              [memview_C.shape[1]
+                               if self.maxid == -1
+                               else self.maxid][0])
+
+            if self.maxid == -1:
+                for i in np.arange(2**K, dtype=np.int32):
+                    score_array[v][i] = self.thisptr.fscores[v][i].weight
+            else:
+                for pset in subsets(range(K), 0, self.maxid):
+                    pset_bm = bm(pset)
+                    pset = np.array(pset, dtype=np.int32)
+                    memview_pset = pset
+                    pset_l = len(pset)
+                    score_array[v][pset_bm] = self.thisptr.fscore(v,
+                                                                  & memview_pset[0],
+                                                                  pset_l)
+
             self.thisptr.clear_fami(v)
         return score_array
 

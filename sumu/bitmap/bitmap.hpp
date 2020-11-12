@@ -31,11 +31,9 @@ inline int lsb_32(bm32 x) {
   return ((x-1) & x) ^ x;
 }
 
-inline unsigned int count_32(bm32 bitmap)
-// Count number of 1-bits.
-// Is "unsigned" needed for something?
+inline int count_32(bm32 bitmap)
 {
-    unsigned int count = 0;
+    int count = 0;
     while (bitmap) {
         count += bitmap & 1;
         bitmap >>= 1;
