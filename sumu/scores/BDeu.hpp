@@ -14,6 +14,7 @@
 #include "HashCounter.hpp"
 
 using namespace std;
+using bm64 = uint64_t;
 
 // Param -- a fingerprint of the arguments used in the call for scoring a bunch of families (i, Y). 
 struct Param { 
@@ -551,7 +552,7 @@ void BDeu::preindex(int umax){
 	}
 	for (int j = 0; j <= n; ++j){ // Then cumulative sums. 
 		int u = 1; for (; u <= j && u <= umax; ++u){ binomsum[j][u] += binomsum[j][u-1]; }
-		for (; u <= n && u < 32; ++u){ binomsum[j][u] = (1L << j); }
+		for (; u <= n && u < 32; ++u){ binomsum[j][u] = ((bm64) 1 << j); }
 	}
 }
 
@@ -598,7 +599,7 @@ void dd_test(){
 	int C2[4] = {0, 1, 3, 4};
 	int C3[4] = {0, 1, 2, 4};
 	int C4[4] = {0, 1, 2, 3};
-	int  E[0] = { };
+	int  E[1] = {0};
 	s.fami(0, C0, 4, 4);
 	s.fami(1, C1, 4, 4);
 	s.fami(2, C2, 4, 4);

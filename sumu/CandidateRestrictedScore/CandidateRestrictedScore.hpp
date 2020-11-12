@@ -122,7 +122,7 @@ void CandidateRestrictedScore::precompute_tau_cc_basecases() {
     for (int k = 0; k < m_K; ++k) {
       bm32 j = 1 << k;
       bm32 U_minus_j = (( (bm32) 1 << m_K) - 1) & ~j;
-      double tmp[1 << (m_K - 1)];
+      double* tmp = new double[1 << (m_K - 1)];
       tmp[0] = m_score_array[v*( (bm32) 1 << m_K) + j]; // Make indexing inline function?
 
       // Iterate over subsets of U_minus_j.
@@ -139,7 +139,7 @@ void CandidateRestrictedScore::precompute_tau_cc_basecases() {
 	}
       }
 
-
+      delete[] tmp;
     }
   }
 }
