@@ -1,0 +1,6 @@
+recursive-include sumu *.c *.cpp *.h *.hpp *.pyx *.pxd
+graft sumu/tests
+include COPYING
+include pyproject.toml
+include sumu/sources.bib
+include MANIFEST.in
