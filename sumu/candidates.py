@@ -427,7 +427,7 @@ def top(K, **kwargs):
 
     C = dict()
     for v in range(scores.n):
-        top_candidates = sorted([(parent, scores.local(v, (parent,)))
+        top_candidates = sorted([(parent, scores.local(v, np.array([parent])))
                                  for parent in range(scores.n) if parent != v],
                                 key=lambda item: item[1], reverse=True)[:K]
         top_candidates = tuple(sorted(c[0] for c in top_candidates))
@@ -724,13 +724,13 @@ def greedy_backward_forward(K, **kwargs):
     assert scores is not None, "scorepath (-s) required for algo == greedy-backward-forward"
 
     def min_max(v):
-        return min([max([(u, scores.local(v, tuple(set(S + (u,)))))
+        return min([max([(u, scores.local(v, np.array(S + (u,))))
                          for S in subsets(C[v].difference({u}), 0, [len(C[v]) - 1 if scores.maxid == -1 else min(len(C[v]) - 1, scores.maxid-1)][0])],
                         key=lambda item: item[1])
                     for u in C[v]], key=lambda item: item[1])[0]
 
     def highest_uncovered(v, U):
-        return max([(u, scores.local(v, tuple(set(S + (u,)))))
+        return max([(u, scores.local(v, np.array(S + (u,))))
                     for S in subsets(C[v], 0, [len(C[v]) if scores.maxid == -1 else min(len(C[v]), scores.maxid-1)][0])
                     for u in U],
                    key=lambda item: item[1])[0]
