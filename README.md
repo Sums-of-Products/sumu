@@ -32,13 +32,13 @@ Finally, if you wish to work on the source code it is preferable to install with
 
 Sumu, at the moment, implements the following core algorithms:
 
--   **Gadget** (Generating Acyclic DiGraphs from Target) for MCMC sampling of DAGs [[1]​](#org7f180ed).
--   **Beeps** (Bayesian Estimation of Effect Posterior by Sampling) for sampling from the posterior of linear causal effects [[1]​](#org7f180ed).
--   **APS** (All Parent Sets) for computing for each variable and parent set the total weight of DAGs where that variable has those parents [[2]​](#org6c254c9).
-    
-    Additionally, the library includes supporting functionality, for example functions for local score computations.
-    
-    **TODO**: Proper documentation of the library and its features.
+-   **Gadget** (Generating Acyclic DiGraphs from Target) for MCMC sampling of DAGs [[1]​](#org5756234).
+-   **Beeps** (Bayesian Estimation of Effect Posterior by Sampling) for sampling from the posterior of linear causal effects [[1]​](#org5756234).
+-   **APS** (All Parent Sets) for computing for each variable and parent set the total weight of DAGs where that variable has those parents [[2]​](#org19467ac).
+
+Additionally, the library includes supporting functionality, for example functions for local score computations.
+
+**TODO**: Proper documentation of the library and its features.
 
 
 ## Getting started
@@ -69,12 +69,12 @@ Sumu, at the moment, implements the following core algorithms:
 
 ## Citing
 
-If you use the library in your research work please cite the appropriate sources. For APS you should cite [[2]​](#org6c254c9) and for everything else [[1]​](#org7f180ed).
+If you use the library in your research work please cite the appropriate sources. For APS you should cite [[2]​](#org19467ac) and for everything else [[1]​](#org5756234).
 
 
 ## References
 
-[<a id="org7f180ed"></a>1] [Jussi Viinikka, Antti Hyttinen, Johan Pensar, and Mikko Koivisto. Towards Scalable Bayesian Learning of Causal DAGs. In *NeurIPS 2020*, in press.](https://arxiv.org/abs/2010.00684)
+[<a id="org5756234"></a>1] [Jussi Viinikka, Antti Hyttinen, Johan Pensar, and Mikko Koivisto. Towards Scalable Bayesian Learning of Causal DAGs. In *NeurIPS 2020*, in press.](https://arxiv.org/abs/2010.00684)
 
-[<a id="org6c254c9"></a>2] [Johan Pensar, Topi Talvitie, Antti Hyttinen, and Mikko Koivisto. A Bayesian approach for estimating causal effects from observational data. In The Thirty-Fourth AAAI Conference on Artiﬁcial Intelligence, AAAI 2020. AAAI Press, 2020.](https://ojs.aaai.org//index.php/AAAI/article/view/5988)
+[<a id="org19467ac"></a>2] [Johan Pensar, Topi Talvitie, Antti Hyttinen, and Mikko Koivisto. A Bayesian approach for estimating causal effects from observational data. In The Thirty-Fourth AAAI Conference on Artiﬁcial Intelligence, AAAI 2020. AAAI Press, 2020.](https://ojs.aaai.org//index.php/AAAI/article/view/5988)
 
