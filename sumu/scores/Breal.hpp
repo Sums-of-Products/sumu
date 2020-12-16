@@ -6,6 +6,7 @@
 #include <iostream>
 #include <iomanip>
 #include <cmath>
+#include "headers.hpp"
 
 using namespace std;
 
@@ -26,23 +27,32 @@ class Breal {
 
 	Breal& operator=(const auto z){ set(z); return *this; }
 
-	inline Breal& operator+=(const Breal y){
+	/*inline Breal& operator+=(const Breal y){
 		int64_t d = b - y.b; if (d > 31) return *this;
 		if (d >= 0){ a += (y.a >>  d); } 
 		else if (-d > 31){ *this = y; return *this; } else { a = y.a + (a >> -d); b = y.b; }
 		while (a & 0x80000000){ a >>= 4; b += 4; } return *this;
+	}*/
+	inline Breal& operator+=(const Breal y){
+		int64_t d = b - y.b;
+		if ( d > 31 || y.a == 0){ return *this; }
+		if (-d > 31 ||   a == 0){ *this = y; return *this; }
+		if ( d >= 0){ a += (y.a >> d); } else { a = y.a + (a >> -d); b = y.b; }
+		while (a & 0x80000000){ a >>= 1; b += 1; } return *this;
 	}
 	inline Breal& operator|=(const Breal y){ // Computes x := x + y by x |= y, assuming x > y. 
 		int64_t d = b - y.b; if (d > 31) return *this;
 		a += (y.a >>  d); while (a & 0x80000000){ a >>= 8; b += 8; } return *this;
-	}		
+	}
+	inline Breal& operator<<=(int n){ b += n; return *this; }
+	inline Breal& operator>>=(int n){ b -= n; return *this; }
 };
 
 void Breal::set_log(double z){ // Assumes z is the natural log of the number to be represented.
 	b = (int)(z * log2(exp(1.0))) - 30; a = (int) exp(z - b * log(2.0));
 }
 void Breal::set(int64_t z){
-	if (z == 0){ a = 0; b = -30; return; }	
+	if (z == 0){ a = 0; b = -(1L << 30); return; }	
 	b = 0;
 	while (  z & 0x80000000 ) { z >>= 1; b++; } // Truncates the low bits of z if needed.
 	while (!(z & 0x40000000)) { z <<= 1; b--; }
@@ -136,10 +146,17 @@ class B2real {
 
 	B2real& operator=(const auto z){ set(z); return *this; }
 	
-	inline B2real& operator+=(const B2real y){
+/*	inline B2real& operator+=(const B2real y){
 		int64_t d = b - y.b;
 		if (d >= 0){ if ( d > 63){ return *this; } a += (y.a >> d); } 
 		else       { if (-d > 63){ *this = y; return *this; } a = y.a + (a >> -d); b = y.b; }
+		while (a & 0x8000000000000000){ a >>= 1; b += 1; } return *this;
+	}*/
+	inline B2real& operator+=(const B2real y){
+		int64_t d = b - y.b;
+		if ( d > 63 || y.a == 0){ return *this; }
+		if (-d > 63 ||   a == 0){ *this = y; return *this; }
+		if ( d >= 0){ a += (y.a >> d); } else { a = y.a + (a >> -d); b = y.b; }
 		while (a & 0x8000000000000000){ a >>= 1; b += 1; } return *this;
 	}
 	inline B2real& operator|=(const B2real y){
@@ -148,7 +165,8 @@ class B2real {
 		else if (-d > 63){ *this = y; return *this; } else { a = y.a + (a >> -d); b = y.b; }
 		while (a & 0x8000000000000000){ a >>= 8; b += 8; } return *this;
 	}	
-
+	inline B2real& operator<<=(int n){ b += n; return *this; }
+	inline B2real& operator>>=(int n){ b -= n; return *this; }
 };
 
 inline void B2real::set_log (double z)     { // Assumes z is the natural log of the number to be represented.
@@ -158,7 +176,7 @@ inline void B2real::set_logl(long double z){ // Assumes z is the natural log of 
 	b = (int64_t)(z * log2l(expl(1.0))) - 63; a = (int64_t) expl(z - b * logl(2.0));
 }
 inline void B2real::set(int64_t z){
-	if (z == 0){ a = 0; b = -63; return; }	
+	if (z == 0){ a = 0; b = -(1LL << 62); return; }	
 	b = 0;
 	while (  z & 0x8000000000000000) { z >>= 1; b++; } // Truncates the low bits of z if needed.
 	while (!(z & 0x4000000000000000)){ z <<= 1; b--; }
