@@ -14,9 +14,17 @@ HERE = pathlib.Path(__file__).parent
 README = (HERE / "README.md").read_text(encoding='utf-8')
 
 
-COMPILE_OPTIONS = []
-LINK_OPTIONS = []
+COMPILE_OPTIONS = list()
+LINK_OPTIONS = list()
+COMPILER_DIRECTIVES = dict()
+DEFINE_MACROS = list()
 
+COMPILER_DIRECTIVES['profile'] = True
+COMPILER_DIRECTIVES['linetrace'] = True
+
+# To allow coverage analysis for Cython modules
+if os.environ.get("CYTHON_TRACE") == "1":
+    DEFINE_MACROS.append(("CYTHON_TRACE", "1"))
 
 if os.name == "nt":
     # This is for Windows.
@@ -68,6 +76,7 @@ exts = [
         sources=["sumu/scores/_scorer.pyx"],
         include_dirs=["sumu/scores", numpy_include],
         language='c++',
+        define_macros=DEFINE_MACROS,
         extra_compile_args=COMPILE_OPTIONS,
         extra_link_args=LINK_OPTIONS),
 
@@ -77,6 +86,7 @@ exts = [
                  "sumu/zeta_transform/zeta_transform.cpp"],
         include_dirs=["sumu/CandidateComplementScore"],
         language='c++',
+        define_macros=DEFINE_MACROS,
         extra_compile_args=COMPILE_OPTIONS,
         extra_link_args=LINK_OPTIONS),
 
@@ -86,6 +96,7 @@ exts = [
                  "sumu/zeta_transform/zeta_transform.cpp"],
         include_dirs=["sumu/DAGR"],
         language='c++',
+        define_macros=DEFINE_MACROS,
         extra_compile_args=COMPILE_OPTIONS,
         extra_link_args=LINK_OPTIONS),
 
@@ -94,6 +105,7 @@ exts = [
         sources=['sumu/zeta_transform/_zeta_transform.pyx',
                  'sumu/zeta_transform/zeta_transform.cpp'],
         language='c++',
+        define_macros=DEFINE_MACROS,
         extra_compile_args=COMPILE_OPTIONS,
         extra_link_args=LINK_OPTIONS),
 
@@ -104,6 +116,7 @@ exts = [
         sources=['sumu/weight_sum/_weight_sum.pyx',
                  'sumu/weight_sum/weight_sum.cpp'],
         language='c++',
+        define_macros=DEFINE_MACROS,
         extra_compile_args=COMPILE_OPTIONS,
         extra_link_args=LINK_OPTIONS),
 
@@ -113,6 +126,7 @@ exts = [
                  'sumu/aps/aps-0.9.1/aps/simple_modular.cpp'],
         include_dirs=["sumu/aps/aps-0.9.1/aps", numpy_include],
         language='c++',
+        define_macros=DEFINE_MACROS,
         extra_compile_args=COMPILE_OPTIONS,
         extra_link_args=LINK_OPTIONS)
 
@@ -153,5 +167,5 @@ setup(
         "numpy",
         "scipy"
     ],
-    ext_modules=cythonize(exts, language_level="3")
+    ext_modules=cythonize(exts, language_level="3", compiler_directives=COMPILER_DIRECTIVES)
 )
