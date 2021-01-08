@@ -1,0 +1,5 @@
+Sphinx>=3.4.2
+sphinxcontrib-bibtex
+Cython>=0.29.17
+numpy
+scipy

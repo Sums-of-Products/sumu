@@ -149,7 +149,7 @@ def DAG_edgereversal(**kwargs):
 
 
 def R_basic_move(**kwargs):
-    """Splits or merges a root-partition :cite:`kuipers:2017`.
+    """Splits or merges a root-partition :footcite:`kuipers:2017`.
 
     Args:
        **kwargs: {"R": root-partition, "validate": boolean for whether to just validate input root-partition}

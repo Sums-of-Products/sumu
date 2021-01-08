@@ -1,3 +1,16 @@
+"""The module implements the algorithm Gadget as detailed in
+:footcite:`viinikka:2020a`.
+
+Limitations:
+  The computations rely heavily on bitwise operations, which for
+  reasons of efficiency have been implemented using primitive data
+  types (i.e., uint64_t). In the current version this sets a hard
+  limit on the maximum number of variables in the data at 128.
+
+
+"""
+
+
 import numpy as np
 from .weight_sum import weight_sum, weight_sum_contribs
 

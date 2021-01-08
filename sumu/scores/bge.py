@@ -7,7 +7,7 @@ from ..utils.math_utils import subsets
 
 class BGe:
     """Ported to Python from the R version by Jack Kuipers and Giusi Moffa
-    :cite:`kuipers:2014`.
+    :footcite:`kuipers:2014`.
     """
 
     def __init__(self, data, maxid):
@@ -141,7 +141,7 @@ def msb(n):
 
 
 def mat2pm(a, thresh=None):
-    """Compute all principal minors of input matrix :cite:`griffin:2006`.
+    """Compute all principal minors of input matrix :footcite:`griffin:2006`.
     """
 
     n = a.shape[0]

@@ -1,0 +1,15 @@
+.rst-content .footnote-reference {
+    vertical-align: baseline;
+    position: relative;
+    top: 0em;
+    line-height: 0;
+    font-size: 100%;
+}
+
+.rst-content .footnote-reference::before {
+  content: "["
+}
+
+.rst-content .footnote-reference::after {
+  content: "]"
+}

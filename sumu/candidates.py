@@ -217,9 +217,9 @@ def rnd(K, **kwargs):
 
 
 def ges(K, **kwargs):
-    """Greedy equivalence search :cite:`chickering:2002`.
+    """Greedy equivalence search :footcite:`chickering:2002`.
 
-    GES is implemented in the R package pcalg :cite:`hauser:2012,kalisch:2012`,
+    GES is implemented in the R package pcalg :footcite:`hauser:2012,kalisch:2012`,
     for which the function :py:func:`pcalg` provides a Python wrapping.
     """
 

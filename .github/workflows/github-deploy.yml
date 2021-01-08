@@ -2,7 +2,21 @@ name: build
 
 on:
   push:
+    paths-ignore:
+    - 'doc/**'
+    - 'profiling/**'
+    - 'run_scripts/**'
+    - 'README.md'
+    - 'README.rst'
+    - 'COPYING'
   pull_request:
+    paths-ignore:
+    - 'doc/**'
+    - 'profiling/**'
+    - 'run_scripts/**'
+    - 'README.md'
+    - 'README.rst'
+    - 'COPYING'
   release:
     types:
       - published

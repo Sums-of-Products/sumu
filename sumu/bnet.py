@@ -52,7 +52,7 @@ def partition(dag):
 def topological_sort(dag):
     """Sort the nodeds in a DAG in a topological order.
 
-    The algorithm is from :cite:`kahn:1962`.
+    The algorithm is from :footcite:`kahn:1962`.
     """
     names = set(range(len(dag)))
     edges = set((f[i], f[0]) for f in dag for i in range(1, len(f)) if len(f) > 1)
