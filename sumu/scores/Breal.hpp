@@ -25,7 +25,8 @@ class Breal {
 	long double get_ldouble();
 	int64_t get_lint();
 
-	Breal& operator=(const auto z){ set(z); return *this; }
+	Breal& operator=(const int64_t z){ set(z); return *this; }
+	Breal& operator=(const double z){ set(z); return *this; }
 
 	/*inline Breal& operator+=(const Breal y){
 		int64_t d = b - y.b; if (d > 31) return *this;
@@ -112,21 +113,38 @@ inline bool operator> (const Breal x, const Breal y){ return   y < x;  }
 inline bool operator<=(const Breal x, const Breal y){ return !(y < x); }
 inline bool operator>=(const Breal x, const Breal y){ return !(x < y); }
 
-inline Breal operator+(Breal x, auto w){ Breal y; y = w; return x + y; }
-inline Breal operator+(auto w, Breal y){ Breal x; x = w; return x + y; }
-inline Breal operator-(Breal x, auto w){ Breal y; y = w; return x - y; }
-inline Breal operator-(auto w, Breal y){ Breal x; x = w; return x - y; }
-inline Breal operator*(Breal x, auto w){ Breal y; y = w; return x * y; }
-inline Breal operator*(auto w, Breal y){ Breal x; x = w; return x * y; }
+inline Breal operator+(Breal x, int64_t w){ Breal y; y = w; return x + y; }
+inline Breal operator+(int64_t w, Breal y){ Breal x; x = w; return x + y; }
+inline Breal operator-(Breal x, int64_t w){ Breal y; y = w; return x - y; }
+inline Breal operator-(int64_t w, Breal y){ Breal x; x = w; return x - y; }
+inline Breal operator*(Breal x, int64_t w){ Breal y; y = w; return x * y; }
+inline Breal operator*(int64_t w, Breal y){ Breal x; x = w; return x * y; }
 
-inline bool operator< (const Breal x, const auto w){ Breal y; y = w; return x <  y; }
-inline bool operator< (const auto w, const Breal y){ Breal x; x = w; return x <  y; }
-inline bool operator> (const Breal x, const auto w){ Breal y; y = w; return x >  y; }
-inline bool operator> (const auto w, const Breal y){ Breal x; x = w; return x >  y; }
-inline bool operator<=(const Breal x, const auto w){ Breal y; y = w; return x <= y; }
-inline bool operator<=(const auto w, const Breal y){ Breal x; x = w; return x <= y; }
-inline bool operator>=(const Breal x, const auto w){ Breal y; y = w; return x >= y; }
-inline bool operator>=(const auto w, const Breal y){ Breal x; x = w; return x >= y; }
+inline bool operator< (const Breal x, const int64_t w){ Breal y; y = w; return x <  y; }
+inline bool operator< (const int64_t w, const Breal y){ Breal x; x = w; return x <  y; }
+inline bool operator> (const Breal x, const int64_t w){ Breal y; y = w; return x >  y; }
+inline bool operator> (const int64_t w, const Breal y){ Breal x; x = w; return x >  y; }
+inline bool operator<=(const Breal x, const int64_t w){ Breal y; y = w; return x <= y; }
+inline bool operator<=(const int64_t w, const Breal y){ Breal x; x = w; return x <= y; }
+inline bool operator>=(const Breal x, const int64_t w){ Breal y; y = w; return x >= y; }
+inline bool operator>=(const int64_t w, const Breal y){ Breal x; x = w; return x >= y; }
+
+inline Breal operator+(Breal x, double w){ Breal y; y = w; return x + y; }
+inline Breal operator+(double w, Breal y){ Breal x; x = w; return x + y; }
+inline Breal operator-(Breal x, double w){ Breal y; y = w; return x - y; }
+inline Breal operator-(double w, Breal y){ Breal x; x = w; return x - y; }
+inline Breal operator*(Breal x, double w){ Breal y; y = w; return x * y; }
+inline Breal operator*(double w, Breal y){ Breal x; x = w; return x * y; }
+
+inline bool operator< (const Breal x, const double w){ Breal y; y = w; return x <  y; }
+inline bool operator< (const double w, const Breal y){ Breal x; x = w; return x <  y; }
+inline bool operator> (const Breal x, const double w){ Breal y; y = w; return x >  y; }
+inline bool operator> (const double w, const Breal y){ Breal x; x = w; return x >  y; }
+inline bool operator<=(const Breal x, const double w){ Breal y; y = w; return x <= y; }
+inline bool operator<=(const double w, const Breal y){ Breal x; x = w; return x <= y; }
+inline bool operator>=(const Breal x, const double w){ Breal y; y = w; return x >= y; }
+inline bool operator>=(const double w, const Breal y){ Breal x; x = w; return x >= y; }
+
  
 // Class B2real
 class B2real { 
@@ -144,7 +162,9 @@ class B2real {
 	long double	get_ldouble();
 	int64_t		get_lint();
 
-	B2real& operator=(const auto z){ set(z); return *this; }
+	B2real& operator=(const int64_t z){ set(z); return *this; }
+	B2real& operator=(const double z){ set(z); return *this; }
+	B2real& operator=(const long double z){ set(z); return *this; }
 	
 /*	inline B2real& operator+=(const B2real y){
 		int64_t d = b - y.b;
@@ -235,21 +255,36 @@ inline bool operator> (const B2real x, const B2real y){ return   y < x;  }
 inline bool operator<=(const B2real x, const B2real y){ return !(y < x); }
 inline bool operator>=(const B2real x, const B2real y){ return !(x < y); }
 
-inline B2real operator+(B2real x, auto w){ B2real y; y = w; return x + y; }
-inline B2real operator+(auto w, B2real y){ B2real x; x = w; return x + y; }
-inline B2real operator-(B2real x, auto w){ B2real y; y = w; return x - y; }
-inline B2real operator-(auto w, B2real y){ B2real x; x = w; return x - y; }
-inline B2real operator*(B2real x, auto w){ B2real y; y = w; return x * y; }
-inline B2real operator*(auto w, B2real y){ B2real x; x = w; return x * y; }
+inline B2real operator+(B2real x, int64_t w){ B2real y; y = w; return x + y; }
+inline B2real operator+(int64_t w, B2real y){ B2real x; x = w; return x + y; }
+inline B2real operator-(B2real x, int64_t w){ B2real y; y = w; return x - y; }
+inline B2real operator-(int64_t w, B2real y){ B2real x; x = w; return x - y; }
+inline B2real operator*(B2real x, int64_t w){ B2real y; y = w; return x * y; }
+inline B2real operator*(int64_t w, B2real y){ B2real x; x = w; return x * y; }
 
-inline bool operator< (const B2real x, const auto w){ B2real y; y = w; return x <  y; }
-inline bool operator< (const auto w, const B2real y){ B2real x; x = w; return x <  y; }
-inline bool operator> (const B2real x, const auto w){ B2real y; y = w; return x >  y; }
-inline bool operator> (const auto w, const B2real y){ B2real x; x = w; return x >  y; }
-inline bool operator<=(const B2real x, const auto w){ B2real y; y = w; return x <= y; }
-inline bool operator<=(const auto w, const B2real y){ B2real x; x = w; return x <= y; }
-inline bool operator>=(const B2real x, const auto w){ B2real y; y = w; return x >= y; }
-inline bool operator>=(const auto w, const B2real y){ B2real x; x = w; return x >= y; }
+inline bool operator< (const B2real x, const int64_t w){ B2real y; y = w; return x <  y; }
+inline bool operator< (const int64_t w, const B2real y){ B2real x; x = w; return x <  y; }
+inline bool operator> (const B2real x, const int64_t w){ B2real y; y = w; return x >  y; }
+inline bool operator> (const int64_t w, const B2real y){ B2real x; x = w; return x >  y; }
+inline bool operator<=(const B2real x, const int64_t w){ B2real y; y = w; return x <= y; }
+inline bool operator<=(const int64_t w, const B2real y){ B2real x; x = w; return x <= y; }
+inline bool operator>=(const B2real x, const int64_t w){ B2real y; y = w; return x >= y; }
+inline bool operator>=(const int64_t w, const B2real y){ B2real x; x = w; return x >= y; }
  
+inline B2real operator+(B2real x, double w){ B2real y; y = w; return x + y; }
+inline B2real operator+(double w, B2real y){ B2real x; x = w; return x + y; }
+inline B2real operator-(B2real x, double w){ B2real y; y = w; return x - y; }
+inline B2real operator-(double w, B2real y){ B2real x; x = w; return x - y; }
+inline B2real operator*(B2real x, double w){ B2real y; y = w; return x * y; }
+inline B2real operator*(double w, B2real y){ B2real x; x = w; return x * y; }
+
+inline bool operator< (const B2real x, const double w){ B2real y; y = w; return x <  y; }
+inline bool operator< (const double w, const B2real y){ B2real x; x = w; return x <  y; }
+inline bool operator> (const B2real x, const double w){ B2real y; y = w; return x >  y; }
+inline bool operator> (const double w, const B2real y){ B2real x; x = w; return x >  y; }
+inline bool operator<=(const B2real x, const double w){ B2real y; y = w; return x <= y; }
+inline bool operator<=(const double w, const B2real y){ B2real x; x = w; return x <= y; }
+inline bool operator>=(const B2real x, const double w){ B2real y; y = w; return x >= y; }
+inline bool operator>=(const double w, const B2real y){ B2real x; x = w; return x >= y; }
 
 #endif
