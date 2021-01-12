@@ -18,7 +18,8 @@ cdef extern from "CandidateRestrictedScore.hpp":
 
     cdef cppclass CppCandidateRestrictedScore "CandidateRestrictedScore":
 
-        CppCandidateRestrictedScore(double* score_array, int* C, int n, int K, double tolerance)
+        CppCandidateRestrictedScore(double* score_array, int* C, int n, int K,
+                                    int cc_limit, double cc_tol, double isum_tol)
         double sum(int v, bm32 U, bm32 T)
         double test_sum(int v, bm32 U, bm32 T)
         double get_cc(int v, bm64 key)
@@ -27,7 +28,7 @@ cdef extern from "CandidateRestrictedScore.hpp":
         int K
         double** score_array
         int** C
-        double m_tolerance
+        double m_cc_tol
         # void read(int * data, int m, int n)
         # void set_ess(double val)
         # double cliq(int * var, int d)
@@ -37,7 +38,7 @@ cdef class CandidateRestrictedScore:
 
     cdef CppCandidateRestrictedScore * thisptr;
 
-    def __cinit__(self, score_array, C, K, tolerance=2.0**(-32)):
+    def __cinit__(self, score_array, C, K, cc_limit=1*10**7, cc_tol=2.0**(-32), isum_tol=0.001):
 
         cdef double[:, ::1] memview_score_array
         memview_score_array = score_array
@@ -48,14 +49,15 @@ cdef class CandidateRestrictedScore:
         self.thisptr = new CppCandidateRestrictedScore(& memview_score_array[0, 0],
                                                        & memview_C[0, 0],
                                                        score_array.shape[0],
-                                                       K,
-                                                       tolerance)
+                                                       K, cc_limit,
+                                                       cc_tol, isum_tol)
+
     def __dealloc__(self):
        del self.thisptr
 
     @property
-    def tolerance(self):
-        return self.thisptr.m_tolerance
+    def cc_tol(self):
+        return self.thisptr.m_cc_tol
 
     def sum(self, int v, bm32 U, bm32 T):
         return self.thisptr.sum(v, U, T)

@@ -5,7 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include "headers.hpp"
-#include "Breal.hpp"
+#include "../scores/Breal.hpp"
 
 #define bm32 uint32_t
 #define Treal	B2real 

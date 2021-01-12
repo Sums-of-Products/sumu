@@ -9,12 +9,12 @@
 #include "../zeta_transform/zeta_transform.h"
 #include "../bitmap/bitmap.hpp"
 
+#include "RangeSums.hpp"
 #define bm32 uint32_t
 #define bm64 uint64_t
 using namespace std;
 
 
-// Is this the way to go?
 double inf{std::numeric_limits<double>::infinity()};
 
 
@@ -47,13 +47,16 @@ public:
   double** m_tau_simple; // Matrix of size n x 2^K.
   unordered_map< bm64, double > * m_tau_cc;
   int** m_C; // Matrix of size n x K.
-  double m_tolerance; // Used as threshold for preparing for cc.
+  double m_cc_tol; // Used as threshold for preparing for cc.
+  int m_cc_limit;
 
-  CandidateRestrictedScore(double* scores, int* C, int n, int K, double tolerance);
+  CandidateRestrictedScore(double* scores, int* C, int n, int K, int cc_limit, double cc_tol, double isum_tol);
   ~CandidateRestrictedScore();
   double sum(int v, bm32 U, bm32 T);
   double get_cc(int v, bm64 key);
   double get_tau_simple(int v, bm32 U);
+
+  IntersectSums **isums;
 
   double test_sum(int v, bm32 U, bm32 T);
 
@@ -63,20 +66,26 @@ private:
   void precompute_tau_cc_basecases();
   void precompute_tau_cc();
   void rec_dfs(int v, bm32 U, bm32 R, bm32 T);
+  void rec_it_dfs(int v, bm32 U, bm32 R, bm32 T, int T_size, int T_size_limit, int * count);
 
 };
 
-CandidateRestrictedScore::CandidateRestrictedScore(double* score_array, int* C, int n, int K, double tolerance) {
+CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
+						   int* C, int n, int K,
+						   int cc_limit, double cc_tol,
+						   double isum_tol) {
 
 
   m_score_array = score_array;
-  m_tolerance = tolerance;
+  m_cc_tol = cc_tol;
   m_n = n;
   m_K = K;
+  m_cc_limit = cc_limit;
 
   m_tau_simple = new double*[n];
   m_C = new int*[n];
   m_tau_cc = new unordered_map< bm64, double >[n];
+  isums = new IntersectSums*[n];
 
   int i = 0;
   int j = 0;
@@ -84,6 +93,8 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array, int* C, 
     m_tau_simple[v] = new double[ (bm32) 1 << K];
     m_C[v] = new int[K];
     m_tau_cc[v] = unordered_map< bm64, double >();
+
+    isums[v] = new IntersectSums(K, &score_array[v * ((bm32) 1 << K)], isum_tol);
 
     for (bm32 s = 0; s < (bm32) 1 << K; ++s) {
       m_tau_simple[v][s] = score_array[i++];
@@ -106,7 +117,9 @@ CandidateRestrictedScore::~CandidateRestrictedScore() {
   for (int v = m_n - 1; v > -1; --v) {
     delete[] m_tau_simple[v];
     delete[] m_C[v];
+    delete isums[v];
   }
+  delete [] isums;
 
 }
 
@@ -118,11 +131,13 @@ void CandidateRestrictedScore::precompute_tau_simple() {
 }
 
 void CandidateRestrictedScore::precompute_tau_cc_basecases() {
+  int count = 0;
   for (int v = 0; v < m_n; ++v) {
     for (int k = 0; k < m_K; ++k) {
       bm32 j = 1 << k;
       bm32 U_minus_j = (( (bm32) 1 << m_K) - 1) & ~j;
       double* tmp = new double[1 << (m_K - 1)];
+
       tmp[0] = m_score_array[v*( (bm32) 1 << m_K) + j]; // Make indexing inline function?
 
       // Iterate over subsets of U_minus_j.
@@ -134,8 +149,14 @@ void CandidateRestrictedScore::precompute_tau_cc_basecases() {
       for (bm32 S = 0; S < (bm32) 1 << (m_K - 1); ++S) {
 	bm32 U = ikbit_32(S, k, 1);
 	if (close(m_tau_simple[v][U],
-		  m_tau_simple[v][U & ~j], m_tolerance)) {
+		  m_tau_simple[v][U & ~j], m_cc_tol)) {
 	  m_tau_cc[v].insert({(bm64) U << 32 | j, tmp[S]});
+
+	  count++;
+	  if (count >= m_cc_limit) {
+	    delete[] tmp;
+	    return;
+	  }
 	}
       }
 
@@ -144,23 +165,50 @@ void CandidateRestrictedScore::precompute_tau_cc_basecases() {
   }
 }
 
+// void CandidateRestrictedScore::precompute_tau_cc() {
+//   for (int v = 0; v < m_n; ++v) {
+//     for (bm32 U = 0; U < (bm32) 1 << m_K; ++U) {
+//       rec_dfs(v, U, U, 0);
+//     }
+//   }
+// }
+
+
 void CandidateRestrictedScore::precompute_tau_cc() {
+
+  int count[1] = {0};
   for (int v = 0; v < m_n; ++v) {
-    for (bm32 U = 0; U < (bm32) 1 << m_K; ++U) {
-      rec_dfs(v, U, U, 0);
+    *count += m_tau_cc[v].size();
+  }
+
+  // With Insurance data, this order seems about 25% faster than swapping v and U loops.
+  for (int v = 0; v < m_n; ++v) {
+    for (int T_size_limit = 1; T_size_limit <= m_K; ++T_size_limit) {
+      for (bm32 U = 1; U < (bm32) 1 << m_K; ++U) {
+	if (count_32(U) < T_size_limit) {
+	  continue;
+	}
+	rec_it_dfs(v, U, U, 0, 0, T_size_limit, count);
+	if (*count >= m_cc_limit) {
+	  return;
+	}
+      }
     }
   }
 }
 
+
 void CandidateRestrictedScore::rec_dfs(int v, bm32 U, bm32 R, bm32 T) {
-  if (close(m_tau_simple[v][U], m_tau_simple[v][U & ~T], m_tolerance)) {
-    bm32 T1 = T & ~T;
-    bm32 U1 = U & ~T1;
-    bm32 T2 = T & ~T1;
-    m_tau_cc[v][(bm64) U << 32 | T] = log_add_exp(sum(v, U, T1), sum(v, U1, T2));
-  }
-  else {
-    return;
+  if (T > 0) {
+    if (close(m_tau_simple[v][U], m_tau_simple[v][U & ~T], m_cc_tol)) {
+      bm32 T1 = T & ~T;
+      bm32 U1 = U & ~T1;
+      bm32 T2 = T & ~T1;
+      m_tau_cc[v][(bm64) U << 32 | T] = log_add_exp(sum(v, U, T1), sum(v, U1, T2));
+    }
+    else {
+      return;
+    }
   }
   while (R) {
     bm32 B = lsb_32(R);
@@ -168,6 +216,34 @@ void CandidateRestrictedScore::rec_dfs(int v, bm32 U, bm32 R, bm32 T) {
     rec_dfs(v, U, R, T | B);
   }
 }
+
+
+void CandidateRestrictedScore::rec_it_dfs(int v, bm32 U, bm32 R, bm32 T, int T_size, int T_size_limit, int *count) {
+
+  if (*count < m_cc_limit) {
+    if (T > 0) {
+      if (close(m_tau_simple[v][U], m_tau_simple[v][U & ~T], m_cc_tol)) {
+	bm32 T1 = T & ~T;
+	bm32 U1 = U & ~T1;
+	bm32 T2 = T & ~T1;
+	if (!m_tau_cc[v].count((bm64) U << 32 | T)) {
+	  ++*count;
+	  m_tau_cc[v][(bm64) U << 32 | T] = log_add_exp(sum(v, U, T1), sum(v, U1, T2));
+	}
+      }
+      else {
+	return;
+      }
+    }
+    while (R && T_size < T_size_limit) {
+      bm32 B = lsb_32(R);
+      R = R ^ B;
+      T_size = count_32(T | B);
+      rec_it_dfs(v, U, R, T | B, T_size, T_size_limit, count);
+    }
+  }
+}
+
 
 
 double CandidateRestrictedScore::sum(int v, bm32 U, bm32 T) {
@@ -183,6 +259,10 @@ double CandidateRestrictedScore::sum(int v, bm32 U, bm32 T) {
 
   if (m_tau_cc[v].count((bm64) U << 32 | T)) {
     return m_tau_cc[v][(bm64) U << 32 | T];
+  }
+
+  if (close(m_tau_simple[v][U], m_tau_simple[v][U & ~T], m_cc_tol)) {
+    return isums[v]->scan_sum(U, T);
   }
 
   return log_minus_exp(m_tau_simple[v][U], m_tau_simple[v][U & ~T]);
