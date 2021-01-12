@@ -24,7 +24,7 @@ inline bm32 ikbit_32(bm32 bitmap, int k, int bit) {
   }
   newmask ^= (-bit ^ newmask) & 1;
   newmask <<= k;
-  return (newmask | ((1 << k) - 1)) & bitmap;
+  return newmask | (((1 << k) - 1) & bitmap);
 }
 
 inline int lsb_32(bm32 x) {
