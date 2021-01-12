@@ -107,7 +107,7 @@ void IntersectSums::prune(double *w){
 	for (bm32 S = 1; S < l; ++S){ keepit[S] = false; } keepit[0] = true;	
 	for (bm32 R = 0; R < l; ++R){ a[R].set_log(w[R]); c[R] = a[R]; a[R] >>= K - popcount(R); c[R] <<= tol; }
 	for (int j = 0; j < K; ++j){
-		for (bm32 R = 0; R < l; ++R) if (R & (1L << j)) b[R] = a[R]; else b[R] = 0L; 
+		for (bm32 R = 0; R < l; ++R) if (R & (1L << j)) b[R] = a[R]; else b[R] = (int64_t) 0L; 
 		fzt_inpl(b, K);
 		for (bm32 S = 1; S < l; ++S) if (S & (1L << j)) keepit[S] |= (c[S] > b[S]); 	
 	}
