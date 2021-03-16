@@ -40,7 +40,7 @@ if os.name == "posix":
     # Trying to use the oldest possible standard for maximum
     # compatibility. Maybe even older would be possible with current
     # extensions.
-    COMPILE_OPTIONS += ["-std=c++11", "-Wall", "-O3"]
+    COMPILE_OPTIONS += ["-std=c++14", "-Wall", "-O3"]
 
 
 def is_new_osx():

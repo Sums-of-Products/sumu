@@ -85,7 +85,9 @@ public:
 	IntersectSums(int K0, double* w, double eps0);
 	~IntersectSums();
 	double scan_sum(bm32 U, bm32 T);
+	double scan_sum(bm32 U);
 	bm32   scan_rnd(bm32 U, bm32 T, double wcum);
+	bm32   scan_rnd(bm32 U, double wcum);
 
 private:
 	int				K;	// Size of the ground set.
@@ -139,9 +141,10 @@ double IntersectSums::scan_sum(bm32 U, bm32 T){
 			sum += score; ++count;
 		}
 	}
-	cout << " (count = " << count << ") ";
+	// cout << " (count = " << count << ") ";
 	return sum.get_log();
 }
+
 bm32 IntersectSums::scan_rnd(bm32 U, bm32 T, double wcum){ // Returns the first set when the cumulative weight exceeds wcum.
 	int m = s.size();
 	Treal sum; sum = 0.0; 
@@ -150,7 +153,8 @@ bm32 IntersectSums::scan_rnd(bm32 U, bm32 T, double wcum){ // Returns the first 
 	for (; i < m; ++i){
 		P = s[i].set; 
 		if ( subseteq(P, U) && intersects(P, T) ) {
-			sum = s[i].weight; ++i; 
+			sum = s[i].weight; ++i;
+			// cout << sum.get_log() << " ";
 			if (sum > target) i = m; 
 			break;
 		}
@@ -158,8 +162,59 @@ bm32 IntersectSums::scan_rnd(bm32 U, bm32 T, double wcum){ // Returns the first 
 	for (; i < m; ++i){
 		P = s[i].set; 
 		if ( subseteq(P, U) && intersects(P, T) ) {
-			Treal score = s[i].weight; sum += score; 
+			Treal score = s[i].weight; sum += score;
+			// cout << sum.get_log() << " ";
 			if (sum > target) break; 
+		}
+	}
+	// cout << endl;
+	// cout << "P: " << P << ", i: " << i << ", wcum: " << wcum << endl;
+	return P;
+}
+
+double IntersectSums::scan_sum(bm32 U){
+	int m = s.size(); int count = 0;
+	Treal sum; sum = 0.0;
+	Treal slack; slack = eps/m;
+	Treal factor; factor = 0.0;
+	int i = 0;
+	for (; i < m; ++i){
+		bm32 P = s[i].set;
+		if ( subseteq(P, U) ) {
+			sum = s[i].weight; factor = sum * slack;
+			++i; ++count; break;
+		}
+	}
+	for (; i < m; ++i){
+		bm32 P = s[i].set;
+		if ( subseteq(P, U) ) {
+			Treal score; score = s[i].weight;
+			if (score < factor) break;
+			sum += score; ++count;
+		}
+	}
+	return sum.get_log();
+}
+
+bm32 IntersectSums::scan_rnd(bm32 U, double wcum){
+	int m = s.size();
+	Treal sum; sum = 0.0;
+	Treal target; target.set_log(wcum);
+	int i = 0; bm32 P = 0L;
+	for (; i < m; ++i){
+		P = s[i].set;
+		if ( subseteq(P, U) ) {
+			sum = s[i].weight; ++i;
+			// cout << sum.get_log() << " ";
+			if (sum > target) i = m;
+			break;
+		}
+	}
+	for (; i < m; ++i){
+		P = s[i].set;
+		if ( subseteq(P, U) ) {
+			Treal score = s[i].weight; sum += score;
+			if (sum > target) break;
 		}
 	}
 	return P;

@@ -3,7 +3,12 @@ cimport numpy as np
 from libcpp.vector cimport vector
 from libcpp cimport bool
 from libcpp.utility cimport move  # min Cython 0.29.17
-from .utils.bitmap import bm_to_ints, ikbit
+from libc.stdint cimport uint32_t as bm32
+from .utils.bitmap import bm_to_ints#, ikbit
+
+
+cdef extern from "../bitmap/bitmap.hpp":
+    int ikbit_32(bm32 bitmap, int k, int bit)
 
 
 cdef extern from "aps-0.9.1/aps/logdouble.h" namespace "aps":
@@ -75,7 +80,7 @@ def aps(weights, as_dict=False, normalize=False):
         weights = {v: dict() for v in range(V)}
         for i in range(V):
             for j in range(J):
-                pset = bm_to_ints(ikbit(j, i, 0))
+                pset = bm_to_ints(ikbit_32(j, i, 0))
                 weights[i][pset] = probs.data()[i][j].log
             if normalize is True:
                 normalizer = np.logaddexp.reduce(list(weights[i].values()))

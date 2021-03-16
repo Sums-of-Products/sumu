@@ -1,14 +1,3 @@
-"""
-import numpy as np
-import scorer
-a = scorer.BDeu()
-data = np.ones((50,10), dtype=np.int32)
-a.read(data)
-a.set_ess(10)
-a.cliq(np.array([1,2,3], dtype=np.int32))
-a.fami(4, np.array([1,2,3,7,9,10], dtype=np.int32))
-"""
-
 from libcpp.vector cimport vector
 from libc.stdint cimport uint64_t as bm64
 from libc.stdint cimport uint32_t as bm32
@@ -21,9 +10,12 @@ cdef extern from "CandidateRestrictedScore.hpp":
         CppCandidateRestrictedScore(double* score_array, int* C, int n, int K,
                                     int cc_limit, double cc_tol, double isum_tol)
         double sum(int v, bm32 U, bm32 T)
+        double sum(int v, bm32 U)
         double test_sum(int v, bm32 U, bm32 T)
         double get_cc(int v, bm64 key)
         double get_tau_simple(int v, bm32 U)
+        bm32 sample_pset(int v, bm32 U, bm32 T, double wcum)
+        bm32 sample_pset(int v, bm32 U, double wcum)
         int n
         int K
         double** score_array
@@ -38,7 +30,8 @@ cdef class CandidateRestrictedScore:
 
     cdef CppCandidateRestrictedScore * thisptr;
 
-    def __cinit__(self, score_array, C, K, cc_limit=1*10**7, cc_tol=2.0**(-32), isum_tol=0.001):
+    def __cinit__(self, *, score_array, C, K, cc_cache_size, cc_tolerance,
+                  pruning_eps):
 
         cdef double[:, ::1] memview_score_array
         memview_score_array = score_array
@@ -49,8 +42,8 @@ cdef class CandidateRestrictedScore:
         self.thisptr = new CppCandidateRestrictedScore(& memview_score_array[0, 0],
                                                        & memview_C[0, 0],
                                                        score_array.shape[0],
-                                                       K, cc_limit,
-                                                       cc_tol, isum_tol)
+                                                       K, cc_cache_size,
+                                                       cc_tolerance, pruning_eps)
 
     def __dealloc__(self):
        del self.thisptr
@@ -59,7 +52,9 @@ cdef class CandidateRestrictedScore:
     def cc_tol(self):
         return self.thisptr.m_cc_tol
 
-    def sum(self, int v, bm32 U, bm32 T):
+    def sum(self, int v, bm32 U, bm32 T=0):
+        if T == 0:
+            return self.thisptr.sum(v, U)
         return self.thisptr.sum(v, U, T)
 
     def testi_sum(self, int v, bm32 U, bm32 T):
@@ -71,6 +66,10 @@ cdef class CandidateRestrictedScore:
     def get_tau_simple(self, int v, bm32 U):
         return self.thisptr.get_tau_simple(v, U)
 
+    def sample_pset(self, int v, bm32 U, bm32 T, double wcum):
+        if T > 0:
+            return self.thisptr.sample_pset(v, U, T, self.thisptr.sum(v, U, T) + wcum)
+        return self.thisptr.sample_pset(v, U, self.thisptr.sum(v, U) + wcum)
 
     # def tau(self):
     #     return np.ctypeslib.as_array(self.thisptr.get_tau(), shape=(n, 2**K))

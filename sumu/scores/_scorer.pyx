@@ -42,9 +42,11 @@ cdef class BDeu:
     cdef CppBDeu * thisptr
     cdef int maxid
 
-    def __cinit__(self, maxid):
+    def __cinit__(self, *, data, ess, maxid):
         self.thisptr = new CppBDeu()
         self.maxid = maxid
+        self._read(data)
+        self._set_ess(ess)
 
     def __dealloc__(self):
         del self.thisptr
@@ -52,7 +54,7 @@ cdef class BDeu:
     def clear_cache(self):
         self.thisptr.clear_cliqc()
 
-    def read(self, data):
+    def _read(self, data):
         # NOTE: BDeu.hpp uses int type for data, which requires data
         # to be of type np.int32. Could use uint8_t perhaps to allow
         # np.int8
@@ -62,7 +64,7 @@ cdef class BDeu:
                                  memview_data.shape[0],
                                  memview_data.shape[1])
 
-    def set_ess(self, value):
+    def _set_ess(self, value):
         self.thisptr.set_ess(value)
 
     @cython.boundscheck(False)

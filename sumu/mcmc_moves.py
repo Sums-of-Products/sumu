@@ -2,150 +2,76 @@ import numpy as np
 from .utils.math_utils import comb, subsets
 from .bnet import transitive_closure
 
+
 def DAG_edgereversal(**kwargs):
 
-    def valid():
-        # this should check there's edges to reverse
-        return True
-        #return len(edges) > 0
-
-    if "validate" in kwargs and kwargs["validate"] is True:
-        return valid()
+    def valid(DAG):
+        # Check that there's at least one edge to reverse
+        # return any([len(f) > 1 for f in DAG])
+        return any([len(f[1]) > 0 for f in DAG])
 
     DAG = kwargs["DAG"]
-    DAG_dict = {f[0]: set() for f in DAG}
-    for f in DAG:
-        if len(f) > 1:
-            DAG_dict[f[0]].update(f[1:])
+    R = kwargs["R"]
+    score = kwargs["score"]
+    n = len(DAG)
 
-    scores = kwargs["scores"]
-    max_indegree = kwargs["max_indegree"]
+    if "validate" in kwargs and kwargs["validate"] is True:
+        return valid(DAG)
 
-    edges = [np.array((p, f[0])) for f in DAG for p in f[1:]]
+    edges = list((u, f[0]) for f in DAG for u in f[1])
 
     Ndagger = len(edges)
     Ndaggertilde = len(edges)
 
-    min_node = min([min(edge) for edge in edges])
-    size = max([max(edge) for edge in edges])
-
-    if min_node == 1:
-        edges = [edge - 1 for edge in edges]
-    else:
-        size += 1
-
     edge = edges[np.random.randint(len(edges))]
-    # print(edge)
 
     for f in DAG:
-        if f[0] == edge[0] and len(f) > 1:
-            Ndaggertilde -= len(f) - 1
-        if f[0] == edge[1] and len(f) > 1:
-            Ndaggertilde -= len(f) - 1
+        if f[0] == edge[0] and len(f) == 2:
+            Ndaggertilde -= len(f[1])
+        if f[0] == edge[1] and len(f) == 2:
+            Ndaggertilde -= len(f[1])
 
-    orphan = [(f[0],) if f[0] in edge else f for f in DAG]
+    orphan = [(f[0], set()) if f[0] in edge else f for f in DAG]
+    descendorph = transitive_closure(orphan, R)
 
-    #print("---")
-    #print(orphan)
-    #print("---")
+    # NOTE: old parent and its descendants
+    edgeparentbannednodes = descendorph[edge[0]]
 
-    descendorph = transitive_closure(orphan, mat=True)
+    U = set(range(n)).difference(edgeparentbannednodes)
+    T = {edge[1]}
+    newparents = score.sample_pset(edge[0], U, T)[0][1]
 
-    edgeparentbannednodes = np.nonzero(descendorph[edge[0],:])[0]
-
-    # allowed for old parent
-    allowed = [frozenset({edge[1]}).union(x) for x in subsets(set(range(len(scores))).difference({edge[1]}).difference(edgeparentbannednodes),
-                           0, max_indegree - 1)]
-
-    ascores = [scores[edge[0]][pset] for pset in allowed]
-
-    newparents = np.random.choice(allowed, p=np.exp(np.array(ascores) - np.logaddexp.reduce(ascores)))
-
-    DAG_dict[edge[0]] = newparents
-
+    DAG[edge[0]] = (edge[0], newparents)
     Ndaggertilde += len(newparents)
 
-    Zstarparent = np.sum(np.exp(np.array(ascores) - np.max(ascores)))
-    Zstarparentlogscale = np.max(ascores)
+    Zstarparent = score.sum(edge[0], U, T)
 
-    descend1 = np.array(descendorph)
-    oldparentdesc = np.nonzero(descendorph[edge[0]])[0]
-    for p in newparents:
-        descend1[p, edge[0]] = 1
-        descend1[p, oldparentdesc] = 1
+    # NOTE: old parent and its descendants + old child and its descendants
+    edgechildbannednodes = descendorph[edge[1]].union(descendorph[edge[0]])
 
-    newancestors = np.nonzero(np.sum(descend1[:,list(newparents)], axis=1))[0]
-
-    descend1[newancestors, edge[0]] = 1
-    for p in newparents:
-        descend1[p, oldparentdesc] = 1
-
-    edgechildbannednodes = np.nonzero(descend1[edge[1],:])[0]
-
-    # allowed for old child
-    allowed = [frozenset(x) for x in subsets(set(range(len(scores))).difference({edge[1]}).difference(edgechildbannednodes), 0, max_indegree)]
-
-    ascores = [scores[edge[1]][pset] for pset in allowed]
-    newparents = np.random.choice(allowed, p=np.exp(np.array(ascores) - np.logaddexp.reduce(ascores)))
-    # print(newparents)
-
-    DAG_dict[edge[1]] = newparents
-
+    U = set(range(n)).difference(edgechildbannednodes)
+    T = set()
+    newparents = score.sample_pset(edge[1], U, T)[0][1]
+    DAG[edge[1]] = (edge[1], newparents)
     Ndaggertilde += len(newparents)
+    Zpluschild = score.sum(edge[1], U, T)
 
-    Zpluschild = np.sum(np.exp(np.array(ascores) - np.max(ascores)))
-    Zpluschildlogscale = np.max(ascores)
+    # NOTE: old child and its descendants
+    edgechildbannednodes = descendorph[edge[1]]
 
-    #descend1 = np.array(descendorph)
-    oldchilddesc = np.nonzero(descendorph[edge[1]])[0]
-    for p in newparents:
-        descend1[p, edge[1]] = 1
-        descend1[p, oldchilddesc] = 1
+    U = set(range(n)).difference(edgechildbannednodes)
+    T = {edge[0]}
 
-    newancestors = np.nonzero(np.sum(descend1[:,list(newparents)], axis=1))[0]
+    Zstarchild = score.sum(edge[1], U, T)
 
-    descend1[newancestors, edge[1]] = 1
-    for p in newparents:
-        descend1[p, oldparentdesc] = 1
+    # NOTE: old parent and its descendants
+    edgeparentbannednodes = descendorph[edge[1]].union(descendorph[edge[0]])
 
-
-    #### same steps from the orphan but keeping the child and parent relation as before
-
-    edgechildbannednodes = np.nonzero(descendorph[edge[1],:])[0]
-    allowed = [frozenset({edge[0]}).union(x) for x in subsets(set(range(len(scores))).difference({edge[0]}).difference(edgechildbannednodes),
-                           0, max_indegree - 1)]
-    ascores = [scores[edge[1]][pset] for pset in allowed]
-    newparents = np.random.choice(allowed, p=np.exp(np.array(ascores) - np.logaddexp.reduce(ascores)))
-
-    Zstarchild = np.sum(np.exp(np.array(ascores) - np.max(ascores)))
-    Zstarchildlogscale = np.max(ascores)
-
-    descend2 = np.array(descendorph)
-    descend2[list(newparents), edge[1]] = 1
-
-    childdesc = np.nonzero(descend2[edge[1],:])[0]
-    for p in newparents:
-        descend2[p, childdesc] = 1
-
-    newancestors = np.nonzero(np.sum(descend2[:,list(newparents)], axis=1))[0]
-    for v in childdesc:
-        descend2[newancestors, v] = 1
-    descend2[newancestors, edge[1]] = 1
-
-    # now we need to sample new parents for the previous parent none of the current descendents are permissible
-
-    edgeparentbannednodes = np.nonzero(descend2[edge[0], :])[0]
-    allowed = [frozenset(x) for x in subsets(set(range(len(scores))).difference({edge[0]}).difference(edgeparentbannednodes), 0, max_indegree)]
-    ascores = [scores[edge[1]][pset] for pset in allowed]
-
-    newparents = np.random.choice(allowed, p=np.exp(np.array(ascores) - np.logaddexp.reduce(ascores)))
-
-    Zplusparent = np.sum(np.exp(np.array(ascores) - np.max(ascores)))
-    Zplusparentlogscale = np.max(ascores)
-
-    scoreratio = (Ndagger/Ndaggertilde) * (Zstarparent/Zstarchild) * (Zpluschild/Zplusparent) * np.exp(Zstarparentlogscale - Zstarchildlogscale +Zpluschildlogscale - Zplusparentlogscale)
-
-    return [(v,) if not DAG_dict[v] else (v,) + tuple(sorted(DAG_dict[v])) for v in DAG_dict], scoreratio
+    U = set(range(n)).difference(edgeparentbannednodes)
+    T = set()
+    Zplusparent = score.sum(edge[0], U, T)
+    scoreratio = Ndagger/Ndaggertilde * np.exp(Zstarparent + Zpluschild - Zplusparent - Zstarchild)
+    return DAG, scoreratio, edge
 
 
 def R_basic_move(**kwargs):
@@ -217,7 +143,7 @@ def R_basic_move(**kwargs):
 
 def R_swap_any(**kwargs):
 
-    def valid():
+    def valid(R):
         return len(R) > 1
 
     R = kwargs["R"]
@@ -225,7 +151,7 @@ def R_swap_any(**kwargs):
     m = len(R)
 
     if "validate" in kwargs and kwargs["validate"] is True:
-        return valid()
+        return valid(R)
 
     if m == 2:
         j = 0

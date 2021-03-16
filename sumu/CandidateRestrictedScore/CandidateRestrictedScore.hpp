@@ -53,8 +53,11 @@ public:
   CandidateRestrictedScore(double* scores, int* C, int n, int K, int cc_limit, double cc_tol, double isum_tol);
   ~CandidateRestrictedScore();
   double sum(int v, bm32 U, bm32 T);
+  double sum(int v, bm32 U);
   double get_cc(int v, bm64 key);
   double get_tau_simple(int v, bm32 U);
+  bm32 sample_pset(int v, bm32 U, bm32 T, double wcum);
+  bm32 sample_pset(int v, bm32 U, double wcum);
 
   IntersectSums **isums;
 
@@ -109,6 +112,11 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
   precompute_tau_simple();
   precompute_tau_cc_basecases();
   precompute_tau_cc();
+  int cc = 0;
+  for (int v = 0; v < n; ++v) {
+    cc += m_tau_cc[v].size();
+  }
+  cout << "cc size: " << cc << endl;
 }
 
 CandidateRestrictedScore::~CandidateRestrictedScore() {
@@ -181,17 +189,17 @@ void CandidateRestrictedScore::precompute_tau_cc() {
     *count += m_tau_cc[v].size();
   }
 
-  // With Insurance data, this order seems about 25% faster than swapping v and U loops.
+  // With Insurance data, this order seems about 25% faster than having v loop after count check
   for (int v = 0; v < m_n; ++v) {
     for (int T_size_limit = 1; T_size_limit <= m_K; ++T_size_limit) {
       for (bm32 U = 1; U < (bm32) 1 << m_K; ++U) {
-	if (count_32(U) < T_size_limit) {
-	  continue;
-	}
-	rec_it_dfs(v, U, U, 0, 0, T_size_limit, count);
-	if (*count >= m_cc_limit) {
-	  return;
-	}
+		if (count_32(U) < T_size_limit) {
+		  continue;
+		}
+		rec_it_dfs(v, U, U, 0, 0, T_size_limit, count);
+		if (*count >= m_cc_limit) {
+		  return;
+		}
       }
     }
   }
@@ -245,6 +253,10 @@ void CandidateRestrictedScore::rec_it_dfs(int v, bm32 U, bm32 R, bm32 T, int T_s
 }
 
 
+double CandidateRestrictedScore::sum(int v, bm32 U) {
+  return isums[v]->scan_sum(U);
+}
+
 
 double CandidateRestrictedScore::sum(int v, bm32 U, bm32 T) {
 
@@ -276,6 +288,13 @@ double CandidateRestrictedScore::get_tau_simple(int v, bm32 U) {
   return m_tau_simple[v][U];
 }
 
+bm32 CandidateRestrictedScore::sample_pset(int v, bm32 U, bm32 T, double wcum) {
+  return isums[v]->scan_rnd(U, T, wcum);
+}
+
+bm32 CandidateRestrictedScore::sample_pset(int v, bm32 U, double wcum) {
+  return isums[v]->scan_rnd(U, wcum);
+}
 
 double CandidateRestrictedScore::test_sum(int v, bm32 U, bm32 T) {
 

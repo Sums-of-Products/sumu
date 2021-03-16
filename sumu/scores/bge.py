@@ -10,7 +10,7 @@ class BGe:
     :footcite:`kuipers:2014`.
     """
 
-    def __init__(self, data, maxid):
+    def __init__(self, *, data, maxid):
 
         self.maxid = maxid
 

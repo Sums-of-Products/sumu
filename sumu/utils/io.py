@@ -8,7 +8,7 @@ import numpy as np
 from ..bnet import BNet, Node
 
 
-def pretty_dict(d, n=1):
+def pretty_dict(d, n=0):
     for k in d:
         if type(d[k]) == dict:
             print("{}{}".format(" "*n, k))
@@ -170,8 +170,10 @@ def read_dsc(filepath, zerolabels = True):
 
         nonlocal maxerror
 
-        # Numpy apparently uses tolerance of 1e-8
-        if abs(probs.sum() - 1.) > 1e-8:
+        # Numpy apparently uses tolerance of 1e-8.
+        # Using 1e-10 here to be on the safe side and because np.sum()
+        # isn't stable.
+        if abs(probs.sum() - 1.) > 1e-10:
             if abs(probs.sum() - 1) > maxerror:
                 maxerror = abs(probs.sum() - 1)
                 maxerror_node = name + ' ' + str(key)
