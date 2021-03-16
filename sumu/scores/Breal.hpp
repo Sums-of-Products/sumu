@@ -50,7 +50,9 @@ class Breal {
 };
 
 void Breal::set_log(double z){ // Assumes z is the natural log of the number to be represented.
-	b = (int)(z * log2(exp(1.0))) - 30; a = (int) exp(z - b * log(2.0));
+	b = (int)(z * log2(exp(1.0))) - 30; a = (uint32_t) exp(z - b * log(2.0));
+	while (  a & 0x80000000 ) { a >>= 1; b++; }
+	while (!(a & 0x40000000)) { a <<= 1; b--; }
 }
 void Breal::set(int64_t z){
 	if (z == 0){ a = 0; b = -(1L << 30); return; }	
@@ -66,7 +68,7 @@ long double Breal::get_ldouble(){ return (long double)((long double)(a) * pow(2,
 int64_t Breal::get_lint(){ int64_t aL = a; if (b >= 0) return aL << b; return aL >> -b; }
 
 
-inline Breal operator+(Breal x, Breal y){ // Could speed up by 20 % using certain assumptions.
+inline Breal operator+(Breal x, Breal y){ // Could speed up this by 20 % using certain assumptions.
 	int d = x.b - y.b; uint32_t z; int p;
 	if (d >= 0){ if ( d > 31){ return x; } z = x.a + (y.a >>  d); p = x.b; } 
 	else       { if (-d > 31){ return y; } z = y.a + (x.a >> -d); p = y.b; }
@@ -98,8 +100,8 @@ inline bool operator==(Breal x, Breal y){ // Usage: "if (x == y) { then x is equ
 }
 inline Breal operator*(Breal x, Breal y){
 	uint64_t z = (uint64_t) x.a * (uint64_t) y.a;  int p = x.b + y.b;
-	if (z & 0x4000000000000000){ z >>= 31; p += 31; } 
-	else                       { z >>= 30; p += 30; }
+	if (z & 0x4000000000000000){ z >>= 32; p += 32; } 
+	else                       { z >>= 31; p += 31; }
 	return { (uint32_t) z, p };	
 }
 
@@ -190,10 +192,12 @@ class B2real {
 };
 
 inline void B2real::set_log (double z)     { // Assumes z is the natural log of the number to be represented.
-	b = (int64_t)(z * log2 (exp (1.0))) - 63; a = (int64_t) exp (z - b * log (2.0));
+	b = (int64_t)(z * log2 (exp (1.0))) - 62; a = (int64_t) exp (z - ((double)b) * log (2.0));
+	while (a & 0x8000000000000000){ a >>= 1; b += 1; }
 }
 inline void B2real::set_logl(long double z){ // Assumes z is the natural log of the number to be represented.
-	b = (int64_t)(z * log2l(expl(1.0))) - 63; a = (int64_t) expl(z - b * logl(2.0));
+	b = (int64_t)(z * log2l(expl(1.0))) - 62; a = (int64_t) expl(z - b * logl(2.0));
+	while (a & 0x8000000000000000){ a >>= 1; b += 1; }
 }
 inline void B2real::set(int64_t z){
 	if (z == 0){ a = 0; b = -(1LL << 62); return; }	
@@ -210,7 +214,7 @@ inline long double B2real::get_ldouble(){ return (long double)((long double)(a) 
 inline int64_t B2real::get_lint()       { int64_t aL = a; if (b >= 0) return aL << b; return aL >> -b; }
 
 
-inline B2real operator+(B2real x, B2real y){ // Could speed up by 20 % using certain assumptions.
+inline B2real operator+(B2real x, B2real y){ // Could speed up this by 20 % using certain assumptions.
 	int64_t d = x.b - y.b; uint64_t z; int p;
 	if (d >= 0){ if ( d > 63){ return x; } z = x.a + (y.a >>  d); p = x.b; } 
 	else       { if (-d > 63){ return y; } z = y.a + (x.a >> -d); p = y.b; }
