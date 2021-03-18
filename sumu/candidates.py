@@ -345,7 +345,7 @@ def hc(K, **kwargs):
 
     data = r['load_dat'](datapath)
 
-    if B is not "none":
+    if B != "none":
         Cs = list()
         for i in range(B):
             bsample = data.rx(r["sample"](data.nrow, data.nrow, replace=True), True)
@@ -426,9 +426,9 @@ def top(K, **kwargs):
     assert scores is not None, "scorepath (-s) required for algo == top"
 
     C = dict()
-    for v in range(scores.n):
+    for v in range(scores.data.n):
         top_candidates = sorted([(parent, scores.local(v, np.array([parent])))
-                                 for parent in range(scores.n) if parent != v],
+                                 for parent in range(scores.data.n) if parent != v],
                                 key=lambda item: item[1], reverse=True)[:K]
         top_candidates = tuple(sorted(c[0] for c in top_candidates))
         C[v] = top_candidates
@@ -500,7 +500,7 @@ def greedy_lite(K, **kwargs):
             uncovereds.remove(u_hat)
         return k_highest
 
-    C = dict({int(v): set() for v in range(scores.n)})
+    C = dict({int(v): set() for v in range(scores.data.n)})
     for v in C:
         U = [u for u in C if u != v]
         while len(C[v]) < K - k:

@@ -14,8 +14,8 @@ def family_sequence_to_adj_mat(dag, row_parents=False):
     """Format a sequence of families representing a DAG into an adjacency matrix.
 
     Args:
-       dag (iterable): iterable like [(0), (1, 2), (2, 0, 1), ...] where first
-                       int is the node and the following, if any, the parents.
+       dag (iterable): iterable like [(0, {}), (1, {2}), (2, {0, 1}), ...] where first
+                       int is the node and the second item is a set of the parents.
        row_parents (bool): If true A[i,j] == 1 if :math:`i` is parent of :math:`j`,
                            otherwise a transpose.
 
@@ -25,8 +25,8 @@ def family_sequence_to_adj_mat(dag, row_parents=False):
     """
     adj_mat = np.zeros((len(dag), len(dag)))
     for f in dag:
-        if len(f) > 1:
-            adj_mat[f[1:], f[0]] = 1
+        adj_mat[tuple(f[1]), f[0]] = 1
+
     if row_parents is False:
         adj_mat = adj_mat.T
     return adj_mat
@@ -44,18 +44,18 @@ def partition(dag):
         if not any(pmask):
             break
         matrix_pruned = matrix_pruned[:, pmask == False][pmask == False, :]
-        partitions.append(frozenset(indices[pmask]))
+        partitions.append(set(indices[pmask]))
         indices = indices[pmask == False]
     return partitions
 
 
 def topological_sort(dag):
-    """Sort the nodeds in a DAG in a topological order.
+    """Sort the nodes in a DAG in a topological order.
 
     The algorithm is from :footcite:`kahn:1962`.
     """
     names = set(range(len(dag)))
-    edges = set((f[i], f[0]) for f in dag for i in range(1, len(f)) if len(f) > 1)
+    edges = set((u, f[0]) for f in dag for u in f[1])
 
     l = list()
     s = set(names)
@@ -78,12 +78,15 @@ def topological_sort(dag):
     return l
 
 
-def transitive_closure(dag, mat=False):
+def transitive_closure(dag, R=None, mat=False):
 
-    edgeto = {f[0]: [set(f[1:]) if len(f) > 1 else set()][0] for f in dag}
     tclosure = {v: {v} for v in range(len(dag))}
-    for v in topological_sort(dag)[::-1]:
-        for u in edgeto[v]:
+    if R is not None:
+        toposort = [i for part in R for i in part][::-1]
+    else:
+        toposort = topological_sort(dag)[::-1]
+    for v in toposort:
+        for u in dag[v][1]:
             tclosure[u].update(tclosure[v])
     if mat is False:
         return tclosure

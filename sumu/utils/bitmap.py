@@ -4,28 +4,18 @@ import numpy as np
 def bm(ints, ix=None):
     if type(ints) not in [set, tuple]:
         ints = {int(ints)}
+    ints = {int(x) for x in ints}
     if ix is not None:
         ints = [ix.index(i) for i in ints]
     bitmap = 0
     for k in ints:
         bitmap += 2**k
-    return int(bitmap)  # without the cast np.int64 might sneak in somehow and break drv
+    return int(bitmap)
 
 
 def bm_to_ints(bm):
     return tuple(i for i in range(len(format(bm, 'b')[::-1]))
                  if format(bm, 'b')[::-1][i] == "1")
-
-
-def translate_psets_to_bitmaps(C, scores):
-    K = len(C[0])
-    scores_list = list()
-    for v in sorted(scores):
-        tmp = [-float('inf')]*2**K
-        for pset in scores[v]:
-            tmp[bm(set(pset), ix=C[v])] = scores[v][pset]
-        scores_list.append(tmp)
-    return scores_list
 
 
 def msb(n):
@@ -81,67 +71,3 @@ def np64_to_bm(chunk):
         bm *= 2**64
     bm >>= 64
     return bm
-
-
-def fbit(mask):
-    """get index of first set bit"""
-    k = 0
-    while 1 & mask == 0:
-        k += 1
-        mask >>= 1
-    return k
-
-
-def kzon(mask, k):
-    """set kth zerobit on"""
-    nmask = ~mask
-    for i in range(k):
-        nmask &= ~(nmask & -nmask)
-    return mask | (nmask & -nmask)
-
-
-def dkbit(mask, k):
-    """drop kth bit"""
-    if mask == 0:
-        return mask
-    trunc = mask >> (k+1)
-    #trunc <<= k
-    trunc *= 2**k
-    # return ((1 << k) - 1) & mask | trunc
-    return ((2**k - 1) & mask) | trunc
-
-
-def ikbit(mask, k, bit):
-    """shift all bits >=k to the left and insert bit to k"""
-    if k == 0:
-        # newmask = mask << 1
-        newmask = mask * 2
-    else:
-        newmask = mask >> k-1
-    newmask ^= (-bit ^ newmask) & 1
-    #newmask <<= k
-    newmask *= 2**k
-    #return newmask | ((1 << k) - 1) & mask
-    return newmask | (2**k - 1) & mask
-
-
-def subsets_size_k(k, n):
-    if k == 0:
-        yield 0
-        return
-    #S = (1 << k) - 1
-    S = 2**k - 1
-    # limit = (1 << n)
-    limit = 2**n
-    while S < limit:
-        yield S
-        x = S & -S
-        r = S + x
-        S = (((r ^ S) >> 2) // x) | r
-
-
-def ssets(mask):
-    S = mask
-    while S > 0:
-        yield S
-        S = (S - 1) & mask
