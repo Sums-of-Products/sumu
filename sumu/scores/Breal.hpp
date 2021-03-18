@@ -193,11 +193,13 @@ class B2real {
 
 inline void B2real::set_log (double z)     { // Assumes z is the natural log of the number to be represented.
 	b = (int64_t)(z * log2 (exp (1.0))) - 62; a = (int64_t) exp (z - ((double)b) * log (2.0));
-	while (a & 0x8000000000000000){ a >>= 1; b += 1; }
+	while   (a & 0x8000000000000000) { a >>= 1; b++; }
+	while (!(a & 0x4000000000000000)){ a <<= 1; b--; }
 }
 inline void B2real::set_logl(long double z){ // Assumes z is the natural log of the number to be represented.
 	b = (int64_t)(z * log2l(expl(1.0))) - 62; a = (int64_t) expl(z - b * logl(2.0));
-	while (a & 0x8000000000000000){ a >>= 1; b += 1; }
+	while   (a & 0x8000000000000000) { a >>= 1; b++; }
+	while (!(a & 0x4000000000000000)){ a <<= 1; b--; }
 }
 inline void B2real::set(int64_t z){
 	if (z == 0){ a = 0; b = -(1LL << 62); return; }	
