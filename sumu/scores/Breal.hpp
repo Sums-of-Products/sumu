@@ -61,7 +61,7 @@ void Breal::set(int64_t z){
 	while (!(z & 0x40000000)) { z <<= 1; b--; }
 	a= (uint32_t)(z);
 }
-void Breal::set(double z){ set_log(log(z)); }
+void Breal::set(double z){ if (z <= (double) 0.0){ set((int64_t) 0);} set_log(log(z)); }
 double Breal::get_log(){ return (double)(log(a) + b*log(2.0)); }
 double Breal::get_double(){ return (double)(a * pow(2, b)); }
 long double Breal::get_ldouble(){ return (long double)((long double)(a) * pow(2, (long double)(b))); }
@@ -206,8 +206,8 @@ inline void B2real::set(int64_t z){
 	while (!(z & 0x4000000000000000)){ z <<= 1; b--; }
 	a = (uint64_t)(z);
 }
-inline void   B2real::set(double z)     { set_log (log (z)); }
-inline void   B2real::set(long double z){ set_logl(logl(z)); }
+inline void   B2real::set(double z)     { if (z <= (double) 0.0){ set((int64_t) 0);} set_log (log (z)); }
+inline void   B2real::set(long double z){ if (z <= (long double) 0.0){ set((int64_t) 0);} set_logl(logl(z)); }
 inline double B2real::get_log()         { return (double)(log(a) + b*log(2.0)); }
 inline double B2real::get_double()      { return (double)(a * pow(2, b)); }
 inline long double B2real::get_ldouble(){ return (long double)((long double)(a) * powl(2, (long double)(b))); }
