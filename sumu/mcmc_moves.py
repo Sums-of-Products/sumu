@@ -110,7 +110,7 @@ def R_basic_move(**kwargs):
     nbd, sum_binoms = nbd_size(R)
     q = 1/nbd
 
-    j = np.random.randint(1, nbd+1)
+    j = int(np.random.rand()*nbd) + 1
 
     R_prime = list()
     if j < m:
