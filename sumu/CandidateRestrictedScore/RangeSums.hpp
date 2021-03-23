@@ -82,18 +82,17 @@ void fzt_inpl(Treal* b, bm32 n){ // 550 adds per microsecond, Treal = Breal.
 //
 class IntersectSums {
 public:
-	IntersectSums(int K0, double* w, double eps0);
+    IntersectSums(int K0, double* w, double eps0);
 	~IntersectSums();
 	double scan_sum(bm32 U, bm32 T);
 	double scan_sum(bm32 U);
 	bm32   scan_rnd(bm32 U, bm32 T, double wcum);
 	bm32   scan_rnd(bm32 U, double wcum);
+	vector<ws32>	s;	// Scores, pairs (set, weight) sorted by weight.
 
 private:
 	int				K;	// Size of the ground set.
-	vector<ws32>	s;	// Scores, pairs (set, weight) sorted by weight.
-	double 			eps;// Tolerated relative error. 
-
+	double 			eps;// Tolerated relative error.
 	void prune(double *w);	
 };
 
@@ -117,7 +116,7 @@ void IntersectSums::prune(double *w){
 	for (bm32 S = 0; S < l; ++S) if (keepit[S]){ c[S] >>= tol; s.push_back({ S, c[S] }); }
 	
 	delete[] a; delete[] b; delete[] c; delete[] keepit;
-	cout << " l = " << l << ", after pruning: " << s.size() << ", tol = " << tol << endl;
+	// cout << " l = " << l << ", after pruning: " << s.size() << ", tol = " << tol << endl;
 }
 
 double IntersectSums::scan_sum(bm32 U, bm32 T){

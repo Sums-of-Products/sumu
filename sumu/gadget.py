@@ -10,23 +10,23 @@ Limitations:
 
 """
 
+import sys
+import os
+import time
+import pprint
 
 import numpy as np
+
 from .weight_sum import weight_sum
-
 from .mcmc import PartitionMCMC, MC3
-
 from .utils.bitmap import bm, bm_to_ints, bm_to_pyint_chunks, bms_to_np64, np64_to_bm
-from .utils.io import read_candidates, get_n
+from .utils.io import read_candidates, get_n, pretty_dict, pretty_title
 from .utils.math_utils import log_minus_exp, close, comb, subsets
-
 from .scorer import BDeu, BGe
-
 from .CandidateRestrictedScore import CandidateRestrictedScore
 from .DAGR import DAGR as DAGR_precompute
-
 from .candidates import candidate_parent_algorithm
-
+from .stats import stats
 
 # default parameter values used by multiple classes
 default = {
@@ -40,7 +40,10 @@ default = {
     "mc3": 16,
     "cc_tolerance": 2**-32,
     "cc_cache_size": 10**7,
-    "pruning_eps": 0.001
+    "pruning_eps": 0.001,
+    "logfile": sys.stdout,
+    "silent": False,
+    "stats_period": 15
 }
 
 
@@ -113,7 +116,9 @@ class Gadget():
                  burn_in, iterations, thinning,
                  cc_tolerance=default["cc_tolerance"],
                  cc_cache_size=default["cc_cache_size"],
-                 pruning_eps=default["pruning_eps"]):
+                 pruning_eps=default["pruning_eps"],
+                 logfile=default["logfile"],
+                 stats_period=default["stats_period"]):
         self.data = Data(data)
         if score is None:
             score = default["score"](self.data.discrete)
@@ -135,27 +140,86 @@ class Gadget():
             "thinning": thinning,
             "cc_tolerance": cc_tolerance,
             "cc_cache_size": cc_cache_size,
-            "pruning_eps": pruning_eps
+            "pruning_eps": pruning_eps,
+            "stats_period": stats_period
         }
-        self.stats = dict()
+
+        self._silent = default["silent"]
+        # No output.
+        if logfile is None:
+            self._silent = True
+            self._logfile = open(os.devnull, "w")
+            self._logfilename = ""
+        # Output to file.
+        elif type(logfile) == str:
+            self._logfile = open(logfile, "a")
+            self._logfilename = self._logfile.name
+        # Output to sdout.
+        else:
+            self._logfile = logfile
+            self._logfilename = ""
+        self._outputwidth = max(80, 6+12+6*mc3-1)
 
     def _param(self, *params):
         # Utility to simplify passing parameters
         return {k: self.params[k] for k in params}
 
     def sample(self):
+
+        if self._logfile:
+            print(pretty_title("1. RUN PARAMETERS", 0,
+                               self._outputwidth), file=self._logfile)
+            print(pretty_dict(self.params), file=self._logfile)
+            print(pretty_title("2. FINDING CANDIDATE PARENTS", 2,
+                               self._outputwidth), file=self._logfile)
+            self._logfile.flush()
+
+        stats["t"]["C"] = time.time()
         self._find_candidate_parents()
+        stats["t"]["C"] = time.time() - stats["t"]["C"]
+        if self._logfile:
+            #print(pretty_dict(self.C), file=self._logfile)
+            print(pprint.pformat(self.C) + "\n", file=self._logfile)
+            print("time used: {}s\n".format(round(stats["t"]["C"])), file=self._logfile)
+            print(pretty_title("3. PRECOMPUTING SCORING STRUCTURES FOR CANDIDATE PARENT SETS", 2,
+                               self._outputwidth), file=self._logfile)
+            self._logfile.flush()
+
+        stats["t"]["crscore"] = time.time()
         self._precompute_scores_for_all_candidate_psets()
         self._precompute_candidate_restricted_scoring()
+        stats["t"]["crscore"] = time.time() - stats["t"]["crscore"]
+        if self._logfile:
+            print("time used: {}s\n".format(round(stats["t"]["crscore"])),
+                  file=self._logfile)
+            print(pretty_title("4. PRECOMPUTING SCORING STRUCTURES FOR COMPLEMENTARY PARENT SETS", 2,
+                               self._outputwidth), file=self._logfile)
+            self._logfile.flush()
+
+        stats["t"]["ccscore"] = time.time()
         self._precompute_candidate_complement_scoring()
+        stats["t"]["ccscore"] = time.time() - stats["t"]["ccscore"]
+        if self._logfile:
+            print("time used: {}s\n".format(round(stats["t"]["ccscore"])),
+                  file=self._logfile)
+            print(pretty_title("5. RUNNING MCMC", 2, self._outputwidth),
+                  file=self._logfile)
+            self._logfile.flush()
+
+        stats["t"]["mcmc"] = time.time()
         self._init_mcmc()
         self._run_mcmc()
-        return self._sample_dags()
+        stats["t"]["mcmc"] = time.time() - stats["t"]["mcmc"]
+        if self._logfile:
+            print("time used: {}s\n".format(round(stats["t"]["mcmc"])),
+                  file=self._logfile)
+
+        return self.dags, self.dag_scores
+
 
     def _find_candidate_parents(self):
         self.l_score = LocalScore(data=self.data,
-                                  **self._param("score", "maxid"),
-                                  stats=self.stats)
+                                  **self._param("score", "maxid"))
 
         if self.params["cp_path"] is None:
             self.C = candidate_parent_algorithm[self.params["cp_algo"]](self.params["K"],
@@ -180,7 +244,9 @@ class Gadget():
                                                   **self._param("K",
                                                                 "cc_tolerance",
                                                                 "cc_cache_size",
-                                                                "pruning_eps"))
+                                                                "pruning_eps"),
+                                                  logfile=self._logfilename,
+                                                  silent=self._silent)
 
     def _precompute_candidate_complement_scoring(self):
         self.c_c_score = None
@@ -201,33 +267,73 @@ class Gadget():
 
         if self.params["mc3"] > 1:
             self.mcmc = MC3([PartitionMCMC(self.C, self.score, self.params["d"],
-                                           temperature=i/(self.params["mc3"]-1),
-                                           # stats=self.stats
-                                           )
-                             for i in range(self.params["mc3"])],
-                            stats=self.stats)
+                                           temperature=i/(self.params["mc3"]-1))
+                             for i in range(self.params["mc3"])])
+
         else:
-            self.mcmc = PartitionMCMC(self.C, self.score, self.params["d"],
-                                      # stats=self.stats
-                                      )
+            self.mcmc = PartitionMCMC(self.C, self.score, self.params["d"])
 
     def _run_mcmc(self):
+
+        msg_tmpl = "{:<5.5} {:<12.12}" + " {:<5.5}"*self.params["mc3"]
+        temps = list(stats["mcmc"].keys())[::-1]
+        temps_labels = [round(t, 2) for t in temps]
+        moves = stats["mcmc"][1.0].keys()
+
+        def print_stats_title():
+            msg = "Cumulative acceptance probability by move and inverse temperature.\n\n"
+            msg += msg_tmpl.format("%", "move", *temps_labels)
+            msg += "\n"+"-"*self._outputwidth
+            print(msg, file=self._logfile)
+            self._logfile.flush()
+
+        def print_stats(i, header=False):
+            if header:
+                print_stats_title()
+            p = round(100*i/(self.params["burn_in"] + self.params["iterations"]))
+            p = str(p)
+            for m in moves:
+                ar = [stats["mcmc"][t][m]["accep_ratio"] for t in temps]
+                ar = [round(r,2) if type(r) == float else "" for r in ar]
+                msg = msg_tmpl.format(p, m, *ar)
+                print(msg, file=self._logfile)
+            if self.params["mc3"] > 1:
+                ar = stats["mc3"]["accepted"] / stats["mc3"]["proposed"]
+                ar = [round(r, 2) for r in ar] + [0.0]
+                msg = msg_tmpl.format(p, "MC^3", *ar)
+                print(msg, file=self._logfile)
+            print(file=self._logfile)
+            self._logfile.flush()
+
+        timer = time.time()
+        header = True
         for i in range(self.params["burn_in"]):
             self.mcmc.sample()
-        self.Rs = list()
+            if self._logfile and time.time() - timer > self.params["stats_period"]:
+                timer = time.time()
+                print_stats(i, header)
+                header = False
+                self._logfile.flush()
+
+        if self._logfile:
+            print("Sampling DAGs...\n", file=self._logfile)
+            self._logfile.flush()
+
+        self.dags = list()
+        self.dag_scores = list()
         for i in range(self.params["iterations"]):
+            if self._logfile:
+                if time.time() - timer > self.params["stats_period"]:
+                    timer = time.time()
+                    print_stats(i + self.params["burn_in"])
+                    self._logfile.flush()
             if i % self.params["thinning"] == 0:
-                self.Rs.append(self.mcmc.sample()[0])
+                dag, score = self.score.sample_DAG(self.mcmc.sample()[0])
+                self.dags.append(dag)
+                self.dag_scores.append(score)
             else:
                 self.mcmc.sample()
 
-    def _sample_dags(self):
-        self.dags = list()
-        self.dag_scores = list()
-        for R in self.Rs:
-            dag, score = self.score.sample_DAG(R)
-            self.dags.append(dag)
-            self.dag_scores.append(score)
         return self.dags, self.dag_scores
 
 
@@ -239,8 +345,7 @@ class LocalScore:
 
     """
 
-    def __init__(self, *, data, score=None, prior=default["prior"], maxid=default["max_id"],
-                 stats=None):
+    def __init__(self, *, data, score=None, prior=default["prior"], maxid=default["max_id"]):
         self.data = Data(data)
         self.score = score
         if score is None:
@@ -249,12 +354,6 @@ class LocalScore:
         self.priorf = {"fair": self._prior_fair,
                        "unif": self._prior_unif}
         self.maxid = maxid
-        self.stats = None
-        if stats is not None:
-            self.stats = stats
-            self.stats[type(self).__name__] = dict()
-            self.stats[type(self).__name__]["clear_cache"] = 0
-
         self._precompute_prior()
 
         if self.score["name"] == "bdeu":

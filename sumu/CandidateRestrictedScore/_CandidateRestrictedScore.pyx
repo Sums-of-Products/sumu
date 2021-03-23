@@ -1,6 +1,8 @@
 from libcpp.vector cimport vector
 from libc.stdint cimport uint64_t as bm64
 from libc.stdint cimport uint32_t as bm32
+from libcpp cimport bool
+from libcpp.string cimport string
 
 
 cdef extern from "CandidateRestrictedScore.hpp":
@@ -8,7 +10,10 @@ cdef extern from "CandidateRestrictedScore.hpp":
     cdef cppclass CppCandidateRestrictedScore "CandidateRestrictedScore":
 
         CppCandidateRestrictedScore(double* score_array, int* C, int n, int K,
-                                    int cc_limit, double cc_tol, double isum_tol)
+                                    int cc_limit, double cc_tol, double isum_tol,
+                                    string logfile,
+                                    bool silent
+                                    )
         double sum(int v, bm32 U, bm32 T)
         double sum(int v, bm32 U)
         double test_sum(int v, bm32 U, bm32 T)
@@ -31,7 +36,7 @@ cdef class CandidateRestrictedScore:
     cdef CppCandidateRestrictedScore * thisptr;
 
     def __cinit__(self, *, score_array, C, K, cc_cache_size, cc_tolerance,
-                  pruning_eps):
+                  pruning_eps, logfile="", silent):
 
         cdef double[:, ::1] memview_score_array
         memview_score_array = score_array
@@ -43,7 +48,10 @@ cdef class CandidateRestrictedScore:
                                                        & memview_C[0, 0],
                                                        score_array.shape[0],
                                                        K, cc_cache_size,
-                                                       cc_tolerance, pruning_eps)
+                                                       cc_tolerance, pruning_eps,
+                                                       logfile.encode('utf-8'),
+                                                       silent
+                                                       )
 
     def __dealloc__(self):
        del self.thisptr

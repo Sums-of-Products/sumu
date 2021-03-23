@@ -3,7 +3,7 @@ from .utils.math_utils import comb, subsets
 from .bnet import transitive_closure
 
 
-def DAG_edgereversal(**kwargs):
+def DAG_edgerev(**kwargs):
 
     def valid(DAG):
         # Check that there's at least one edge to reverse

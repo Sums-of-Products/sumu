@@ -1,5 +1,6 @@
 // -*- flycheck-clang-language-standard: "c++17"; -*-
 
+#include <fstream>
 #include <cmath>
 #include <cstdint>
 #include <unordered_map>
@@ -50,7 +51,10 @@ public:
   double m_cc_tol; // Used as threshold for preparing for cc.
   int m_cc_limit;
 
-  CandidateRestrictedScore(double* scores, int* C, int n, int K, int cc_limit, double cc_tol, double isum_tol);
+  CandidateRestrictedScore(double* scores, int* C, int n, int K, int cc_limit, double cc_tol, double isum_tol,
+						   string logfile,
+						   bool silent
+						   );
   ~CandidateRestrictedScore();
   double sum(int v, bm32 U, bm32 T);
   double sum(int v, bm32 U);
@@ -65,6 +69,7 @@ public:
 
 private:
 
+  streambuf *coutbuf;
   void precompute_tau_simple();
   void precompute_tau_cc_basecases();
   void precompute_tau_cc();
@@ -74,10 +79,24 @@ private:
 };
 
 CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
-						   int* C, int n, int K,
-						   int cc_limit, double cc_tol,
-						   double isum_tol) {
+												   int* C, int n, int K,
+												   int cc_limit, double cc_tol,
+												   double isum_tol,
+												   string logfile,
+												   bool silent) {
 
+
+
+  coutbuf = std::cout.rdbuf();
+  // Second argument is "append".
+  ofstream out(logfile, ios_base::app);
+  if (!logfile.empty()) {
+	// Needs to be reset in destructor, if not => segfault.
+	cout.rdbuf(out.rdbuf());
+  }
+  else if (silent) {
+	cout.rdbuf(0);
+  }
 
   m_score_array = score_array;
   m_cc_tol = cc_tol;
@@ -92,12 +111,17 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
 
   int i = 0;
   int j = 0;
+
+  cout << "Number of candidate parent sets after pruning (unpruned 2^K = " << (1L << K) << "):" << endl << endl;;
+  cout << "node\tpsets\t%" << endl;
+
   for (int v = 0; v < n; ++v) {
     m_tau_simple[v] = new double[ (bm32) 1 << K];
     m_C[v] = new int[K];
     m_tau_cc[v] = unordered_map< bm64, double >();
 
     isums[v] = new IntersectSums(K, &score_array[v * ((bm32) 1 << K)], isum_tol);
+	cout << v << "\t" << isums[v]->s.size() << "\t" << (double) isums[v]->s.size() / (1L << K) << endl;
 
     for (bm32 s = 0; s < (bm32) 1 << K; ++s) {
       m_tau_simple[v][s] = score_array[i++];
@@ -106,8 +130,8 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
     for (int c = 0; c < K; ++c) {
       m_C[v][c] = C[j++];
     }
-
   }
+  cout << endl;
 
   precompute_tau_simple();
   precompute_tau_cc_basecases();
@@ -116,7 +140,7 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
   for (int v = 0; v < n; ++v) {
     cc += m_tau_cc[v].size();
   }
-  cout << "cc size: " << cc << endl;
+  cout << "Number of score sums stored in cc cache: " << cc << endl << endl;
 }
 
 CandidateRestrictedScore::~CandidateRestrictedScore() {
@@ -128,7 +152,7 @@ CandidateRestrictedScore::~CandidateRestrictedScore() {
     delete isums[v];
   }
   delete [] isums;
-
+  cout.rdbuf(coutbuf);
 }
 
 

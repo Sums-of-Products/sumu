@@ -3,19 +3,27 @@ Score file reading/writing should be made irrelevant by faster scoring
 allowing to only work directly with data files.
 """
 import warnings
+
 import numpy as np
 
 from ..bnet import BNet, Node
+from ..stats import Stats
 
 
-def pretty_dict(d, n=0):
+def pretty_dict(d, n=0, string=""):
     for k in d:
-        if type(d[k]) == dict:
-            print("{}{}".format(" "*n, k))
+        if type(d[k]) in (dict, Stats):
+            string += "{}{}\n".format(" "*n, k)
         else:
-            print("{}{}: {}".format(" "*n, k, d[k]))
-        if type(d[k]) == dict:
-            pretty_dict(d[k], n=n+4)
+            string += "{}{}: {}\n".format(" "*n, k, d[k])
+        if type(d[k]) in (dict, Stats):
+            string += pretty_dict(d[k], n=n+2)
+    return string
+
+
+def pretty_title(string, n=0, width=80):
+    end = "."*((width-len(string)) - 1)
+    return "{}{} {}\n".format("\n"*n, string, end)
 
 
 def dag_to_str(dag):
