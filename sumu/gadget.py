@@ -50,45 +50,41 @@ default = {
 class Data:
     """Class for holding data.
 
-    Assumes the input data is either discrete or continuous. In the
-    discrete case the first row of the data can optionally hold the
-    arities of the variables, or they can be inferred as the number of
-    distinct values in the data columns. In the continuous case all
-    rows represent data. All variable name handling should be managed
-    separately, somewhere else.
+    Assumes the input data is either discrete or continuous.
 
     The data can be input as either a path to a space delimited csv
     file, a numpy array or a object of type Data (in which case a new
     object is created pointing to same data).
     """
 
-    def __init__(self, data_or_path, arities=False):
-        self.arities = arities
+    def __init__(self, data_or_path):
+
+        # Copying existing Data object
         if type(data_or_path) == Data:
             self.data = data_or_path.data
             self.discrete = data_or_path.discrete
-            self.arities = data_or_path.arities
             return
 
-        self.data = data_or_path
-        path = type(self.data) == str
-        if path:
-            with open(self.data) as f:
-                if '.' in f.read():
-                    discrete = False
-        else:  # numpy data
-            discrete = self.data.dtype != np.float64
+        # Initializing from np.array
+        if type(data_or_path) == np.ndarray:
+            self.data = data_or_path
+            self.discrete = self.data.dtype != np.float64
+            return
 
-        self.discrete = discrete
-        if discrete:
-            if path:
+        # Initializing from path
+        if type(data_or_path) == str:
+            with open(data_or_path) as f:
+                # . is assumed to be a decimal separator
+                if '.' in f.read():
+                    self.discrete = False
+            if self.discrete:
                 self.data = np.loadtxt(data_or_path, dtype=np.int32, delimiter=' ')
-            if arities:
-                self.arities = self.data[0]
-                self.data = self.data[1:]
-        else:  # Continuous
-            if path:
+            else:  # continuous
                 self.data = np.loadtxt(data_or_path, dtype=np.float64, delimiter=' ')
+            return
+
+        else:
+            raise TypeError("Unknown type for Data: {}.".format(type(data_or_path)))
 
     @property
     def n(self):
@@ -98,13 +94,30 @@ class Data:
     def N(self):
         return self.data.shape[0]
 
+    @property
+    def arities(self):
+        return np.count_nonzero(np.diff(np.sort(self.data.T)), axis=1)+1
+
     def all(self):
+        # TODO: NEED TO GET RID OF THIS?
         # This is to simplify passing data to R
         data = self.data
         if self.arities is not False:
             arities = np.reshape(self.arities, (-1, len(self.n)))
             data = np.append(arities, data, axis=0)
         return data
+
+    @property
+    def info(self):
+        info = {
+            "no. variables": self.n,
+            "no. data points": self.N,
+            "type of data": ["continuous", "discrete"][1*self.discrete]
+        }
+        if self.discrete:
+            info["arities [min, max]"] = "[{}, {}]".format(
+                min(self.arities), max(self.arities))
+        return info
 
 
 class Gadget():
