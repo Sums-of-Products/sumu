@@ -180,10 +180,14 @@ class Gadget():
     def sample(self):
 
         if self._logfile:
-            print(pretty_title("1. RUN PARAMETERS", 0,
+            print(pretty_title("1. PROBLEM INSTANCE", 0, self._outputwidth),
+                  file=self._logfile)
+            print(pretty_dict(self.data.info), file=self._logfile)
+
+            print(pretty_title("2. RUN PARAMETERS", 2,
                                self._outputwidth), file=self._logfile)
             print(pretty_dict(self.params), file=self._logfile)
-            print(pretty_title("2. FINDING CANDIDATE PARENTS", 2,
+            print(pretty_title("3. FINDING CANDIDATE PARENTS", 2,
                                self._outputwidth), file=self._logfile)
             self._logfile.flush()
 
@@ -191,10 +195,9 @@ class Gadget():
         self._find_candidate_parents()
         stats["t"]["C"] = time.time() - stats["t"]["C"]
         if self._logfile:
-            #print(pretty_dict(self.C), file=self._logfile)
-            print(pprint.pformat(self.C) + "\n", file=self._logfile)
-            print("time used: {}s\n".format(round(stats["t"]["C"])), file=self._logfile)
-            print(pretty_title("3. PRECOMPUTING SCORING STRUCTURES FOR CANDIDATE PARENT SETS", 2,
+            np.savetxt(self._logfile, self.C_array, fmt="%i")
+            print("\ntime used: {}s\n".format(round(stats["t"]["C"])), file=self._logfile)
+            print(pretty_title("4. PRECOMPUTING SCORING STRUCTURES FOR CANDIDATE PARENT SETS", 2,
                                self._outputwidth), file=self._logfile)
             self._logfile.flush()
 
@@ -205,7 +208,7 @@ class Gadget():
         if self._logfile:
             print("time used: {}s\n".format(round(stats["t"]["crscore"])),
                   file=self._logfile)
-            print(pretty_title("4. PRECOMPUTING SCORING STRUCTURES FOR COMPLEMENTARY PARENT SETS", 2,
+            print(pretty_title("5. PRECOMPUTING SCORING STRUCTURES FOR COMPLEMENTARY PARENT SETS", 2,
                                self._outputwidth), file=self._logfile)
             self._logfile.flush()
 
@@ -215,7 +218,7 @@ class Gadget():
         if self._logfile:
             print("time used: {}s\n".format(round(stats["t"]["ccscore"])),
                   file=self._logfile)
-            print(pretty_title("5. RUNNING MCMC", 2, self._outputwidth),
+            print(pretty_title("6. RUNNING MCMC", 2, self._outputwidth),
                   file=self._logfile)
             self._logfile.flush()
 
@@ -288,8 +291,11 @@ class Gadget():
 
     def _run_mcmc(self):
 
+        self.dags = list()
+        self.dag_scores = list()
+
         msg_tmpl = "{:<5.5} {:<12.12}" + " {:<5.5}"*self.params["mc3"]
-        temps = list(stats["mcmc"].keys())[::-1]
+        temps = sorted(list(stats["mcmc"].keys()), reverse=True)
         temps_labels = [round(t, 2) for t in temps]
         moves = stats["mcmc"][1.0].keys()
 
@@ -319,26 +325,25 @@ class Gadget():
             self._logfile.flush()
 
         timer = time.time()
-        header = True
+        first = True
         for i in range(self.params["burn_in"]):
-            self.mcmc.sample()
+            self.mcmc.sample()[0]
             if self._logfile and time.time() - timer > self.params["stats_period"]:
                 timer = time.time()
-                print_stats(i, header)
-                header = False
+                print_stats(i, first)
+                first = False
                 self._logfile.flush()
 
-        if self._logfile:
+        if self._logfile and not first:
             print("Sampling DAGs...\n", file=self._logfile)
             self._logfile.flush()
 
-        self.dags = list()
-        self.dag_scores = list()
         for i in range(self.params["iterations"]):
             if self._logfile:
                 if time.time() - timer > self.params["stats_period"]:
                     timer = time.time()
-                    print_stats(i + self.params["burn_in"])
+                    print_stats(i + self.params["burn_in"], first)
+                    first = False
                     self._logfile.flush()
             if i % self.params["thinning"] == 0:
                 dag, score = self.score.sample_DAG(self.mcmc.sample()[0])
@@ -346,6 +351,10 @@ class Gadget():
                 self.dag_scores.append(score)
             else:
                 self.mcmc.sample()
+
+        if self._logfile and first:
+            print_stats(self.params["burn_in"] + self.params["iterations"], first)
+            self._logfile.flush()
 
         return self.dags, self.dag_scores
 
