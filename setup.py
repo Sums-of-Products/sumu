@@ -20,7 +20,7 @@ README = (HERE / "README.md").read_text(encoding='utf-8')
 COMPILE_OPTIONS = list()
 LINK_OPTIONS = list()
 COMPILER_DIRECTIVES = dict()
-DEFINE_MACROS = list()
+DEFINE_MACROS = [("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]
 
 COMPILER_DIRECTIVES['profile'] = True
 COMPILER_DIRECTIVES['linetrace'] = True
@@ -117,40 +117,14 @@ exts = [
         extra_link_args=LINK_OPTIONS),
 
     Extension(
-        "sumu.CandidateRestrictedScore",
-        sources=["sumu/CandidateRestrictedScore/_CandidateRestrictedScore.pyx",
-                 "sumu/zeta_transform/zeta_transform.cpp"],
-        include_dirs=["sumu/CandidateComplementScore"],
-        language='c++',
-        define_macros=DEFINE_MACROS,
-        extra_compile_args=COMPILE_OPTIONS,
-        extra_link_args=LINK_OPTIONS),
-
-    Extension(
-        "sumu.DAGR",
-        sources=["sumu/DAGR/_DAGR.pyx",
-                 "sumu/zeta_transform/zeta_transform.cpp"],
-        include_dirs=["sumu/DAGR"],
-        language='c++',
-        define_macros=DEFINE_MACROS,
-        extra_compile_args=COMPILE_OPTIONS,
-        extra_link_args=LINK_OPTIONS),
-
-    Extension(
-        name='sumu.zeta_transform',
-        sources=['sumu/zeta_transform/_zeta_transform.pyx',
-                 'sumu/zeta_transform/zeta_transform.cpp'],
-        language='c++',
-        define_macros=DEFINE_MACROS,
-        extra_compile_args=COMPILE_OPTIONS,
-        extra_link_args=LINK_OPTIONS),
-
-    # This should not be exposed really.
-    # I don't know yet how to fix.
-    Extension(
         name='sumu.weight_sum',
         sources=['sumu/weight_sum/_weight_sum.pyx',
-                 'sumu/weight_sum/weight_sum.cpp'],
+                 'sumu/weight_sum/CandidateRestrictedScore.cpp',
+                 'sumu/weight_sum/GroundSetIntersectSums.cpp',
+                 'sumu/weight_sum/IntersectSums.cpp',
+                 'sumu/weight_sum/Breal.cpp',
+                 'sumu/zeta_transform/zeta_transform.cpp'],
+        include_dirs=['sumu/weight_sum', numpy_include],
         language='c++',
         define_macros=DEFINE_MACROS,
         extra_compile_args=COMPILE_OPTIONS,

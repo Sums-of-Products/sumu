@@ -13,18 +13,15 @@ Limitations:
 import sys
 import os
 import time
-import pprint
 
 import numpy as np
 
-from .weight_sum import weight_sum
+from .weight_sum import CandidateRestrictedScore, CandidateComplementScore
 from .mcmc import PartitionMCMC, MC3
-from .utils.bitmap import bm, bm_to_ints, bm_to_pyint_chunks, bms_to_np64, np64_to_bm
+from .utils.bitmap import bm, bm_to_ints, bm_to_np64
 from .utils.io import read_candidates, get_n, pretty_dict, pretty_title
 from .utils.math_utils import log_minus_exp, close, comb, subsets
 from .scorer import BDeu, BGe
-from .CandidateRestrictedScore import CandidateRestrictedScore
-from .DAGR import DAGR as DAGR_precompute
 from .candidates import candidate_parent_algorithm
 from .stats import stats
 
@@ -41,6 +38,7 @@ default = {
     "cc_tolerance": 2**-32,
     "cc_cache_size": 10**7,
     "pruning_eps": 0.001,
+    "score_sum_eps": 0.1,
     "logfile": sys.stdout,
     "silent": False,
     "stats_period": 15
@@ -130,6 +128,7 @@ class Gadget():
                  cc_tolerance=default["cc_tolerance"],
                  cc_cache_size=default["cc_cache_size"],
                  pruning_eps=default["pruning_eps"],
+                 score_sum_eps=default["score_sum_eps"],
                  logfile=default["logfile"],
                  stats_period=default["stats_period"]):
         self.data = Data(data)
@@ -154,6 +153,7 @@ class Gadget():
             "cc_tolerance": cc_tolerance,
             "cc_cache_size": cc_cache_size,
             "pruning_eps": pruning_eps,
+            "score_sum_eps": score_sum_eps,
             "stats_period": stats_period
         }
 
@@ -183,7 +183,6 @@ class Gadget():
             print(pretty_title("1. PROBLEM INSTANCE", 0, self._outputwidth),
                   file=self._logfile)
             print(pretty_dict(self.data.info), file=self._logfile)
-
             print(pretty_title("2. RUN PARAMETERS", 2,
                                self._outputwidth), file=self._logfile)
             print(pretty_dict(self.params), file=self._logfile)
@@ -263,21 +262,26 @@ class Gadget():
                                                                 "pruning_eps"),
                                                   logfile=self._logfilename,
                                                   silent=self._silent)
+        # del self.score_array # NOTE: remove
 
     def _precompute_candidate_complement_scoring(self):
         self.c_c_score = None
         if self.params["K"] < self.data.n - 1:
             # NOTE: CandidateComplementScore gives error if K >= n-1.
+            # NOTE: Does this really need to be reinitialized?
             self.l_score = LocalScore(data=self.data,
                                       score=self.params["score"],
                                       maxid=self.params["d"])
-            self.c_c_score = CandidateComplementScore(self.C, self.l_score, self.params["d"])
+            self.c_c_score = CandidateComplementScore(localscore=self.l_score,
+                                                      C=self.C,
+                                                      d=self.params["d"],
+                                                      eps=self.params["score_sum_eps"])
             del self.l_score
 
     def _init_mcmc(self):
 
         self.score = Score(C=self.C,
-                           score_array=self.score_array,
+                           score_array=self.score_array, # NOTE: remove
                            c_r_score=self.c_r_score,
                            c_c_score=self.c_c_score)
 
@@ -421,15 +425,18 @@ class LocalScore:
     def clear_cache(self):
         self.scorer.clear_cache()
 
-    def complementary_scores_dict(self, C, d):
-        """C candidates, d indegree for complement psets"""
-        cscores = dict()
-        for v in C:
-            cscores[v] = dict()
-            for pset in subsets([u for u in C if u != v], 1, d):
-                if not (set(pset)).issubset(C[v]):
-                    cscores[v][pset] = self._local(v, np.array(pset))
-        return cscores
+    def complementary_scores(self, v, C, d):
+        K = len(C[0])
+        k = (self.data.n - 1) // 64 + 1
+        psets = np.empty((sum(comb(self.data.n-1, k) - comb(K, k) for k in range(d+1)), k), dtype=np.uint64)
+        scores = np.empty((sum(comb(self.data.n-1, k) - comb(K, k) for k in range(d+1))))
+        i = 0
+        for pset in subsets([u for u in C if u != v], 1, d):
+            if not (set(pset)).issubset(C[v]):
+                scores[i] = self._local(v, np.array(pset))
+                psets[i] = bm_to_np64(bm(set(pset)), k=k)
+                i += 1
+        return psets, scores
 
     def all_candidate_restricted_scores(self, C=None):
         if C is None:
@@ -460,7 +467,7 @@ class Score:  # should be renamed to e.g. ScoreHandler
 
         self.C = C
         self.n = len(self.C)
-        self.score_array = score_array
+        self.score_array = score_array # NOTE: remove
         self.c_r_score = c_r_score
         self.c_c_score = c_c_score
 
@@ -484,9 +491,9 @@ class Score:  # should be renamed to e.g. ScoreHandler
 
         """
 
-        U_bm = bm(U.intersection(self.C[v]), ix=self.C[v])
+        U_bm = bm(U.intersection(self.C[v]), idx=self.C[v])
         # T_bm can be 0 if T is empty or does not intersect C[v]
-        T_bm = bm(T.intersection(self.C[v]), ix=self.C[v])
+        T_bm = bm(T.intersection(self.C[v]), idx=self.C[v])
         if len(T) > 0:
             if T_bm == 0:
                 W_prime = -float("inf")
@@ -495,6 +502,7 @@ class Score:  # should be renamed to e.g. ScoreHandler
         else:
             W_prime = self.c_r_score.sum(v, U_bm)
         if self.c_c_score is None or U.issubset(self.C[v]):
+            # This also handles the case U=T={}
             return W_prime
         if len(T) > 0:
             return self.c_c_score.sum(v, U, T, W_prime)#[0]
@@ -504,8 +512,9 @@ class Score:  # should be renamed to e.g. ScoreHandler
 
 
     def sample_pset(self, v, U, T=set()):
-        U_bm = bm(U.intersection(self.C[v]), ix=self.C[v])
-        T_bm = bm(T.intersection(self.C[v]), ix=self.C[v])
+
+        U_bm = bm(U.intersection(self.C[v]), idx=self.C[v])
+        T_bm = bm(T.intersection(self.C[v]), idx=self.C[v])
 
         if len(T) > 0:
             if T_bm == 0:
@@ -518,26 +527,25 @@ class Score:  # should be renamed to e.g. ScoreHandler
         w_ccs = -float("inf")
         if self.c_c_score is not None and not U.issubset(self.C[v]):
             if len(T) > 0:
-                w_ccs, contribs = self.c_c_score.sum(v, U, T, -float("inf"), contribs=True)
+                w_ccs = self.c_c_score.sum(v, U, T)
             else:
                 # Empty pset is handled in c_r_score
-                w_ccs, contribs = self.c_c_score.sum(v, U, U, -float("inf"), contribs=True)
+                w_ccs = self.c_c_score.sum(v, U, U)
 
         if -np.random.exponential() < w_crs - np.logaddexp(w_ccs, w_crs):
             # Sampling from candidate psets.
-            pset = self.c_r_score.sample_pset(v, U_bm, T_bm, -np.random.exponential())
+            pset = self.c_r_score.sample_pset(v, U_bm, T_bm, w_crs - np.random.exponential())
             family_score = self.score_array[v][pset]
             family = (v, set(self.C[v][i] for i in bm_to_ints(pset)))
 
         else:
             # Sampling from complement psets.
-            p = np.array([self.c_c_score.ordered_scores[v][j]
-                          for j in contribs])
-            p = np.exp(p - w_ccs)
-            j = np.random.choice(contribs, p=p)
-            pset = np64_to_bm(self.c_c_score.ordered_psets[v][j])
-            family_score = self.c_c_score.ordered_scores[v][j]
-            family = (v, set(bm_to_ints(pset)))
+            if len(T) > 0:
+                pset, family_score = self.c_c_score.sample_pset(v, U, T, w_ccs - np.random.exponential())
+            else:
+                pset, family_score = self.c_c_score.sample_pset(v, U, U, w_ccs - np.random.exponential())
+
+            family = (v, pset)
 
         return family, family_score
 
@@ -550,7 +558,7 @@ class Score:  # should be renamed to e.g. ScoreHandler
                     break
             if i == 0:
                 family = (v, set())
-                family_score = self.score_array[v][0]
+                family_score = self.sum(v, set(), set())
             else:
                 U = set().union(*R[:i])
                 T = R[i-1]
@@ -558,95 +566,3 @@ class Score:  # should be renamed to e.g. ScoreHandler
             DAG.append(family)
             DAG_score += family_score
         return DAG, DAG_score
-
-
-class CandidateComplementScore:
-    """For computing the local score sum complementary to those obtained from :py:class:`.old_CandidateRestrictedScore` and constrained by maximum indegree.
-    """
-
-    def __init__(self, C, scores, d):
-
-        self.C = C
-        self.n = len(C)
-        self.d = d
-        self.minwidth = (self.n - 1) // 64 + 1
-
-        # object of class LocalScore
-        scores = scores.complementary_scores_dict(C, d)
-
-        ordered_psets = dict()
-        ordered_scores = dict()
-
-        for v in scores:
-            ordered_scores[v] = sorted(scores[v].items(), key=lambda item: item[1], reverse=True)
-            ordered_psets[v] = bms_to_np64([bm(item[0]) for item in ordered_scores[v]], minwidth=self.minwidth)
-            ordered_scores[v] = np.array([item[1] for item in ordered_scores[v]], dtype=np.float64)
-
-        self.ordered_psets = ordered_psets
-        self.ordered_scores = ordered_scores
-
-        if self.d == 1:
-            self.pset_to_idx = dict()
-            for v in scores:
-                # wrong if over 64 variables?
-                # ordered_psets[v] = ordered_psets[v].flatten()
-                ordered_psets[v] = [np64_to_bm(pset) for pset in ordered_psets[v]]
-                self.pset_to_idx[v] = dict()
-                for i, pset in enumerate(ordered_psets[v]):
-                    self.pset_to_idx[v][pset] = i
-
-        self.t_ub = np.zeros(shape=(self.n, self.n), dtype=np.int32)
-        for u in range(1, self.n+1):
-            for t in range(1, u+1):
-                self.t_ub[u-1][t-1] = self.n_valids_ub(u, t)
-
-    def n_valids(self, v, U, T):
-        n = 0
-        for k in range(1, self.d+1):
-            n += comb(len(U), k) - comb(len(U.intersection(self.C[v])), k)
-            n -= comb(len(U.difference(T)), k) - comb(len(U.difference(T).intersection(self.C[v])), k)
-        return n
-
-    def n_valids_ub(self, u, t):
-        n = 0
-        for k in range(self.d+1):
-            n += comb(u, k) - comb(u - t, k)
-        return n
-
-    def sum(self, v, U, T, W_prime, debug=False, contribs=False):
-
-        # NOTE: This is the final score calculation.
-
-        if self.d == 1:  # special case
-            pset_idxs = list()
-            w_contribs = list()
-            for u in T:
-                if u not in self.C[v]:
-                    pset_idx = self.pset_to_idx[v][bm(u)]
-                    pset_idxs.append(pset_idx)
-                    w_contribs.append(self.ordered_scores[v][pset_idx])
-            w_contribs.append(W_prime)
-            W_sum = np.logaddexp.reduce(w_contribs)
-
-        else:
-            if self.n <= 64:
-                U_bm = bm(U)
-                T_bm = bm(T)
-            else:
-                U_bm = bm_to_pyint_chunks(bm(U), self.minwidth)
-                T_bm = bm_to_pyint_chunks(bm(T), self.minwidth)
-
-            W_sum = weight_sum(w=W_prime,
-                               psets=self.ordered_psets[v],
-                               weights=self.ordered_scores[v],
-                               n=self.n,
-                               U=U_bm,
-                               T=T_bm,
-                               t_ub=int(self.t_ub[len(U)][len(T)]),
-                               contribs=contribs)
-            if contribs is True:
-                W_sum, pset_idxs = W_sum
-
-        if contribs is True:
-            return W_sum, pset_idxs
-        return W_sum
