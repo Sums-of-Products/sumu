@@ -27,8 +27,8 @@ cdef extern from "CandidateRestrictedScore.hpp":
                                     )
         double sum(int v, bm32 U, bm32 T)
         double sum(int v, bm32 U)
-        bm32 sample_pset(int v, bm32 U, bm32 T, double wcum)
-        bm32 sample_pset(int v, bm32 U, double wcum)
+        pair[bm32, double] sample_pset(int v, bm32 U, bm32 T, double wcum)
+        pair[bm32, double] sample_pset(int v, bm32 U, double wcum)
 
 
 cdef extern from "IntersectSums.hpp":
@@ -56,10 +56,10 @@ cdef extern from "IntersectSums.hpp":
         double scan_sum_128(double w, bm128 U, bm128 T, bm64 t_ub)
         double scan_sum_192(double w, bm192 U, bm192 T, bm64 t_ub)
         double scan_sum_256(double w, bm256 U, bm256 T, bm64 t_ub)
-        bm64 scan_rnd_64(bm64 U, bm64 T, double wcum)
-        bm128 scan_rnd_128(bm128 U, bm128 T, double wcum)
-        bm192 scan_rnd_192(bm192 U, bm192 T, double wcum)
-        bm256 scan_rnd_256(bm256 U, bm256 T, double wcum)
+        pair[bm64, double] scan_rnd_64(bm64 U, bm64 T, double wcum)
+        pair[bm128, double] scan_rnd_128(bm128 U, bm128 T, double wcum)
+        pair[bm192, double] scan_rnd_192(bm192 U, bm192 T, double wcum)
+        pair[bm256, double] scan_rnd_256(bm256 U, bm256 T, double wcum)
 
 
 cdef class CandidateRestrictedScore:
@@ -189,27 +189,25 @@ cdef class CandidateComplementScore:
         T = bm_to_np64(bm(T), k=self.k)
 
         if self.k == 1:
-            pset = self.isums[0][v].scan_rnd_64(U, T, wcum)
+            pset, score = self.isums[0][v].scan_rnd_64(U, T, wcum)
             pset = bm_to_ints(pset)
-            return pset, self.localscore._local(v, np.array(pset))
 
         if self.k == 2:
             U128 = [U[0], U[1]]
             T128 = [T[0], T[1]]
-            pset = self.isums[0][v].scan_rnd_128(U128, T128, wcum)
+            pset, score = self.isums[0][v].scan_rnd_128(U128, T128, wcum)
             pset = bm_to_ints(np64_to_bm(np.array([pset["s1"], pset["s2"]])))
-            return pset, self.localscore._local(v, np.array(pset))
 
         if self.k == 3:
             U192 = [U[0], U[1], U[2]]
             T192 = [T[0], T[1], T[2]]
-            pset = self.isums[0][v].scan_rnd_192(U192, T192, wcum)
+            pset, score = self.isums[0][v].scan_rnd_192(U192, T192, wcum)
             pset = bm_to_ints(np64_to_bm(np.array([pset["s1"], pset["s2"], pset["s3"]])))
-            return pset, self.localscore._local(v, np.array(pset))
 
         if self.k == 4:
             U256 = [U[0], U[1], U[2], U[3]]
             T256 = [T[0], T[1], T[2], T[3]]
-            pset = self.isums[0][v].scan_rnd_256(U256, T256, wcum)
+            pset, score = self.isums[0][v].scan_rnd_256(U256, T256, wcum)
             pset = bm_to_ints(np64_to_bm(np.array([pset["s1"], pset["s2"], pset["s3"], pset["s4"]])))
-            return pset, self.localscore._local(v, np.array(pset))
+
+        return pset, score

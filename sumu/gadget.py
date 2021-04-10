@@ -262,7 +262,7 @@ class Gadget():
                                                                 "pruning_eps"),
                                                   logfile=self._logfilename,
                                                   silent=self._silent)
-        # del self.score_array # NOTE: remove
+        del self.score_array
 
     def _precompute_candidate_complement_scoring(self):
         self.c_c_score = None
@@ -281,7 +281,6 @@ class Gadget():
     def _init_mcmc(self):
 
         self.score = Score(C=self.C,
-                           score_array=self.score_array, # NOTE: remove
                            c_r_score=self.c_r_score,
                            c_c_score=self.c_c_score)
 
@@ -462,12 +461,10 @@ class LocalScore:
 
 class Score:  # should be renamed to e.g. ScoreHandler
 
-    def __init__(self, *, C, score_array,
-                 c_r_score, c_c_score):
+    def __init__(self, *, C, c_r_score, c_c_score):
 
         self.C = C
         self.n = len(self.C)
-        self.score_array = score_array # NOTE: remove
         self.c_r_score = c_r_score
         self.c_c_score = c_c_score
 
@@ -534,8 +531,7 @@ class Score:  # should be renamed to e.g. ScoreHandler
 
         if -np.random.exponential() < w_crs - np.logaddexp(w_ccs, w_crs):
             # Sampling from candidate psets.
-            pset = self.c_r_score.sample_pset(v, U_bm, T_bm, w_crs - np.random.exponential())
-            family_score = self.score_array[v][pset]
+            pset, family_score = self.c_r_score.sample_pset(v, U_bm, T_bm, w_crs - np.random.exponential())
             family = (v, set(self.C[v][i] for i in bm_to_ints(pset)))
 
         else:

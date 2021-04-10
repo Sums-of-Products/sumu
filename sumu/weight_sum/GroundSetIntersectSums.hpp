@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <utility>
 #include "common.hpp"
 
 using namespace wsum;
@@ -23,8 +24,8 @@ public:
   ~GroundSetIntersectSums();
   double scan_sum(bm32 U, bm32 T);
   double scan_sum(bm32 U);
-  bm32   scan_rnd(bm32 U, bm32 T, double wcum);
-  bm32   scan_rnd(bm32 U, double wcum);
+  std::pair<bm32, double> scan_rnd(bm32 U, bm32 T, double wcum);
+  std::pair<bm32, double> scan_rnd(bm32 U, double wcum);
   std::vector<ws32>	s;	// Scores, pairs (set, weight) sorted by weight.
 
 private:

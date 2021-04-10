@@ -3,10 +3,12 @@
 
 #include "GroundSetIntersectSums.hpp"
 #include <unordered_map>
+#include <utility>
 
 using std::unordered_map;
 using std::string;
 using std::streambuf;
+using std::pair;
 
 class CandidateRestrictedScore {
 public:
@@ -28,8 +30,8 @@ public:
   ~CandidateRestrictedScore();
   double sum(int v, bm32 U, bm32 T);
   double sum(int v, bm32 U);
-  bm32 sample_pset(int v, bm32 U, bm32 T, double wcum);
-  bm32 sample_pset(int v, bm32 U, double wcum);
+  pair<bm32, double> sample_pset(int v, bm32 U, bm32 T, double wcum);
+  pair<bm32, double> sample_pset(int v, bm32 U, double wcum);
 
 private:
 

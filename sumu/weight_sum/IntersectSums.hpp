@@ -2,6 +2,7 @@
 #define INTERSECT_SUMS_HPP
 
 #include <vector>
+#include <utility>
 #include "common.hpp"
 
 using namespace wsum;
@@ -39,10 +40,10 @@ public:
   double scan_sum_128(double w, bm128 U, bm128 T, bm64 t_ub);
   double scan_sum_192(double w, bm192 U, bm192 T, bm64 t_ub);
   double scan_sum_256(double w, bm256 U, bm256 T, bm64 t_ub);
-  bm64 scan_rnd_64(bm64 U, bm64 T, double wcum);
-  bm128 scan_rnd_128(bm128 U, bm128 T, double wcum);
-  bm192 scan_rnd_192(bm192 U, bm192 T, double wcum);
-  bm256 scan_rnd_256(bm256 U, bm256 T, double wcum);
+  std::pair<bm64, double> scan_rnd_64(bm64 U, bm64 T, double wcum);
+  std::pair<bm128, double> scan_rnd_128(bm128 U, bm128 T, double wcum);
+  std::pair<bm192, double> scan_rnd_192(bm192 U, bm192 T, double wcum);
+  std::pair<bm256, double> scan_rnd_256(bm256 U, bm256 T, double wcum);
 
 private:
   double eps;

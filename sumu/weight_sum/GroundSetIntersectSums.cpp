@@ -1,6 +1,9 @@
 #include "GroundSetIntersectSums.hpp"
+#include <utility>
 
 using std::vector;
+using std::pair;
+using std::make_pair;
 
 bool decr_ws32(ws32 x, ws32 y) { return x.weight > y.weight; }
 void sort_ws32(vector<ws32> &c){ sort(c.begin(), c.end(), decr_ws32); }
@@ -54,27 +57,29 @@ double GroundSetIntersectSums::scan_sum(bm32 U, bm32 T){
 	return sum.get_log();
 }
 
-bm32 GroundSetIntersectSums::scan_rnd(bm32 U, bm32 T, double wcum){ // Returns the first set when the cumulative weight exceeds wcum.
+pair<bm32, double> GroundSetIntersectSums::scan_rnd(bm32 U, bm32 T, double wcum){ // Returns the first set when the cumulative weight exceeds wcum.
 	int m = s.size();
 	Treal sum; sum = 0.0;
 	Treal target; target.set_log(wcum);
-	int i = 0; bm32 P = 0L;
+	int i = 0; bm32 P = 0L; bm32 P_i = 0L;
 	for (; i < m; ++i){
-		P = s[i].set;
-		if ( subseteq(P, U) && intersects(P, T) ) {
-			sum = s[i].weight; ++i;
-			if (sum > target) i = m;
-			break;
-		}
+	  P = s[i].set;
+	  if ( subseteq(P, U) && intersects(P, T) ) {
+		P_i = i;
+		sum = s[i].weight; ++i;
+		if (sum > target) i = m;
+		break;
+	  }
 	}
 	for (; i < m; ++i){
-		P = s[i].set;
-		if ( subseteq(P, U) && intersects(P, T) ) {
-			Treal score = s[i].weight; sum += score;
-			if (sum > target) break;
-		}
+	  P = s[i].set;
+	  if ( subseteq(P, U) && intersects(P, T) ) {
+		P_i = i;
+		Treal score = s[i].weight; sum += score;
+		if (sum > target) break;
+	  }
 	}
-	return P;
+	return make_pair(s[P_i].set, s[P_i].weight.get_log());
 }
 
 double GroundSetIntersectSums::scan_sum(bm32 U){
@@ -101,14 +106,15 @@ double GroundSetIntersectSums::scan_sum(bm32 U){
 	return sum.get_log();
 }
 
-bm32 GroundSetIntersectSums::scan_rnd(bm32 U, double wcum){
+pair<bm32, double> GroundSetIntersectSums::scan_rnd(bm32 U, double wcum){
 	int m = s.size();
 	Treal sum; sum = 0.0;
 	Treal target; target.set_log(wcum);
-	int i = 0; bm32 P = 0L;
+	int i = 0; bm32 P = 0L; bm32 P_i = 0L;
 	for (; i < m; ++i){
 		P = s[i].set;
 		if ( subseteq(P, U) ) {
+		    P_i = i;
 			sum = s[i].weight; ++i;
 			if (sum > target) i = m;
 			break;
@@ -117,9 +123,10 @@ bm32 GroundSetIntersectSums::scan_rnd(bm32 U, double wcum){
 	for (; i < m; ++i){
 		P = s[i].set;
 		if ( subseteq(P, U) ) {
+		    P_i = i;
 			Treal score = s[i].weight; sum += score;
 			if (sum > target) break;
 		}
 	}
-	return P;
+	return make_pair(s[P_i].set, s[i].weight.get_log());
 }

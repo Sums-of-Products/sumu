@@ -12,6 +12,7 @@
 #include "common.hpp"
 #include "CandidateRestrictedScore.hpp"
 
+using std::pair;
 using std::cout;
 using std::endl;
 using std::ofstream;
@@ -258,10 +259,10 @@ double CandidateRestrictedScore::sum(int v, bm32 U, bm32 T) {
   return log_minus_exp(m_tau_simple[v][U], m_tau_simple[v][U & ~T]);
 }
 
-bm32 CandidateRestrictedScore::sample_pset(int v, bm32 U, bm32 T, double wcum) {
+pair<bm32, double> CandidateRestrictedScore::sample_pset(int v, bm32 U, bm32 T, double wcum) {
   return isums[v]->scan_rnd(U, T, wcum);
 }
 
-bm32 CandidateRestrictedScore::sample_pset(int v, bm32 U, double wcum) {
+pair<bm32, double> CandidateRestrictedScore::sample_pset(int v, bm32 U, double wcum) {
   return isums[v]->scan_rnd(U, wcum);
 }
