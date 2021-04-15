@@ -175,7 +175,7 @@ setup(
     packages=["sumu", "sumu.utils", "sumu.scores"],
     install_requires=[
         "numpy",
-        "scipy"
+        "scipy>=1.6"
     ],
     cmdclass=cmdclass,
     ext_modules=cythonize(exts, language_level="3", compiler_directives=COMPILER_DIRECTIVES)

@@ -1,5 +1,5 @@
 import numpy as np
-from ._multivariate import multivariate_t as mvt
+from scipy.stats import multivariate_t as mvt
 
 
 def beeps(dags, data, joint=False):
