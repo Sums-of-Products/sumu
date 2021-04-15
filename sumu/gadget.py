@@ -22,37 +22,55 @@ from .utils.bitmap import bm, bm_to_ints, bm_to_np64
 from .utils.io import read_candidates, get_n, pretty_dict, pretty_title
 from .utils.math_utils import log_minus_exp, close, comb, subsets
 from .scorer import BDeu, BGe
-from .candidates import candidate_parent_algorithm
+from .candidates import candidate_parent_algorithm as cpa
 from .stats import stats
 
 # default parameter values used by multiple classes
 default = {
-    "score": lambda discrete:
-      {"name": "bdeu", "ess": 10} if discrete else {"name": "bge"},
-    "prior": {"name": "fair"},
-    "max_id": -1,
-    "K": lambda n: min(n-1, 16),
-    "d": lambda n: min(n-1, 3),
-    "cp_algo": "greedy-lite",
-    "mc3": 16,
-    "cc_tolerance": 2**-32,
-    "cc_cache_size": 10**7,
-    "pruning_eps": 0.001,
-    "score_sum_eps": 0.1,
-    "logfile": sys.stdout,
-    "silent": False,
-    "stats_period": 15
+    "mcmc": {
+        "iters": 320000,
+        "mc3": 16,
+        "burn_in": 0.5,
+        "n_dags": 10000},
+    "score": lambda discrete: {
+        "name": "bdeu",
+        "params": {"ess": 10}} if discrete else {"name": "bge"},
+    "prior": {
+        "name": "fair"
+    },
+    "cons": {
+        "max_id": -1,
+        "K": lambda n: min(n-1, 16),
+        "d": lambda n: min(n-1, 3),
+        "pruning_eps": 0.001,
+        "score_sum_eps": 0.1
+    },
+    "candp": {
+        "name": "greedy-lite",
+        "params": {"k": 6}},
+    "catc": {
+        "tolerance": 2**-32,
+        "cache_size": 10**7
+    },
+    "logging": {
+        "logfile": sys.stdout,
+        "stats_period": 15
+    },
+    "silent": False
 }
 
 
 class Data:
     """Class for holding data.
 
-    Assumes the input data is either discrete or continuous.
-
     The data can be input as either a path to a space delimited csv
-    file, a numpy array or a object of type Data (in which case a new
-    object is created pointing to same data).
+    file, a numpy array or an object of type :py:class:`.Data` (in which case a new
+    object is created pointing to the same underlying data).
+
+    Assumes the input data is either discrete or continuous. The type
+    is either read directly from the input (numpy array or Data), or
+    it is inferred from the file the input path points to: "." is considered
+    a decimal separator, i.e., it indicates continuous data.
     """
 
     def __init__(self, data_or_path):
@@ -119,65 +137,69 @@ class Data:
 
 
 class Gadget():
+    def __init__(self, *,
+                 data,
+                 mcmc=default["mcmc"],
+                 score=None,
+                 prior=default["prior"],
+                 cons=None,
+                 candp=default["candp"],
+                 catc=default["catc"],
+                 logging=default["logging"]
+                 ):
 
-    def __init__(self, *, data, score=None, prior=default["prior"],
-                 max_id=default["max_id"], K=None, d=None,
-                 cp_algo=default["cp_algo"], cp_path=None,
-                 mc3=default["mc3"],
-                 burn_in, iterations, thinning,
-                 cc_tolerance=default["cc_tolerance"],
-                 cc_cache_size=default["cc_cache_size"],
-                 pruning_eps=default["pruning_eps"],
-                 score_sum_eps=default["score_sum_eps"],
-                 logfile=default["logfile"],
-                 stats_period=default["stats_period"]):
         self.data = Data(data)
         if score is None:
             score = default["score"](self.data.discrete)
-        if K is None:
-            K = default["K"](self.data.n)
-        if d is None:
-            d = default["d"](self.data.n)
-        self.params = {
+        defcons = dict()
+        defcons["K"] = default["cons"]["K"](self.data.n)
+        defcons["d"] = default["cons"]["d"](self.data.n)
+        defcons["max_id"] = default["cons"]["max_id"]
+        defcons["pruning_eps"] = default["cons"]["pruning_eps"]
+        defcons["score_sum_eps"] = default["cons"]["score_sum_eps"]
+        if cons is None:
+            cons = defcons
+        else:
+            cons = dict(defcons, **cons)
+
+        p = {
+            "mcmc": dict(default["mcmc"], **mcmc),
             "score": score,
             "prior": prior,
-            "maxid": max_id,
-            "K": K,
-            "d": d,
-            "cp_algo": cp_algo,
-            "cp_path": cp_path,
-            "mc3": mc3,
-            "burn_in": burn_in,
-            "iterations": iterations,
-            "thinning": thinning,
-            "cc_tolerance": cc_tolerance,
-            "cc_cache_size": cc_cache_size,
-            "pruning_eps": pruning_eps,
-            "score_sum_eps": score_sum_eps,
-            "stats_period": stats_period
+            "cons": cons,
+            "candp": candp,
+            "catc": dict(default["catc"], **catc),
+            "logging": dict(default["logging"], **logging)
         }
 
         self._silent = default["silent"]
         # No output.
-        if logfile is None:
+        if p["logging"]["logfile"] is None:
             self._silent = True
             self._logfile = open(os.devnull, "w")
             self._logfilename = ""
         # Output to file.
-        elif type(logfile) == str:
-            self._logfile = open(logfile, "a")
+        elif type(p["logging"]["logfile"]) == str:
+            self._logfile = open(p["logging"]["logfile"], "a")
             self._logfilename = self._logfile.name
-        # Output to sdout.
+        # Output to stdout.
         else:
-            self._logfile = logfile
+            self._logfile = p["logging"]["logfile"]
             self._logfilename = ""
-        self._outputwidth = max(80, 6+12+6*mc3-1)
+        self._outputwidth = max(80, 6+12+6*p["mcmc"]["mc3"]-1)
+        # To prevent ugly print
+        del p["logging"]["logfile"]
 
-    def _param(self, *params):
-        # Utility to simplify passing parameters
-        return {k: self.params[k] for k in params}
+        # Adjust "mcmc" parameters if inconsistent
+        iters = p["mcmc"]["iters"]
+        mc3 = p["mcmc"]["mc3"]
+        burn_in = p["mcmc"]["burn_in"]
+        n_dags = p["mcmc"]["n_dags"]
+        p["mcmc"]["iters"] = iters // mc3 * mc3
+        p["mcmc"]["n_dags"] = min((iters - int(iters*burn_in)) // mc3, n_dags)
+        adjusted = (p["mcmc"]["iters"] != iters, p["mcmc"]["n_dags"] != n_dags)
 
-    def sample(self):
+        self.p = p
 
         if self._logfile:
             print(pretty_title("1. PROBLEM INSTANCE", 0, self._outputwidth),
@@ -185,7 +207,19 @@ class Gadget():
             print(pretty_dict(self.data.info), file=self._logfile)
             print(pretty_title("2. RUN PARAMETERS", 2,
                                self._outputwidth), file=self._logfile)
-            print(pretty_dict(self.params), file=self._logfile)
+            print(pretty_dict(self.p), file=self._logfile)
+            if any(adjusted):
+                print("WARNING", file = self._logfile)
+            if adjusted[0]:
+                print("iters adjusted downwards: needs to be multiple of mc3.",
+                      file=self._logfile)
+            if adjusted[1]:
+                print("n_dags adjusted downwards: max is (iters * (1 - burn_in)) / mc3.",
+                      file=self._logfile)
+
+    def sample(self):
+
+        if self._logfile:
             print(pretty_title("3. FINDING CANDIDATE PARENTS", 2,
                                self._outputwidth), file=self._logfile)
             self._logfile.flush()
@@ -234,19 +268,20 @@ class Gadget():
 
     def _find_candidate_parents(self):
         self.l_score = LocalScore(data=self.data,
-                                  **self._param("score", "maxid"))
+                                  score=self.p["score"],
+                                  maxid=self.p["cons"]["max_id"])
 
-        if self.params["cp_path"] is None:
-            self.C = candidate_parent_algorithm[self.params["cp_algo"]](self.params["K"],
-                                                                        n=self.data.n,
-                                                                        scores=self.l_score,
-                                                                        data=self.data)
+        if self.p["candp"].get("path") is None:
+            self.C = cpa[self.p["candp"]["name"]](self.p["cons"]["K"],
+                                                  scores=self.l_score,
+                                                  data=self.data,
+                                                  params=self.p["candp"].get("params"))
 
         else:
-            self.C = read_candidates(self.params["cp_path"])
+            self.C = read_candidates(self.p["candp"]["path"])
 
         # TODO: Use this everywhere instead of the dict
-        self.C_array = np.empty((self.data.n, self.params["K"]), dtype=np.int32)
+        self.C_array = np.empty((self.data.n, self.p["cons"]["K"]), dtype=np.int32)
         for v in self.C:
             self.C_array[v] = np.array(self.C[v])
 
@@ -256,26 +291,26 @@ class Gadget():
     def _precompute_candidate_restricted_scoring(self):
         self.c_r_score = CandidateRestrictedScore(score_array=self.score_array,
                                                   C=self.C_array,
-                                                  **self._param("K",
-                                                                "cc_tolerance",
-                                                                "cc_cache_size",
-                                                                "pruning_eps"),
+                                                  K=self.p["cons"]["K"],
+                                                  cc_tolerance=self.p["catc"]["tolerance"],
+                                                  cc_cache_size=self.p["catc"]["cache_size"],
+                                                  pruning_eps=self.p["cons"]["pruning_eps"],
                                                   logfile=self._logfilename,
                                                   silent=self._silent)
         del self.score_array
 
     def _precompute_candidate_complement_scoring(self):
         self.c_c_score = None
-        if self.params["K"] < self.data.n - 1:
+        if self.p["cons"]["K"] < self.data.n - 1:
             # NOTE: CandidateComplementScore gives error if K >= n-1.
             # NOTE: Does this really need to be reinitialized?
             self.l_score = LocalScore(data=self.data,
-                                      score=self.params["score"],
-                                      maxid=self.params["d"])
+                                      score=self.p["score"],
+                                      maxid=self.p["cons"]["d"])
             self.c_c_score = CandidateComplementScore(localscore=self.l_score,
                                                       C=self.C,
-                                                      d=self.params["d"],
-                                                      eps=self.params["score_sum_eps"])
+                                                      d=self.p["cons"]["d"],
+                                                      eps=self.p["cons"]["score_sum_eps"])
             del self.l_score
 
     def _init_mcmc(self):
@@ -284,23 +319,28 @@ class Gadget():
                            c_r_score=self.c_r_score,
                            c_c_score=self.c_c_score)
 
-        if self.params["mc3"] > 1:
-            self.mcmc = MC3([PartitionMCMC(self.C, self.score, self.params["d"],
-                                           temperature=i/(self.params["mc3"]-1))
-                             for i in range(self.params["mc3"])])
+        if self.p["mcmc"]["mc3"] > 1:
+            self.mcmc = MC3([PartitionMCMC(self.C, self.score, self.p["cons"]["d"],
+                                           temperature=i/(self.p["mcmc"]["mc3"]-1))
+                             for i in range(self.p["mcmc"]["mc3"])])
 
         else:
-            self.mcmc = PartitionMCMC(self.C, self.score, self.params["d"])
+            self.mcmc = PartitionMCMC(self.C, self.score, self.p["cons"]["d"])
 
     def _run_mcmc(self):
+
+        p = self.p["mcmc"]  # Just to shorten rows
 
         self.dags = list()
         self.dag_scores = list()
 
-        msg_tmpl = "{:<5.5} {:<12.12}" + " {:<5.5}"*self.params["mc3"]
+        msg_tmpl = "{:<5.5} {:<12.12}" + " {:<5.5}"*p["mc3"]
         temps = sorted(list(stats["mcmc"].keys()), reverse=True)
         temps_labels = [round(t, 2) for t in temps]
         moves = stats["mcmc"][1.0].keys()
+
+        iters_burn_in = int(p["iters"] / p["mc3"] * p["burn_in"])
+        iters_dag_sampling = p["iters"] // p["mc3"] - iters_burn_in
 
         def print_stats_title():
             msg = "Cumulative acceptance probability by move and inverse temperature.\n\n"
@@ -312,26 +352,26 @@ class Gadget():
         def print_stats(i, header=False):
             if header:
                 print_stats_title()
-            p = round(100*i/(self.params["burn_in"] + self.params["iterations"]))
-            p = str(p)
+            progress = round(100*i/(p["iters"] // p["mc3"]))
+            progress = str(progress)
             for m in moves:
                 ar = [stats["mcmc"][t][m]["accep_ratio"] for t in temps]
                 ar = [round(r,2) if type(r) == float else "" for r in ar]
-                msg = msg_tmpl.format(p, m, *ar)
+                msg = msg_tmpl.format(progress, m, *ar)
                 print(msg, file=self._logfile)
-            if self.params["mc3"] > 1:
+            if p["mc3"] > 1:
                 ar = stats["mc3"]["accepted"] / stats["mc3"]["proposed"]
-                ar = [round(r, 2) for r in ar] + [0.0]
-                msg = msg_tmpl.format(p, "MC^3", *ar)
+                ar = [round(r, 2) for r in ar] + [""]
+                msg = msg_tmpl.format(progress, "MC^3", *ar)
                 print(msg, file=self._logfile)
             print(file=self._logfile)
             self._logfile.flush()
 
         timer = time.time()
         first = True
-        for i in range(self.params["burn_in"]):
-            self.mcmc.sample()[0]
-            if self._logfile and time.time() - timer > self.params["stats_period"]:
+        for i in range(iters_burn_in):
+            self.mcmc.sample()
+            if self._logfile and time.time() - timer > self.p["logging"]["stats_period"]:
                 timer = time.time()
                 print_stats(i, first)
                 first = False
@@ -341,14 +381,16 @@ class Gadget():
             print("Sampling DAGs...\n", file=self._logfile)
             self._logfile.flush()
 
-        for i in range(self.params["iterations"]):
+        dag_count = 0
+        for i in range(iters_dag_sampling):
             if self._logfile:
-                if time.time() - timer > self.params["stats_period"]:
+                if time.time() - timer > self.p["logging"]["stats_period"]:
                     timer = time.time()
-                    print_stats(i + self.params["burn_in"], first)
+                    print_stats(i + iters_burn_in, first)
                     first = False
                     self._logfile.flush()
-            if i % self.params["thinning"] == 0:
+            if i >= iters_dag_sampling / p["n_dags"] * dag_count:
+                dag_count += 1
                 dag, score = self.score.sample_DAG(self.mcmc.sample()[0])
                 self.dags.append(dag)
                 self.dag_scores.append(score)
@@ -356,7 +398,7 @@ class Gadget():
                 self.mcmc.sample()
 
         if self._logfile and first:
-            print_stats(self.params["burn_in"] + self.params["iterations"], first)
+            print_stats(iters_burn_in + iters_dag_sampling, first)
             self._logfile.flush()
 
         return self.dags, self.dag_scores
@@ -366,11 +408,12 @@ class LocalScore:
     """Class for computing local scores given input data.
 
     Implemented scores are BDeu and BGe. The scores by default use the "fair"
-    modular structure prior :cite:`eggeling:2019`.
+    modular structure prior :footcite:`eggeling:2019`.
 
     """
 
-    def __init__(self, *, data, score=None, prior=default["prior"], maxid=default["max_id"]):
+    def __init__(self, *, data, score=None, prior=default["prior"],
+                 maxid=default["cons"]["max_id"]):
         self.data = Data(data)
         self.score = score
         if score is None:
@@ -384,7 +427,7 @@ class LocalScore:
         if self.score["name"] == "bdeu":
             self.scorer = BDeu(data=self.data.data,
                                maxid=self.maxid,
-                               ess=self.score["ess"])
+                               ess=self.score["params"]["ess"])
 
         elif self.score["name"] == "bge":
             self.scorer = BGe(data=self.data,
@@ -541,7 +584,7 @@ class Score:  # should be renamed to e.g. ScoreHandler
             else:
                 pset, family_score = self.c_c_score.sample_pset(v, U, U, w_ccs - np.random.exponential())
 
-            family = (v, pset)
+            family = (v, set(pset))
 
         return family, family_score
 

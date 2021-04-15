@@ -7,38 +7,39 @@ import sumu
 def test_Gadget_empirical_edge_prob_error_decreases():
 
     params = {
+
+        # generic MCMC parameters
+        "mcmc": {"iters": 150000, "mc3": 3, "burn_in": 0.5, "n_dags": 10000},
+
         # score to use and its parameters
-        "score": {"name": "bdeu", "ess": 10},
+        "score": {"name": "bdeu", "params": {"ess": 10}},
 
         # modular structure prior and its parameters
         "prior": {"name": "fair"},
 
         # constraints on the DAG space
-        "max_id": -1,
-        "K": 8,
-        "d": 3,
+        "cons": {
+            "max_id": -1,
+            "K": 8,
+            "d": 3,
+            "pruning_eps": 0.001
+        },
 
         # algorithm to use for finding candidate parents
-        "cp_algo": "greedy-lite",
+        "candp": {"name": "greedy-lite", "params": {"k": 6}},
 
-        # generic MCMC parameters
-        "mc3": 3,
-        "burn_in": 50000,
-        "iterations": 50000,
-        "thinning": 5,
 
         # preparing for catastrofic cancellations
-        "cc_tolerance": 2**-32,
-        "cc_cache_size": 10**7,
+        "catc": {
+            "tolerance": 2**-32,
+            "cache_size": 10**7
+        },
 
-        # pruning candidate parent sets
-        "pruning_eps": 0.001,
-
-        # print statistic every nth second
-        "stats_period": 15,
-
-        # log file
-        #"logfile": None#"gadget.log"
+        # Logging
+        "logging": {
+            "stats_period": 15,
+            #"logfile": "gadget.log"
+        }
     }
 
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
@@ -49,9 +50,7 @@ def test_Gadget_empirical_edge_prob_error_decreases():
     pset_probs = sumu.aps(ls.all_candidate_restricted_scores(), as_dict=True)
     edge_probs = sumu.utils.edge_probs_from_pset_probs(pset_probs)
 
-    # To set the seed for MCMC
     g = sumu.Gadget(data=data, **params)
-    sumu.utils.io.pretty_dict(g.params)
     dags, scores = g.sample()
     max_errors = sumu.utils.utils.edge_empirical_prob_max_error(dags,
                                                                 edge_probs)
@@ -65,8 +64,9 @@ def test_Gadget_runs_n_between_2_and_64():
     bn_path = data_path / "sachs.dsc"
     bn = sumu.utils.io.read_dsc(bn_path)
     data = bn.sample(200, seed=0)
-    g = sumu.Gadget(data=data, cp_algo="top", K=10, d=2, mc3=2, burn_in=100, iterations=100, thinning=2)
-    sumu.utils.io.pretty_dict(g.params)
+    g = sumu.Gadget(data=data,
+                    mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+                    cp_algo={"name": "top"}, cons={"K": 10, "d": 2})
     g.sample()
     assert True
 
@@ -77,8 +77,9 @@ def test_Gadget_runs_n_between_65_and_128():
     bn_path = data_path / "hepar2.dsc"
     bn = sumu.utils.io.read_dsc(bn_path)
     data = bn.sample(1000, seed=0)
-    g = sumu.Gadget(data=data, cp_algo="top", K=10, d=2, mc3=2, burn_in=100, iterations=100, thinning=2)
-    sumu.utils.io.pretty_dict(g.params)
+    g = sumu.Gadget(data=data,
+                    mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+                    cp_algo={"name": "top"}, cons={"K": 10, "d": 2})
     g.sample()
     assert True
 
@@ -89,8 +90,9 @@ def test_Gadget_runs_n_between_129_and_192():
     bn_path = data_path / "munin1.dsc"
     bn = sumu.utils.io.read_dsc(bn_path)
     data = bn.sample(200, seed=0)
-    g = sumu.Gadget(data=data, cp_algo="top", K=10, d=2, mc3=2, burn_in=100, iterations=100, thinning=2)
-    sumu.utils.io.pretty_dict(g.params)
+    g = sumu.Gadget(data=data,
+                    mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+                    cp_algo={"name": "top"}, cons={"K": 10, "d": 2})
     g.sample()
     assert True
 
@@ -101,8 +103,9 @@ def test_Gadget_runs_n_between_193_and_256():
     bn_path = data_path / "andes.dsc"
     bn = sumu.utils.io.read_dsc(bn_path)
     data = bn.sample(200, seed=0)
-    g = sumu.Gadget(data=data, cp_algo="top", K=10, d=2, mc3=2, burn_in=100, iterations=100, thinning=2)
-    sumu.utils.io.pretty_dict(g.params)
+    g = sumu.Gadget(data=data,
+                    mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+                    cp_algo={"name": "top"}, cons={"K": 10, "d": 2})
     g.sample()
     assert True
 

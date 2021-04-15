@@ -479,14 +479,10 @@ def greedy_1(K, **kwargs):
     return C
 
 
-def greedy_lite(K, **kwargs):
+def greedy_lite(K, *, scores, params={"k": 6}, **kwargs):
 
-    scores = kwargs.get("scores")
-    k = kwargs.get("k")
-    assert scores is not None
-    if k is None:
-        k = min(6, K)
-    assert k <= K
+    k = params["k"]
+    k = min(k, K)
 
     def k_highest_uncovered(v, U, k):
 
@@ -735,7 +731,7 @@ def greedy_backward_forward(K, **kwargs):
                     for u in U],
                    key=lambda item: item[1])[0]
 
-    C = rnd(K, n=scores.n)
+    C = rnd(K, n=scores.data.n)
     C = {v: set(C[v]) for v in C}
     for v in C:
         C_prev = dict(C)
