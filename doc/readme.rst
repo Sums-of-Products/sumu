@@ -45,6 +45,8 @@ Installation
 
 For more details see :doc:`installation instructions <installation>`.
 
+.. note:: The documentation aims to reflect the use of the latest development version. If you do install the PyPI version, you might find these instructions useful: https://www.cs.helsinki.fi/group/sop/gadget-beeps/. **TODO**: versioned documentation.
+
 Features
 --------
 
@@ -72,27 +74,9 @@ Getting started
    # data. No header rows for variable names or arities (in the discrete
    # case) are assumed. Discrete data is assumed to be integer encoded;
    # continuous data uses "." as decimal separator.
-   data_path = "path_to_continuous_data_with_n_variables.csv"
+   data = sumu.Data("data.csv")
    
-   data = sumu.Data(data_path, discrete=False)
-
-   params = {"data": data,
-             "scoref": "bge",           # Or "bdeu" for discrete data.
-             "ess": 10,                 # If using BDeu.
-             "max_id": -1,              # Max indegree, -1 for none.
-             "K": 15,                   # Number of candidate parents per variable (< n).
-             "d": 3,                    # Max size for parent sets not constrained to candidates.
-             "cp_algo": "greedy-lite",  # Algorithm for finding the candidate parents.
-             "mc3_chains": 16,          # Number of parallel Metropolis coupled Markov chains.
-             "burn_in": 10000,          # Number of burn-in iterations in the chain.
-             "iterations": 10000,       # Number of iterations after burn-in.
-             "thinning": 10}            # Sample a DAG at every nth iteration.
-
-   g = sumu.Gadget(**params)
-
-   # dags is a list of tuples, where the first element is an int encoding a node
-   # and the second element is a (possibly empty) tuple of its parents.
-   dags, scores = g.sample()
+   dags, scores = sumu.Gadget(data=data).sample()
 
    # Causal effect computations only for continuous data.
    # dags are first converted to adjacency matrices.
@@ -104,7 +88,7 @@ Getting started
    # the following n-1 values represent the effects from variable 2 to 1, 3, ..., n, etc.
    causal_effects = sumu.beeps(dags, data)
 
-
+See :py:class:`~sumu.gadget.Gadget` for help on how to adjust all the sampling parameters. 
    
 Citing
 ------

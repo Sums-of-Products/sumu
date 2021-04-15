@@ -137,6 +137,166 @@ class Data:
 
 
 class Gadget():
+    """Class implementing the Gadget pipeline for MCMC sampling from
+    the structure posterior of DAG models. The user interface consists
+    of:
+
+    1. The constructor for setting all the parameters.
+    2. :py:meth:`.sample()` method which runs the MCMC chain and
+       returns the sampled DAGs and their scores.
+
+    All the constructor arguments are keyword arguments, i.e., the
+    **data** argument should be given as ``data=data``, etc. Only the
+    data argument is required; other arguments have some more or less
+    sensible defaults.
+
+    There is a lot of parameters that can be adjusted. To make
+    managing the parameters easier, they are grouped into dict-objects
+    around some common theme, except the **data** argument which
+    accepts any valid constructor argument for a :py:class:`.Data`
+    object.
+
+    The (nested) lists in the following description reflect the
+    structure of the dict objects. For example, to set the equivalent
+    sample size for BDeu score to some value :math:`a`, you should
+    construct the object as
+
+    >>> Gadget(data=data, score={"name": "bdeu", "params": {"ess": a}}).
+
+    To only adjust some parameter within a dict-argument while keeping
+    the others at default, it suffices to set the one parameter. For
+    example, to set the number of candidate parents :math:`K` to some
+    value :math:`k`, you should construct the object as
+
+    >>> Gadget(data=data, cons={"K": k}).
+
+    - **score**: The score to use.
+
+      - **name**: Name of the score.
+
+        **Default**: ``bdeu`` (i.e., Bayesian Dirichlet equivalent
+        uniform) for discrete data, and ``bge`` (i.e., Bayesian
+        Gaussian equivalent) for continuous data.
+
+      - **params**: A dict of parameters for the score.
+
+        **Default**: ``{"ess": 10}`` for ``bdeu``.
+
+    - **prior**: Modular structure prior to use.
+
+      - **name**: Name of the prior, either *fair* or *unif* :footcite:`eggeling:2019`.
+
+        **Default**: fair.
+
+    - **mcmc**: General Markov Chain Monte Carlo arguments.
+
+      - **iters**: The total number of iterations across all the Metropolis
+        coupled chains, i.e., if the number of coupled chains is :math:`k` then
+        each runs for **iters/k** iterations. If the given **iters** is not a multiple of
+        the number of chains it is adjusted downwards.
+
+        **Default**: 320000.
+
+      - **mc3**: The number of of Metropolis coupled chains. The
+        temperatures of the chains are spread evenly between uniform
+        and the target distribution.
+
+        **Default**: 16.
+
+      - **burn_in**: Ratio of how much of the iterations to use for burn-in (0.5 is 50%).
+
+        **Default**: 0.5.
+
+      - **n_dags**: Number of DAGs to sample. The maximum number of
+        DAGs that can be sampled is **iters/mc3*(1-burn_in)**; if the given
+        **n_dags** is higher than the maximum, it is adjusted
+        downwards.
+
+        **Default**: 10000.
+
+    - **cons**: Constraints on the explored DAG space.
+
+      - **K**: Number of candidate parents per node.
+
+        **Default**: :math:`\min(n-1, 16)`, where :math:`n` is the number of nodes.
+
+      - **d**: Maximum size of parent sets that are not subsets of the candidate parents.
+
+        **Default**: :math:`\min(n-1, 3)`, where :math:`n` is the number of nodes.
+
+      - **max_id**: Maximum size of parent sets that are subsets of
+        candidates. There should be no reason to change this from
+        the default.
+
+        **Default**: -1, i.e., unlimited.
+
+      - **pruning_eps**: Allowed relative error for a root-partition
+        node score sum. Setting this to some value :math:`>0` allows
+        some candidate parent sets to be pruned, expediting parent
+        set sampling.
+
+        **Default**: 0.001.
+
+      - **score_sum_eps**: Tolerated relative error when computing
+        score sums from parent sets that are not subsets of the
+        candidate parents.
+
+        **Default**: 0.1.
+
+    - **candp**: Algorithm to use for finding candidate parents.
+
+      - **name**: Name of the algorithm.
+
+        **Default**: ``greedy-lite``.
+
+      - **params**: A dict of parameters for the algorithm.
+
+        **Default**: ``{"k": 6}``. The default algorithm
+        :py:func:`~sumu.candidates.greedy_lite` has one parameter,
+        :math:`k`, determining the number of parents to add during
+        the last iteration of the algorithm. The candidate selection
+        phase can be made faster by incrementing this value.
+
+      - **path**: Path to precomputed file storing the candidate
+        parents. The format is such that the row number determines the
+        node in question, and on each row there are the :math:`K`
+        space separated candidate parents. If path is given no
+        computations are done.
+
+        **Default**: ``None``.
+
+    - **catc**: Parameters determining how catastrofic cancellations are
+      handled. Catastrofic cancellation occurs when a score sum
+      :math:`\\tau_i(U,T)` computed as :math:`\\tau_i(U) - \\tau_i(U
+      \setminus T)` evaluates to zero due to numerical reasons.
+
+      - **tolerance**: how small should the absolute difference
+        between two log score sums be in order for the subtraction
+        to be determined to lead to catastrofic cancellation.
+
+        **Default**: :math:`2^{-32}`.
+
+      - **cache_size**: Maximum amount of score sums that cannot be
+        computed through subtraction to be stored separately. If there is a
+        lot of catastrofic cancellations, setting this value high can
+        have a big impact on memory use.
+
+        **Default**: :math:`10^7`
+
+    - **logging**: Parameters determining the logging output during
+      running of the sampler.
+
+      - **stats_period**: Interval in seconds for printing more statistics.
+
+        **Default**: 15.
+
+      - **logfile**: File path to print the output to. To suppress all
+        output set this to ``None``.
+
+        **Default**: ``sys.stdout``.
+
+    """
+
     def __init__(self, *,
                  data,
                  mcmc=default["mcmc"],
