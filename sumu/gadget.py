@@ -93,6 +93,8 @@ class Data:
                 # . is assumed to be a decimal separator
                 if '.' in f.read():
                     self.discrete = False
+                else:
+                    self.discrete = True
             if self.discrete:
                 self.data = np.loadtxt(data_or_path, dtype=np.int32, delimiter=' ')
             else:  # continuous
