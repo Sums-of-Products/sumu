@@ -16,26 +16,26 @@ using namespace std;
 using bmap = uint64_t;
 //using bmap = unsigned __int128;
 
-inline void allzero   (bmap *S) {*S = 0L;}
-inline bmap setbit    (bmap S, int i){ return (S | (1L << i)); }
+inline void allzero   (bmap *S) {*S = (bmap) 0;}
+inline bmap setbit    (bmap S, int i){ return (S | ((bmap)1 << i)); }
 inline bmap setbits   (bmap S, uint8_t block, int p){ return (S | (((bmap)block) << p)); }
 inline bool intersects(bmap A, bmap B){ return A & B; }
 inline bool subseteq  (bmap A, bmap B){ return (A == (A & B)); } 
 
-void show(bmap S){ for (bmap i = 0; i < 64; ++i){ cout << (S & 1) << ""; S = S >> 1; }}
+void show(bmap S){ for (bmap i = 0; i < 64; ++i){ cout << (S & (bmap)1) << ""; S = S >> 1; }}
 void show(bmap* a, int m){ for(int i = 0; i < m; ++i){ show(a[i]); }}
 
-bmap get_bmap_s(int* X, int l){ bmap S = 0LL; for (int j = 0; j < l; ++j){ 
+bmap get_bmap_s(int* X, int l){ bmap S = (bmap)0; for (int j = 0; j < l; ++j){ 
 //	if (X[j] >= 70){ cerr << " ????? bmap_s " << X[j] << ", j = " << j << endl; exit(1); } 
 	S = setbits(S, (uint8_t)(X[j]+1), 8 * j);} return S; } // X[0] = the least significant bits.
-bmap get_bmap_d(int* X, int l){ bmap S = 0LL; for (int j = 0; j < l; ++j) S = setbit (S, X[j]); return S; }
+bmap get_bmap_d(int* X, int l){ bmap S = (bmap)0; for (int j = 0; j < l; ++j) S = setbit (S, X[j]); return S; }
 bmap get_bmap  (int* X, int l){ return get_bmap_d(X, l); } // Default is dense.
 
-void get_sset    (bmap S, int* X, int &l){ l = 0; while (S){ X[l] = (S & 0xFFLL) - 1; 
+void get_sset    (bmap S, int* X, int &l){ l = 0; while (S){ X[l] = (S & (bmap)0xFF) - 1; 
 //	if (X[l] >= 70){ cerr << " ????? " << (S & 0xFFLL) << endl; exit(1); } 
 	++l; S >>= 8; } } // The creation order. X[0] = the least significant 8 bits.
-void get_dset_inc(bmap S, int* X, int &l){ l = 0; int i = 0;  while (S){ if (1L & S){ X[l] = i; ++l; } ++i; S >>= 1; } } // INC order.
-void get_dset_dec(bmap S, int* X, int &l){ l = 0; int i = 63; while (S){ if ((1L << 63) & S){ X[l] = i; ++l; } --i; S <<= 1; } } // DEC order.
+void get_dset_inc(bmap S, int* X, int &l){ l = 0; int i = 0;  while (S){ if ((bmap)1 & S){ X[l] = i; ++l; } ++i; S >>= 1; } } // INC order.
+void get_dset_dec(bmap S, int* X, int &l){ l = 0; int i = 63; while (S){ if (((bmap)1 << 63) & S){ X[l] = i; ++l; } --i; S <<= 1; } } // DEC order.
 
 void get_set(bmap S, int* X, int &l)          { get_dset_inc(S, X, l); }
 void get_set(bmap S, int* X, int &l, bool isd){ if (isd) get_dset_dec(S, X, l); else get_sset(S, X, l); }
@@ -63,8 +63,8 @@ wset get_wset  (int* X, int l, double v, bool isdense){ if (isdense) return get_
 //=== bma4 ========= Can represent a subset of {0, 1, 2, ..., 255 }.
 struct bma4 {bmap s[4]; bool operator==(const bma4& S) const { return s[0]==S.s[0] && s[1]==S.s[1] && s[2]==S.s[2] && s[3]==S.s[3]; } }; 
 struct has4 { size_t operator()(const bma4& S) const { return S.s[0] ^ S.s[1] ^ S.s[2] ^ S.s[3]; } }; 
-inline bma4 setbit(bma4 S, int i){ S.s[i >> 6] |= (1L << (i & 0x3F)); return S; } // a = i / 64; b = i % 64.
-bma4 get_bma4(int* X, int l){ bma4 S = { 0L }; for (int j = 0; j < l; ++j) S = setbit (S, X[j]); return S; }
+inline bma4 setbit(bma4 S, int i){ S.s[i >> 6] |= ((bmap)1 << (i & 0x3F)); return S; } // a = i / 64; b = i % 64.
+bma4 get_bma4(int* X, int l){ bma4 S = { (bmap)0 }; for (int j = 0; j < l; ++j) S = setbit (S, X[j]); return S; }
 
 //=== wse4 ========= Paired with a weight.
 struct wse4 {bma4 set; double weight; };
