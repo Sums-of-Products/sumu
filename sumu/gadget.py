@@ -492,7 +492,7 @@ class Gadget():
 
         Then, the candidate parent selection algorithm (**candp**) is set to
         ``greedy-lite``, and its parameter :math:`k` is dynamically set during
-        the running of the algorithm to a value for which :math:`k+1` is
+        the running of the algorithm to a value for which :math:`k-1` is
         predicted to overuse the remaining precomputation budget.
 
         Finally, the MCMC phase uses the amount of budget that remains. The
