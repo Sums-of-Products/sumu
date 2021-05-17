@@ -1,6 +1,10 @@
+import time
 import numpy as np
+
 from .utils.math_utils import subsets
 from .aps import aps
+#from .stats import stats
+
 
 r_is_initialized = False
 
@@ -205,15 +209,13 @@ def hybrid(K, **kwargs):
     return C
 
 
-def rnd(K, **kwargs):
+def rnd(K, *, data, **kwargs):
 
-    n = kwargs.get("n")
-    assert n is not None, "nvars (-n) required for algo == rnd"
-
+    n = data.n
     C = dict()
     for v in range(n):
         C[v] = tuple(sorted(np.random.choice([u for u in range(n) if u != v], K, replace=False)))
-    return C
+    return C, None
 
 
 def ges(K, **kwargs):
@@ -242,7 +244,7 @@ def ges(K, **kwargs):
         C = pcalg("ges", K, data)
     if fill:
         C = _adjust_number_candidates(K, C, fill, scores=scores)
-    return C
+    return C, None
 
 
 def pcalg(method, K, data):
@@ -300,7 +302,7 @@ def pc(K, **kwargs):
         C = bnlearn("pc", K, data, alpha=alpha, max_sx=max_sx)
     if fill is not None:
         C = _adjust_number_candidates(K, C, fill, scores=scores)
-    return C
+    return C, None
 
 
 def mb(K, **kwargs):
@@ -326,7 +328,7 @@ def mb(K, **kwargs):
         C = bnlearn("mb", K, data, alpha=alpha, max_sx=max_sx)
     if fill is not None:
         C = _adjust_number_candidates(K, C, fill, scores=scores)
-    return C
+    return C, None
 
 
 def hc(K, **kwargs):
@@ -355,7 +357,7 @@ def hc(K, **kwargs):
         C = bnlearn("hc", K, data)
     if fill != "none":
         C = _adjust_number_candidates(K, C, fill, scores=scores)
-    return C
+    return C, None
 
 
 def bnlearn(method, K, data, **kwargs):
@@ -417,7 +419,7 @@ def opt(K, **kwargs):
             postsums[candidate_set] = np.logaddexp.reduce([pset_posteriors[v][pset]
                                                            for pset in subsets(candidate_set, 0, K)])
         C[v] = max(postsums, key=lambda candidate_set: postsums[candidate_set])
-    return C
+    return C, None
 
 
 def top(K, **kwargs):
@@ -432,7 +434,7 @@ def top(K, **kwargs):
                                 key=lambda item: item[1], reverse=True)[:K]
         top_candidates = tuple(sorted(c[0] for c in top_candidates))
         C[v] = top_candidates
-    return C
+    return C, None
 
 
 def greedy(K, **kwargs):
@@ -476,13 +478,15 @@ def greedy_1(K, **kwargs):
             U = [u for u in U if u != u_hat]
         C[v] = tuple(sorted(C[v]))
 
-    return C
+    return C, None
 
 
-def greedy_lite(K, *, scores, params={"k": 6}, **kwargs):
-
-    k = params["k"]
-    k = min(k, K)
+def greedy_lite(K, *, scores, params={"k": 6, "t_budget": None}, **kwargs):
+    t0 = time.time()
+    k = params.get("k")
+    if k is not None:
+        k = min(k, K)
+    t_budget = params.get("t_budget")
 
     def k_highest_uncovered(v, U, k):
 
@@ -496,8 +500,39 @@ def greedy_lite(K, *, scores, params={"k": 6}, **kwargs):
             uncovereds.remove(u_hat)
         return k_highest
 
+    def get_k(t_budget):
+        U = set(range(1, len(C)))
+        t_used = list()
+        n_scores = np.array([2**m for m in range(K+1)])
+        t = time.time()
+        t_pred_next_add = 0
+        i = 0
+        while len(C[0]) < K and sum(t_used) + t_pred_next_add < t_budget:
+            u_hat = k_highest_uncovered(0, U, 1)
+            C[0].update(u_hat)
+            U -= u_hat
+            t_prev = time.time() - t - sum(t_used)
+            t_used.append(t_prev)
+            if len(t_used) > 1 and i < K:
+                A = np.vstack([n_scores[:len(t_used)], np.ones(len(t_used))]).T
+                lstsq = np.linalg.lstsq(A, np.array(t_used), rcond=None)[0]
+                t_pred_next_add = lstsq[0] * (n_scores[i+1] - n_scores[i])
+            i += 1
+        C[0] -= u_hat
+        U.update(u_hat)
+        k = K - len(C[0])
+        C[0].update(k_highest_uncovered(0, U, k))
+        C[0] = tuple(sorted(C[0]))
+        scores.clear_cache()
+        return k
+
     C = dict({int(v): set() for v in range(scores.data.n)})
-    for v in C:
+
+    if t_budget is not None:
+        t_budget /= scores.data.n
+        k = get_k(t_budget)
+
+    for v in [v for v in C if len(C[v]) == 0]:
         U = [u for u in C if u != v]
         while len(C[v]) < K - k:
             u_hat = k_highest_uncovered(v, U, 1)
@@ -506,7 +541,8 @@ def greedy_lite(K, *, scores, params={"k": 6}, **kwargs):
         C[v].update(k_highest_uncovered(v, U, k))
         C[v] = tuple(sorted(C[v]))
         scores.clear_cache()
-    return C
+
+    return C, {"k": k}
 
 
 def greedy_1_sum(K, **kwargs):
@@ -746,7 +782,7 @@ def greedy_backward_forward(K, **kwargs):
                 C_prev = dict(C)
         C[v] = tuple(sorted(C[v]))
 
-    return C
+    return C, None
 
 
 def pessy(K, **kwargs):
@@ -780,7 +816,7 @@ def pessy(K, **kwargs):
 
 candidate_parent_algorithm = {
     "opt": opt,
-    # "rnd": rnd,
+    "rnd": rnd,
     "top": top,
     "pc": pc,
     "mb": mb,

@@ -127,7 +127,7 @@ cdef class CandidateComplementScore:
         cdef double[::1] scores_memview
         cdef int v
         for v in range(n):
-            psets_memview, scores_memview = localscore.complementary_scores(v, C, d)
+            psets_memview, scores_memview = localscore.complement_psets_and_scores(v, C, d)
             self.isums.push_back(new IntersectSums(& scores_memview[0],
                                                    & psets_memview[0, 0],
                                                    scores_memview.shape[0],

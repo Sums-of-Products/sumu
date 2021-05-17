@@ -1,10 +1,11 @@
+import time
 import numpy as np
 cimport numpy as np
 from libcpp.vector cimport vector
 from libc.stdint cimport uint64_t as bm64
 from libc.stdint cimport uint32_t as bm32
-from .utils.math_utils import subsets
-from .utils.bitmap import bm
+from .utils.math_utils import subsets, comb
+from .utils.bitmap import bm, bm_to_np64
 
 cimport cython
 
@@ -24,7 +25,6 @@ cdef extern from "BDeu.hpp":
 
     cdef cppclass CppBDeu "BDeu":
         BDeu()
-        int m
         int n
         vector[wset] * fscores
         double fscore(int i, int * Y, int lY)
@@ -35,18 +35,19 @@ cdef extern from "BDeu.hpp":
         double fami(int i, int * par, int K, int d)
         void clear_fami(int i)
         void clear_cliqc()
-        double test(int v, int pset)
 
 cdef class BDeu:
 
     cdef CppBDeu * thisptr
     cdef int maxid
 
+    cdef float t
+
     def __cinit__(self, *, data, ess, maxid):
         self.thisptr = new CppBDeu()
         self.maxid = maxid
         self._read(data)
-        self._set_ess(ess)
+        self.thisptr.set_ess(ess)
 
     def __dealloc__(self):
         del self.thisptr
@@ -64,31 +65,62 @@ cdef class BDeu:
                                  memview_data.shape[0],
                                  memview_data.shape[1])
 
-    def _set_ess(self, value):
-        self.thisptr.set_ess(value)
-
     @cython.boundscheck(False)
-    def cliq(self, nodes):
+    def _cliq(self, nodes):
         cdef int[::1] memview_nodes
         memview_nodes = nodes
         return self.thisptr.cliq(& memview_nodes[0],
                                  memview_nodes.shape[0])
 
     def local(self, node, pset):
+        # NOTE: This does not do any caching
         node = np.int32(node)
         pset = pset.astype(np.int32)
         vset = np.append(pset, node)
-        return self.cliq(vset) - self.cliq(pset)
+        return self._cliq(vset) - self._cliq(pset)
+
 
     @cython.boundscheck(False)
-    def fami(self, node, pset):
-        cdef int[::1] memview_pset = pset
-        return self.thisptr.fami(node,
-                                 & memview_pset[0],
-                                 memview_pset.shape[0])
+    def complement_psets_and_scores(self, int v, C, d):
+        # This needs to be replicated in every score class, e.g., BGe
+        cdef int[::1] memview_C_all
+        cdef int[::1] memview_pset
+        cdef int i
+
+        n = self.thisptr.n
+        K = len(C[0])
+        k = (n - 1) // 64 + 1
+
+        scores = np.empty((sum(comb(n-1, k) - comb(K, k) for k in range(d+1))))
+
+        C_all = np.array([u for u in range(n) if u != v], dtype=np.int32)
+        memview_C_all = C_all
+
+        # Compute all scores for all psets with indegree <= d.
+        self.thisptr.fami(v, & memview_C_all[0], n-1, d)
+
+        # Then fetch scores for those psets that are not subsets of C[v].
+        # For some cython specific reason this needs to be expanded to list:
+        pset_tuple = list(filter(lambda ss: not set(ss).issubset(C[v]),
+                                 subsets([u for u in C if u != v], 1, d)))
+        pset_len = np.array(list(map(len, pset_tuple)), dtype=np.int32)
+
+        t = time.time()
+        pset_bm = list(map(lambda pset: bm_to_np64(bm(set(pset)), k), pset_tuple))
+        self.t += time.time() - t
+
+        pset = list(map(lambda pset: np.array(pset - 1*(pset > v), dtype=np.int32),
+                        map(lambda pset: np.array(pset, dtype=np.int32), pset_tuple)))
+        for i in range(scores.shape[0]):
+            memview_pset = pset[i]
+            scores[i] = self.thisptr.fscore(v, & memview_pset[0], pset_len[i])
+        # clear cache
+        self.thisptr.clear_fami(v)
+        return np.array(pset_bm), scores, pset_len
+
 
     @cython.boundscheck(False)
-    def all_candidate_restricted_scores(self, C):
+    def candidate_score_array(self, C):
         cdef int[::1] memview_pset
         cdef int[:, ::1] memview_C
         cdef int v, i, n, K
@@ -118,6 +150,3 @@ cdef class BDeu:
 
             self.thisptr.clear_fami(v)
         return score_array
-
-    def test(self, int v, int pset):
-        return self.thisptr.fscores[v][pset].weight

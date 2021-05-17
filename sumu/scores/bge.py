@@ -2,7 +2,8 @@ import numpy as np
 from scipy.special import loggamma as lgamma
 from scipy.linalg import solve_triangular
 
-from ..utils.math_utils import subsets
+from ..utils.math_utils import subsets, comb
+from ..utils.bitmap import bm, bm_to_np64
 
 
 class BGe:
@@ -91,12 +92,9 @@ class BGe:
             + self.score_component(frozenset(pset).union({v})) \
             - self.score_component(frozenset(pset))
 
-    def all_candidate_restricted_scores(self, C_array):
-
+    def candidate_score_array(self, C_array):
         C = dict({v: tuple(C_array[v]) for v in range(C_array.shape[0])})
-
         scores = np.full((self.n, 2**len(C[0])), -float('inf'))
-
         for v in range(self.n):
             for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
                 scores[v, bm(pset, ix=C[v])] = self.local(v, pset)
@@ -112,6 +110,16 @@ class BGe:
 
         return scores
 
+    def complement_psets_and_scores(self, v, C, d):
+        n = len(C)
+        K = len(C[0])
+        k = (n - 1) // 64 + 1
+        pset_tuple = list(filter(lambda ss: not set(ss).issubset(C[v]),
+                                 subsets([u for u in C if u != v], 1, d)))
+        pset_len = np.array(list(map(len, pset_tuple)), dtype=np.int32)
+        pset_bm = list(map(lambda pset: bm_to_np64(bm(set(pset)), k), pset_tuple))
+        scores = np.array([self.local(v, pset) for pset in pset_tuple])
+        return np.array(pset_bm), scores, pset_len
 
 def index(from_, to_):
     return tuple(map(lambda k: to_.index(k), from_))

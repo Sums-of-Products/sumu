@@ -9,7 +9,8 @@ def test_Gadget_empirical_edge_prob_error_decreases():
     params = {
 
         # generic MCMC parameters
-        "mcmc": {"iters": 150000, "mc3": 3, "burn_in": 0.5, "n_dags": 10000},
+        "mcmc": {"n_indep": 1, "iters": 150000,
+                 "mc3": 3, "burn_in": 0.5, "n_dags": 10000},
 
         # score to use and its parameters
         "score": {"name": "bdeu", "params": {"ess": 10}},
@@ -47,7 +48,7 @@ def test_Gadget_empirical_edge_prob_error_decreases():
     bn = sumu.utils.io.read_dsc(bn_path)
     data = bn.sample(200, seed=0)
     ls = sumu.gadget.LocalScore(data=data, maxid=-1, score=params["score"])
-    pset_probs = sumu.aps(ls.all_candidate_restricted_scores(), as_dict=True)
+    pset_probs = sumu.aps(ls.candidate_scores(), as_dict=True)
     edge_probs = sumu.utils.edge_probs_from_pset_probs(pset_probs)
 
     g = sumu.Gadget(data=data, **params)
@@ -110,6 +111,10 @@ def test_Gadget_runs_n_between_193_and_256():
     assert True
 
 
+def test_Gadget_runs_continuous_data():
+    data = np.random.rand(200, 10)
+    sumu.Gadget(data=data, cons={"K": 8}).sample()
+    assert True
 
 
 if __name__ == '__main__':
