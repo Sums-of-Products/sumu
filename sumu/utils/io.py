@@ -31,7 +31,15 @@ def dag_to_str(dag):
 
 
 def str_to_dag(dag_str):
-    return [tuple(map(int, family_str.split())) for family_str in dag_str.split("|")]
+
+    def parse_family_str(fstr):
+        fstr = fstr.split()
+        if len(fstr) > 1:
+            return (int(fstr[0]), set(map(int, fstr[1:])))
+        else:
+            return (int(fstr[0]), set())
+
+    return list(map(parse_family_str, dag_str.split("|")))
 
 
 def write_data(data, datapath, bn=None):
