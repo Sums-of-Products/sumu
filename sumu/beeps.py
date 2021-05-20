@@ -57,14 +57,14 @@ def beeps(dags, data, joint=False):
             b = mvt.rvs(loc=mb, shape=covb, df=df)
 
             Bmcmc[node, pa] = b
-            if not joint:
-                A = np.linalg.inv(np.eye(n) - Bmcmc)
-                As[i] = A.T[np.eye(n) == 0]
-            else:
-                for j in range(pairs.shape[1]):
-                    Umat = np.eye(n)
-                    Umat[pairs[j], :] = 0
-                    A = np.linalg.inv(np.eye(n) - Umat @ Bmcmc)
-                    As[j, 2:As.shape[1]] += A[~np.in1d(np.arange(n), pairs[j])][:, pairs[j]].flatten() / len(dags)
+        if not joint:
+            A = np.linalg.inv(np.eye(n) - Bmcmc)
+            As[i] = A.T[np.eye(n) == 0]
+        else:
+            for j in range(pairs.shape[1]):
+                Umat = np.eye(n)
+                Umat[pairs[j], :] = 0
+                A = np.linalg.inv(np.eye(n) - Umat @ Bmcmc)
+                As[j, 2:As.shape[1]] += A[~np.in1d(np.arange(n), pairs[j])][:, pairs[j]].flatten() / len(dags)
 
     return As
