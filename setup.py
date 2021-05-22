@@ -120,7 +120,7 @@ exts = [
 
 setup(
     name="sumu",
-    version="0.1.1",
+    version="0.1.2",
     description="Library for working with probabilistic and causal graphical models",
     long_description=README,
     long_description_content_type="text/markdown",
