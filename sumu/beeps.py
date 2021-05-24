@@ -1,20 +1,21 @@
 import numpy as np
 from scipy.stats import multivariate_t as mvt
+from .gadget import Data
+from .bnet import family_sequence_to_adj_mat
 
 
-def beeps(dags, data, joint=False):
+def beeps(dags, data):
 
+    if not type(dags[0]) == np.ndarray:
+        dags = [family_sequence_to_adj_mat(d) for d in dags]
+
+    data = Data(data)
     n = data.n
     N = data.N
-    As = np.zeros((len(dags), n*n - n))
-    if joint:
-        pairs = np.array([np.array(pair)
-                          for pair in zip(range(n), range(1, n+1))])
-        As = np.zeros((len(pairs), 2 + 2 * (n - 2)))
-        As[:, :2] = pairs
-        print(As.shape)
 
-    # Prior parameters.
+    As = np.ones((len(dags), n, n))
+
+    # Prior parameters
     nu = np.zeros(n)
     am = 1
     aw = n + am + 1
@@ -24,13 +25,11 @@ def beeps(dags, data, joint=False):
     xN = np.mean(data.data, axis=0)
     SN = (data.data - xN).T @ (data.data - xN)
 
-    # Parameters for the posterior are.
+    # Parameters for the posterior
     nuN = (am * nu + N * xN) / (am + N)
     amN = am + N
     awN = aw + N
-    R = Tmat + SN + am * N / (am + N) * (nu - xN) @ (nu - xN).T
-
-    psd = list()
+    R = Tmat + SN + ((am * N) / (am + N)) * np.outer((nu - xN), (nu - xN))
 
     for i, dag in enumerate(dags):
         Bmcmc = np.zeros((n, n))
@@ -49,22 +48,11 @@ def beeps(dags, data, joint=False):
             mb = R11inv @ R12
             divisor = R11 - R11inv @ R12
             covb = divisor / df * R11inv
-
-            # https://stackoverflow.com/questions/41515522/numpy-positive-semi-definite-warning
-            covb -= 1e-12 * np.eye(covb.shape[0])
-
-            # psd.append(isPSD(covb))
             b = mvt.rvs(loc=mb, shape=covb, df=df)
 
             Bmcmc[node, pa] = b
-        if not joint:
-            A = np.linalg.inv(np.eye(n) - Bmcmc)
-            As[i] = A.T[np.eye(n) == 0]
-        else:
-            for j in range(pairs.shape[1]):
-                Umat = np.eye(n)
-                Umat[pairs[j], :] = 0
-                A = np.linalg.inv(np.eye(n) - Umat @ Bmcmc)
-                As[j, 2:As.shape[1]] += A[~np.in1d(np.arange(n), pairs[j])][:, pairs[j]].flatten() / len(dags)
+
+        A = np.linalg.inv(np.eye(n) - Bmcmc)
+        As[i] = A
 
     return As
