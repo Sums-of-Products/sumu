@@ -19,7 +19,7 @@ def beeps(dags, data, y=None, x=None):
 
     A_shape = (len(dags), n, n)
     if joint is True:
-        A_shape = (len(dags), len(x), len(y))
+        A_shape = (len(dags), len(y), len(x))
     As = np.ones(A_shape)
 
     # Prior parameters
