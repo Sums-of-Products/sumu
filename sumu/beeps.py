@@ -4,7 +4,11 @@ from .gadget import Data
 from .bnet import family_sequence_to_adj_mat
 
 
-def beeps(dags, data):
+def beeps(dags, data, y=None, x=None):
+
+    joint = False
+    if y is not None:
+        joint = True
 
     if not type(dags[0]) == np.ndarray:
         dags = [family_sequence_to_adj_mat(d) for d in dags]
@@ -13,7 +17,10 @@ def beeps(dags, data):
     n = data.n
     N = data.N
 
-    As = np.ones((len(dags), n, n))
+    A_shape = (len(dags), n, n)
+    if joint is True:
+        A_shape = (len(dags), len(x), len(y))
+    As = np.ones(A_shape)
 
     # Prior parameters
     nu = np.zeros(n)
@@ -52,7 +59,14 @@ def beeps(dags, data):
 
             Bmcmc[node, pa] = b
 
-        A = np.linalg.inv(np.eye(n) - Bmcmc)
-        As[i] = A
+        if joint:
+            Umat = np.eye(n)
+            Umat[x, :] = 0
+            A = np.linalg.inv(np.eye(n) - Umat @ Bmcmc)
+            A = A[y, :][:, x]
+            As[i] = A
+        else:
+            A = np.linalg.inv(np.eye(n) - Bmcmc)
+            As[i] = A
 
     return As
