@@ -25,7 +25,7 @@ cdef extern from "CandidateRestrictedScore.hpp":
                                     string logfile,
                                     bool silent
                                     )
-        double sum(int v, bm32 U, bm32 T)
+        double sum(int v, bm32 U, bm32 T, bool isum)
         double sum(int v, bm32 U)
         pair[bm32, double] sample_pset(int v, bm32 U, bm32 T, double wcum)
         pair[bm32, double] sample_pset(int v, bm32 U, double wcum)
@@ -87,10 +87,10 @@ cdef class CandidateRestrictedScore:
     def __dealloc__(self):
        del self.thisptr
 
-    def sum(self, int v, bm32 U, bm32 T=0):
+    def sum(self, int v, bm32 U, bm32 T=0, isum=False):
         if T == 0:
             return self.thisptr.sum(v, U)
-        return self.thisptr.sum(v, U, T)
+        return self.thisptr.sum(v, U, T, isum)
 
     def sample_pset(self, int v, bm32 U, bm32 T, double wcum):
         # wcum needs to be scaled by corresponding sum

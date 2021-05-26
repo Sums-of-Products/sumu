@@ -1184,7 +1184,7 @@ class Score:  # should be renamed to e.g. ScoreHandler
             if T_bm == 0:
                 w_crs = -float("inf")
             else:
-                w_crs = self.c_r_score.sum(v, U_bm, T_bm)
+                w_crs = self.c_r_score.sum(v, U_bm, T_bm, isum=True)
         else:
             w_crs = self.c_r_score.sum(v, U_bm)
 

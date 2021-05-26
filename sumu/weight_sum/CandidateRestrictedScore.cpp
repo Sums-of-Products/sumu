@@ -205,39 +205,16 @@ void CandidateRestrictedScore::rec_dfs(int v, bm32 U, bm32 R, bm32 T) {
 }
 
 
-void CandidateRestrictedScore::rec_it_dfs(int v, bm32 U, bm32 R, bm32 T, int T_size, int T_size_limit, int *count) {
-
-  if (*count < m_cc_limit) {
-    if (T > 0) {
-      if (close(m_tau_simple[v][U], m_tau_simple[v][U & ~T], m_cc_tol)) {
-		bm32 T1 = T & ~T;
-		bm32 U1 = U & ~T1;
-		bm32 T2 = T & ~T1;
-		if (!m_tau_cc[v].count((bm64) U << 32 | T)) {
-		  ++*count;
-		  m_tau_cc[v][(bm64) U << 32 | T] = log_add_exp(sum(v, U, T1), sum(v, U1, T2));
-		}
-      }
-      else {
-		return;
-      }
-    }
-    while (R && T_size < T_size_limit) {
-      bm32 B = lsb_32(R);
-      R = R ^ B;
-      T_size = count_32(T | B);
-      rec_it_dfs(v, U, R, T | B, T_size, T_size_limit, count);
-    }
-  }
-}
-
-
 double CandidateRestrictedScore::sum(int v, bm32 U) {
   return isums[v]->scan_sum(U);
 }
 
 
-double CandidateRestrictedScore::sum(int v, bm32 U, bm32 T) {
+double CandidateRestrictedScore::sum(int v, bm32 U, bm32 T, bool isum) {
+
+  if (isum) {
+	return isums[v]->scan_sum(U, T);
+  }
 
   if (U == 0 && T == 0) {
     return m_score_array[v*(1 << m_K)];
@@ -265,4 +242,31 @@ pair<bm32, double> CandidateRestrictedScore::sample_pset(int v, bm32 U, bm32 T, 
 
 pair<bm32, double> CandidateRestrictedScore::sample_pset(int v, bm32 U, double wcum) {
   return isums[v]->scan_rnd(U, wcum);
+}
+
+
+void CandidateRestrictedScore::rec_it_dfs(int v, bm32 U, bm32 R, bm32 T, int T_size, int T_size_limit, int *count) {
+
+  if (*count < m_cc_limit) {
+    if (T > 0) {
+      if (close(m_tau_simple[v][U], m_tau_simple[v][U & ~T], m_cc_tol)) {
+		bm32 T1 = T & ~T;
+		bm32 U1 = U & ~T1;
+		bm32 T2 = T & ~T1;
+		if (!m_tau_cc[v].count((bm64) U << 32 | T)) {
+		  ++*count;
+		  m_tau_cc[v][(bm64) U << 32 | T] = log_add_exp(sum(v, U, T1), sum(v, U1, T2));
+		}
+      }
+      else {
+		return;
+      }
+    }
+    while (R && T_size < T_size_limit) {
+      bm32 B = lsb_32(R);
+      R = R ^ B;
+      T_size = count_32(T | B);
+      rec_it_dfs(v, U, R, T | B, T_size, T_size_limit, count);
+    }
+  }
 }
