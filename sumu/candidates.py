@@ -501,6 +501,8 @@ def greedy_lite(K, *, scores, params={"k": 6, "t_budget": None}, **kwargs):
         return k_highest
 
     def get_k(t_budget):
+        if t_budget < 0:
+            return K
         U = set(range(1, len(C)))
         t_used = list()
         n_scores = np.array([2**m for m in range(K+1)])

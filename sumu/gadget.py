@@ -81,7 +81,7 @@ class GadgetBudget:
         self.n = self.g.data.n
         self.share = share
         # NOTE: After get_d and get_K the sum of budgets might exceed
-        #       total, since remaining budget is adjusted upwards, if previous
+        #       total, since remaining budget is adjusted upwards if previous
         #       phase is not predicted to use all of its budget.
         self.budget = dict()
         self.budget["total"] = self.g.p["run_mode"]["params"]["t"]
@@ -90,6 +90,7 @@ class GadgetBudget:
         self._not_done = set(share)
         self._not_done.remove("mcmc")
         self._update_precomp_budgets()
+        self.preset = set()
 
     def _update_precomp_budgets(self):
         precomp_budget_left = self.budget["total"]
@@ -99,7 +100,13 @@ class GadgetBudget:
         for phase in self._not_done:
             self.budget[phase] = self.share[phase] / normalizer * precomp_budget_left
 
-    def get_d(self):
+    def get_and_pred(self, param, value = None):
+        if param == "d":
+            return self.get_and_pred_d(value)
+        elif param == "K":
+            return self.get_and_pred_K(value)
+
+    def get_and_pred_d(self, d_preset = None):
         phase = "ccs"
         t0 = time.time()
         K_max = 25
@@ -110,7 +117,14 @@ class GadgetBudget:
         d = 0
         t_d = 0
         t_budget = self.budget[phase]
-        while d < self.n-1 and t_d * comb(self.n, d+1) / comb(self.n, d) * self.n < t_budget:
+
+        if d_preset is None:
+            d_cond = lambda: d < self.n-1 and t_d * comb(self.n, d+1) / comb(self.n, d) * self.n < t_budget
+        else:
+            self.preset.add("d")
+            d_cond = lambda: d <= d_preset - 1
+
+        while d_cond():
             d += 1
             t_d = time.time()
             # This does not take into acount time used by initializing
@@ -124,7 +138,7 @@ class GadgetBudget:
         return d
 
 
-    def get_K(self):
+    def get_and_pred_K(self, K_preset = None):
         phase = "crs"
         t0 = time.time()
         C = np.array(list(np.array([v for v in range(self.n) if v != u])
@@ -159,7 +173,15 @@ class GadgetBudget:
         a, b = np.linalg.lstsq(X[:,:-1], X[:,-1], rcond=None)[0]
         t_pred = 0
         K = K_high
-        while K < self.n and t_pred < t_budget:
+
+        if K_preset is None:
+            K_cond = lambda: K < self.n and t_pred < t_budget
+        else:
+            K_cond = lambda: K < K_preset + 1
+            K = K_preset
+            self.preset.add("K")
+
+        while K_cond():
             K += 1
             t_pred = a + b*K**2*2**K + 2**K*t_score
         K -= 1
@@ -179,7 +201,7 @@ class Logger:
 
     def __init__(self, *, logfile, mode="a", overwrite=False):
 
-        # NOTE: mode needs to be "a" as otherwis CandidateRestrictedScore
+        # NOTE: mode needs to be "a" as otherwise CandidateRestrictedScore
         #       writing to same file breaks things. If overwrite is True
         #       the file needs to be first deleted then.
 
@@ -678,8 +700,10 @@ class Gadget():
         defcons["pruning_eps"] = default["cons"]["pruning_eps"]
         defcons["score_sum_eps"] = default["cons"]["score_sum_eps"]
         if cons is None:
+            init_cons = dict()
             cons = defcons
         else:
+            init_cons = dict(cons)
             cons = dict(defcons, **cons)
 
         p = {
@@ -707,10 +731,22 @@ class Gadget():
 
         if p["run_mode"]["name"] == "budget":
             self.gb = GadgetBudget(self)
-            p["cons"]["d"] = self.gb.get_d()
-            p["cons"]["K"] = self.gb.get_K()
-            p["candp"] = {"name": "greedy-lite",
-                          "params": {"t_budget": int(self.gb.budget["candp"])}}
+            o = ["d", "K"]
+            pre = dict(i for i in ((k, init_cons.get(k)) for k in o) if i[1] is not None)
+            for k in list(o):  # o needs to be copied because of the remove below
+                if k in pre:
+                    p["cons"][k] = self.gb.get_and_pred(k, pre[k])
+                    o.remove(k)
+            for k in o:
+                p["cons"][k] = self.gb.get_and_pred(k)
+            cond =  candp["name"] == "greedy-lite"
+            cond = cond and "params" in candp
+            cond = cond and "k" in candp["params"]
+            if cond:
+                self.gb.preset.add("candp")
+            else:
+                p["candp"] = {"name": "greedy-lite",
+                              "params": {"t_budget": int(self.gb.budget["candp"])}}
 
         self.log = GadgetLogger(self)
         self.trace = Logger(logfile=p["logging"]["tracefile"],
@@ -744,7 +780,7 @@ class Gadget():
         self._find_candidate_parents()
         stats["t"]["C"] = time.time() - stats["t"]["C"]
         self.log.print_numpy(self.C_array, "%i")
-        if self.p["run_mode"]["name"] == "budget":
+        if self.p["run_mode"]["name"] == "budget" and "candp" not in self.gb.preset:
             # If time budget => greedy-lite
             self.log.newline()
             self.log.print("Adjusted for time budget: k = {}".format(stats["C"]["k"]))
