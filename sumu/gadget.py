@@ -222,7 +222,7 @@ class Logger:
         print(pretty_dict(data), file=self._logfile)
         self._logfile.flush()
 
-    def print_numpy(self, array, fmt="%i"):
+    def print_numpy(self, array, fmt="%.2f"):
         np.savetxt(self._logfile, array, fmt=fmt)
         self._logfile.flush()
 
