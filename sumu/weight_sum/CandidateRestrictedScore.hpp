@@ -28,6 +28,7 @@ public:
 						   bool silent
 						   );
   ~CandidateRestrictedScore();
+  void reset_cout();
   double sum(int v, bm32 U, bm32 T, bool isum=false);
   double sum(int v, bm32 U);
   pair<bm32, double> sample_pset(int v, bm32 U, bm32 T, double wcum);

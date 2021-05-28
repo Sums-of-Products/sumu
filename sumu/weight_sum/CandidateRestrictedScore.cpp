@@ -48,8 +48,6 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
 												   string logfile,
 												   bool silent) {
 
-
-
   coutbuf = std::cout.rdbuf();
   // Second argument is "append".
   ofstream out(logfile, ios_base::app);
@@ -118,6 +116,9 @@ CandidateRestrictedScore::~CandidateRestrictedScore() {
   cout.rdbuf(coutbuf);
 }
 
+void CandidateRestrictedScore::reset_cout() {
+  cout.rdbuf(coutbuf);
+}
 
 void CandidateRestrictedScore::precompute_tau_simple() {
   for (int v = 0; v < m_n; ++v) {

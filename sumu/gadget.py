@@ -168,6 +168,10 @@ class GadgetBudget:
             t = time.time() - t
             X[i] = np.array([1, K**2*2**K, t])
             i += 1
+            # NOTE: It really should not be necessary to call this: Apparently
+            #       some problem in how Cython calls (or does not call) the
+            #       destructor. See CandidateRestrictedScore.cpp.
+            g.c_r_score.reset_cout()
 
         t_score = t_score / 2 ** K_high
         a, b = np.linalg.lstsq(X[:,:-1], X[:,-1], rcond=None)[0]

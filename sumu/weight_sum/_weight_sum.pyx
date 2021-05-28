@@ -27,6 +27,7 @@ cdef extern from "CandidateRestrictedScore.hpp":
                                     )
         double sum(int v, bm32 U, bm32 T, bool isum)
         double sum(int v, bm32 U)
+        void reset_cout()
         pair[bm32, double] sample_pset(int v, bm32 U, bm32 T, double wcum)
         pair[bm32, double] sample_pset(int v, bm32 U, double wcum)
 
@@ -85,7 +86,10 @@ cdef class CandidateRestrictedScore:
                                                        )
 
     def __dealloc__(self):
-       del self.thisptr
+        del self.thisptr
+
+    def reset_cout(self):
+        self.thisptr.reset_cout()
 
     def sum(self, int v, bm32 U, bm32 T=0, isum=False):
         if T == 0:
@@ -125,7 +129,7 @@ cdef class CandidateComplementScore:
 
         cdef bm64[:, ::1] psets_memview
         cdef double[::1] scores_memview
-        cdef int v
+
         for v in range(n):
             psets_memview, scores_memview = localscore.complement_psets_and_scores(v, C, d)
             self.isums.push_back(new IntersectSums(& scores_memview[0],
