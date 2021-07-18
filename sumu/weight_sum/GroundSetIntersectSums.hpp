@@ -22,8 +22,8 @@ class GroundSetIntersectSums {
 public:
   GroundSetIntersectSums(int K0, double* w, double eps0);
   ~GroundSetIntersectSums();
-  double scan_sum(bm32 U, bm32 T);
-  double scan_sum(bm32 U);
+  Treal scan_sum(bm32 U, bm32 T);
+  Treal scan_sum(bm32 U);
   std::pair<bm32, double> scan_rnd(bm32 U, bm32 T, double wcum);
   std::pair<bm32, double> scan_rnd(bm32 U, double wcum);
   std::vector<ws32>	s;	// Scores, pairs (set, weight) sorted by weight.

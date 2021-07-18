@@ -1,5 +1,6 @@
 #include "GroundSetIntersectSums.hpp"
 #include <utility>
+#include "common.hpp"
 
 using std::vector;
 using std::pair;
@@ -7,9 +8,6 @@ using std::make_pair;
 
 bool decr_ws32(ws32 x, ws32 y) { return x.weight > y.weight; }
 void sort_ws32(vector<ws32> &c){ sort(c.begin(), c.end(), decr_ws32); }
-void fzt_inpl(Treal* b, bm32 n){ // 550 adds per microsecond, Treal = Breal.
-	for (bm32 i = 0; i < n; ++i) for (bm32 m = 0; m < (1L << n); ++m) if (m & (1L << i)) b[m] += b[m ^ (1L << i)];
-}
 
 GroundSetIntersectSums::GroundSetIntersectSums(int K0, double *w, double eps0){ K = K0; eps = eps0; prune(w); sort_ws32(s); }
 GroundSetIntersectSums::~GroundSetIntersectSums(){ }
@@ -33,7 +31,7 @@ void GroundSetIntersectSums::prune(double *w){
 	delete[] a; delete[] b; delete[] c; delete[] keepit;
 }
 
-double GroundSetIntersectSums::scan_sum(bm32 U, bm32 T){
+Treal GroundSetIntersectSums::scan_sum(bm32 U, bm32 T){
 	int m = s.size(); int count = 0;
 	Treal sum; sum = 0.0;
 	Treal slack; slack = eps/m;
@@ -54,7 +52,7 @@ double GroundSetIntersectSums::scan_sum(bm32 U, bm32 T){
 			sum += score; ++count;
 		}
 	}
-	return sum.get_log();
+	return sum;
 }
 
 pair<bm32, double> GroundSetIntersectSums::scan_rnd(bm32 U, bm32 T, double wcum){ // Returns the first set when the cumulative weight exceeds wcum.
@@ -80,7 +78,7 @@ pair<bm32, double> GroundSetIntersectSums::scan_rnd(bm32 U, bm32 T, double wcum)
 	return make_pair(P, s[i].weight.get_log());
 }
 
-double GroundSetIntersectSums::scan_sum(bm32 U){
+Treal GroundSetIntersectSums::scan_sum(bm32 U){
 	int m = s.size(); int count = 0;
 	Treal sum; sum = 0.0;
 	Treal slack; slack = eps/m;
@@ -101,7 +99,7 @@ double GroundSetIntersectSums::scan_sum(bm32 U){
 			sum += score; ++count;
 		}
 	}
-	return sum.get_log();
+	return sum;
 }
 
 pair<bm32, double> GroundSetIntersectSums::scan_rnd(bm32 U, double wcum){

@@ -16,6 +16,12 @@ from .utils.math_utils import comb
 ctypedef IntersectSums* isum_ptr
 
 
+cdef extern from "Breal.hpp":
+
+    cdef cppclass Treal "B2real":
+        double get_log()
+
+
 cdef extern from "CandidateRestrictedScore.hpp":
 
     cdef cppclass CppCandidateRestrictedScore "CandidateRestrictedScore":
@@ -25,8 +31,8 @@ cdef extern from "CandidateRestrictedScore.hpp":
                                     string logfile,
                                     bool silent
                                     )
-        double sum(int v, bm32 U, bm32 T, bool isum)
-        double sum(int v, bm32 U)
+        Treal sum(int v, bm32 U, bm32 T, bool isum)
+        Treal sum(int v, bm32 U)
         void reset_cout()
         pair[bm32, double] sample_pset(int v, bm32 U, bm32 T, double wcum)
         pair[bm32, double] sample_pset(int v, bm32 U, double wcum)
@@ -93,8 +99,8 @@ cdef class CandidateRestrictedScore:
 
     def sum(self, int v, bm32 U, bm32 T=0, isum=False):
         if T == 0:
-            return self.thisptr.sum(v, U)
-        return self.thisptr.sum(v, U, T, isum)
+            return self.thisptr.sum(v, U).get_log()
+        return self.thisptr.sum(v, U, T, isum).get_log()
 
     def sample_pset(self, int v, bm32 U, bm32 T, double wcum):
         # wcum needs to be scaled by corresponding sum

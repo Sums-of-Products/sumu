@@ -9,7 +9,7 @@ def test_Gadget_empirical_edge_prob_error_decreases():
     params = {
 
         # generic MCMC parameters
-        "mcmc": {"n_indep": 1, "iters": 150000,
+        "mcmc": {"n_indep": 1, "iters": 350000,
                  "mc3": 3, "burn_in": 0.5, "n_dags": 10000},
 
         # score to use and its parameters

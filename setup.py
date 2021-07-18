@@ -123,7 +123,7 @@ exts = [
                  'sumu/weight_sum/GroundSetIntersectSums.cpp',
                  'sumu/weight_sum/IntersectSums.cpp',
                  'sumu/weight_sum/Breal.cpp',
-                 'sumu/zeta_transform/zeta_transform.cpp'],
+                 'sumu/weight_sum/common.cpp'],
         include_dirs=['sumu/weight_sum', numpy_include],
         language='c++',
         define_macros=DEFINE_MACROS,
