@@ -468,7 +468,7 @@ class PartitionMCMC:
         for move in self._moves:
             stats["mcmc"][self.temp][move.__name__]["proposed"] = 0
             stats["mcmc"][self.temp][move.__name__]["accepted"] = 0
-            stats["mcmc"][self.temp][move.__name__]["accep_ratio"] = 0
+            stats["mcmc"][self.temp][move.__name__]["accept_ratio"] = 0
 
         self.R = self._random_partition()
         self.R_node_scores = self._pi(self.R)
@@ -637,7 +637,7 @@ class PartitionMCMC:
                 stats["mcmc"][self.temp][move.__name__]["accepted"] += 1
                 a = stats["mcmc"][self.temp][move.__name__]["accepted"]
                 p = stats["mcmc"][self.temp][move.__name__]["proposed"]
-                stats["mcmc"][self.temp][move.__name__]["accep_ratio"] = a/p
+                stats["mcmc"][self.temp][move.__name__]["accept_ratio"] = a/p
                 self.R = R_prime
                 self.R_node_scores = R_prime_node_scores
                 self.R_score = self.temp * sum(self.R_node_scores)
@@ -651,6 +651,7 @@ class MC3:
 
         stats["mc3"]["proposed"] = np.zeros(len(chains)-1)
         stats["mc3"]["accepted"] = np.zeros(len(chains)-1)
+        stats["mc3"]["accept_ratio"] = np.array([np.nan]*(len(chains)-1))
         self.chains = chains
 
     def sample(self):
@@ -672,5 +673,6 @@ class MC3:
             self.chains[i+1].R = R_tmp
             self.chains[i+1].R_node_scores = R_node_scores_tmp
             self.chains[i+1].R_score = self.chains[i+1].temp * sum(self.chains[i+1].R_node_scores)
+        stats["mc3"]["accept_ratio"][i] = stats["mc3"]["accepted"][i] / stats["mc3"]["proposed"][i]
         return self.chains[-1].R, self.chains[-1].R_score
 

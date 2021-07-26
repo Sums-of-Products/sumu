@@ -299,13 +299,13 @@ class GadgetLogger(Logger):
         print(msg, file=self._logfile)
 
         for m in moves:
-            ar = [stats["mcmc"][i][m]["accep_ratio"] for i in temps]
+            ar = [stats["mcmc"][i][m]["accept_ratio"] for i in temps]
             ar = [round(r,2) if type(r) == float else "" for r in ar]
             msg = msg_tmpl.format(m, *ar)
             print(msg, file=self._logfile)
         if self.g.p["mcmc"]["mc3"] > 1:
-            ar = stats["mc3"]["accepted"] / stats["mc3"]["proposed"]
-            ar = [round(r, 2) for r in ar] + [""]
+            ar = stats["mc3"]["accept_ratio"]
+            ar = [round(r,2) if not np.isnan(r) else "" for r in ar] + [""]
             msg = msg_tmpl.format("MC^3", *ar)
             print(msg, file=self._logfile)
         print(file=self._logfile)
