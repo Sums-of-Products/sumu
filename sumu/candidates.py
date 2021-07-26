@@ -490,14 +490,18 @@ def greedy_lite(K, *, scores, params={"k": 6, "t_budget": None}, **kwargs):
 
     def k_highest_uncovered(v, U, k):
 
-        uncovereds = {(u, scores._local(v, np.array(S + (u,))))
-                      for S in subsets(C[v], 0, [len(C[v]) if scores.maxid == -1 else min(len(C[v]), scores.maxid-1)][0])
-                      for u in U}
-        k_highest = set()
+        uncovereds = {u: max(
+            {
+            scores._local(v, np.array(S + (u,)))
+            for S in subsets(C[v], 0, [len(C[v]) if scores.maxid == -1 else min(len(C[v]), scores.maxid-1)][0])
+            }
+        ) for u in U}
+
+        k_highest = list()
         while len(k_highest) < k:
-            u_hat = max(uncovereds, key=lambda pair: pair[1])
-            k_highest.add(u_hat[0])
-            uncovereds.remove(u_hat)
+            u_hat = max(uncovereds, key=lambda u: uncovereds[u])
+            k_highest.append(u_hat)
+            del uncovereds[u_hat]
         return k_highest
 
     def get_k(t_budget):
@@ -511,8 +515,8 @@ def greedy_lite(K, *, scores, params={"k": 6, "t_budget": None}, **kwargs):
         i = 0
         while len(C[0]) < K and sum(t_used) + t_pred_next_add < t_budget:
             u_hat = k_highest_uncovered(0, U, 1)
-            C[0].update(u_hat)
-            U -= u_hat
+            C[0] += u_hat
+            U -= set(u_hat)
             t_prev = time.time() - t - sum(t_used)
             t_used.append(t_prev)
             if len(t_used) > 1 and i < K:
@@ -520,15 +524,15 @@ def greedy_lite(K, *, scores, params={"k": 6, "t_budget": None}, **kwargs):
                 lstsq = np.linalg.lstsq(A, np.array(t_used), rcond=None)[0]
                 t_pred_next_add = lstsq[0] * (n_scores[i+1] - n_scores[i])
             i += 1
-        C[0] -= u_hat
-        U.update(u_hat)
+        C[0] = [v for v in C[0] if v not in u_hat]
+        U.update(set(u_hat))
         k = K - len(C[0])
-        C[0].update(k_highest_uncovered(0, U, k))
-        C[0] = tuple(sorted(C[0]))
+        C[0] += k_highest_uncovered(0, U, k)
+        C[0] = tuple(C[0])
         scores.clear_cache()
         return k
 
-    C = dict({int(v): set() for v in range(scores.data.n)})
+    C = dict({int(v): list() for v in range(scores.data.n)})
 
     if t_budget is not None:
         t_budget /= scores.data.n
@@ -538,10 +542,10 @@ def greedy_lite(K, *, scores, params={"k": 6, "t_budget": None}, **kwargs):
         U = [u for u in C if u != v]
         while len(C[v]) < K - k:
             u_hat = k_highest_uncovered(v, U, 1)
-            C[v].update(u_hat)
+            C[v] += u_hat
             U = [u for u in U if u not in u_hat]
-        C[v].update(k_highest_uncovered(v, U, k))
-        C[v] = tuple(sorted(C[v]))
+        C[v] += k_highest_uncovered(v, U, k)
+        C[v] = tuple(C[v])
         scores.clear_cache()
 
     return C, {"k": k}
