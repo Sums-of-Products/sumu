@@ -519,10 +519,7 @@ def greedy_lite(K, *, scores, params={"k": 6, "t_budget": None}, **kwargs):
             U -= set(u_hat)
             t_prev = time.time() - t - sum(t_used)
             t_used.append(t_prev)
-            if len(t_used) > 1 and i < K:
-                A = np.vstack([n_scores[:len(t_used)], np.ones(len(t_used))]).T
-                lstsq = np.linalg.lstsq(A, np.array(t_used), rcond=None)[0]
-                t_pred_next_add = lstsq[0] * (n_scores[i+1] - n_scores[i])
+            t_pred_next_add = 2 * t_prev
             i += 1
         C[0] = [v for v in C[0] if v not in u_hat]
         U.update(set(u_hat))
