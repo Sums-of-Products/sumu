@@ -460,12 +460,15 @@ class PartitionMCMC:
         self.stay_prob = 0.01
         if self.temp != 1:
             self._moves = [self.R_basic_move, self.R_swap_any]
-            self._moveprobs = [0.5, 0.5]
+            weights = [1, 1]
         else:
             self._moves = [self.R_basic_move, self.R_swap_any, self.DAG_edgerev]
-            self._moveprobs = [0.25, 0.25, 0.5]
+            weights = [1, 1, 2]
+        # Each move is repeated weights[move] times to allow uniform sampling
+        # from the list (np.random.choice can be very slow).
+        self._moves = [m for m, w in zip(self._moves, weights) for _ in range(w)]
 
-        for move in self._moves:
+        for move in set(self._moves):
             stats["mcmc"][self.temp][move.__name__]["proposed"] = 0
             stats["mcmc"][self.temp][move.__name__]["accepted"] = 0
             stats["mcmc"][self.temp][move.__name__]["accept_ratio"] = 0
@@ -602,7 +605,7 @@ class PartitionMCMC:
     def sample(self):
 
         if np.random.rand() > self.stay_prob:
-            move = np.random.choice(self._moves, p=self._moveprobs)
+            move = self._moves[np.random.randint(len(self._moves))]
             stats["mcmc"][self.temp][move.__name__]["proposed"] += 1
             if move.__name__ == 'DAG_edgerev':
                 DAG, _ = self.score.sample_DAG(self.R)
