@@ -131,6 +131,15 @@ exts = [
         extra_link_args=LINK_OPTIONS),
 
     Extension(
+        "sumu.mcmc_moves",
+        sources=["sumu/_mcmc_moves.pyx"],
+        include_dirs=[numpy_include],
+        language='c++',
+        define_macros=DEFINE_MACROS,
+        extra_compile_args=COMPILE_OPTIONS,
+        extra_link_args=LINK_OPTIONS),
+
+    Extension(
         name='sumu.aps',
         sources=['sumu/aps/_aps.pyx',
                  'sumu/aps/aps-0.9.1/aps/simple_modular.cpp'],

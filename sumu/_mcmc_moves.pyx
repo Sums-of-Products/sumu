@@ -1,4 +1,5 @@
 import numpy as np
+cimport numpy as np
 from .utils.math_utils import comb, subsets
 from .bnet import transitive_closure
 
