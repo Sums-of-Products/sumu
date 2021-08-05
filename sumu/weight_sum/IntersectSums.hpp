@@ -15,6 +15,7 @@ struct ws64 { bm64 set; Treal weight; };
 struct ws128 { bm128 set; Treal weight; };
 struct ws192 { bm192 set; Treal weight; };
 struct ws256 { bm256 set; Treal weight; };
+struct ws { std::vector<bm64> set; Treal weight; };
 
 inline bool intersects_64(bm64 A, bm64 B){ return A & B; }
 inline bool subseteq_64(bm64 A, bm64 B){ return (A == (A & B)); }
@@ -40,19 +41,26 @@ public:
   double scan_sum_128(double w, bm128 U, bm128 T, bm64 t_ub);
   double scan_sum_192(double w, bm192 U, bm192 T, bm64 t_ub);
   double scan_sum_256(double w, bm256 U, bm256 T, bm64 t_ub);
+  double scan_sum(double w, std::vector<bm64> U, std::vector<bm64> T, bm64 t_ub);
+
   std::pair<bm64, double> scan_rnd_64(bm64 U, bm64 T, double wcum);
   std::pair<bm128, double> scan_rnd_128(bm128 U, bm128 T, double wcum);
   std::pair<bm192, double> scan_rnd_192(bm192 U, bm192 T, double wcum);
   std::pair<bm256, double> scan_rnd_256(bm256 U, bm256 T, double wcum);
+  std::pair<std::vector<bm64>, double> scan_rnd(std::vector<bm64> U, std::vector<bm64> T, double wcum);
+
+  bool intersects(std::vector<bm64> A, std::vector<bm64> B);
+  bool subseteq(std::vector<bm64> A, std::vector<bm64> B);
 
 private:
   double eps;
-  int k;                   // No. 64-bit ints needed to encode var sets, e.g., 4 if 192 > n <= 256.
+  int k;                   // No. 64-bit ints needed to encode var sets, e.g., 4 if 192 < n <= 256.
   bm64 m;                  // No. of psets.
   std::vector<ws64> s64;   // Scores, pairs (set, weight) sorted by weight.
   std::vector<ws128> s128;
   std::vector<ws192> s192;
   std::vector<ws256> s256;
+  std::vector<ws> s;
   bm64 *idx;               // Sorted indices.
 };
 

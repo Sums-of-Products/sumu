@@ -63,10 +63,12 @@ cdef extern from "IntersectSums.hpp":
         double scan_sum_128(double w, bm128 U, bm128 T, bm64 t_ub)
         double scan_sum_192(double w, bm192 U, bm192 T, bm64 t_ub)
         double scan_sum_256(double w, bm256 U, bm256 T, bm64 t_ub)
+        double scan_sum(double w, vector[bm64] U, vector[bm64] T, bm64 t_ub)
         pair[bm64, double] scan_rnd_64(bm64 U, bm64 T, double wcum)
         pair[bm128, double] scan_rnd_128(bm128 U, bm128 T, double wcum)
         pair[bm192, double] scan_rnd_192(bm192 U, bm192 T, double wcum)
         pair[bm256, double] scan_rnd_256(bm256 U, bm256 T, double wcum)
+        pair[vector[bm64], double] scan_rnd(vector[bm64] U, vector[bm64] T, double wcum)
 
 
 cdef class CandidateRestrictedScore:
@@ -186,6 +188,13 @@ cdef class CandidateComplementScore:
             return self.isums[0][v].scan_sum_256(w, U256, T256,
                                                  self.t_ub[len(U)-1][len(T)-1])
 
+        if self.k > 4:
+            U = bm_to_np64(bm(U), k=self.k)
+            T = bm_to_np64(bm(T), k=self.k)
+            return self.isums[0][v].scan_sum(w, U, T,
+                                             self.t_ub[len(U)-1][len(T)-1])
+
+
     def sample_pset(self, v, U, T, wcum):
 
         cdef bm128 U128
@@ -222,5 +231,9 @@ cdef class CandidateComplementScore:
             pset, score = self.isums[0][v].scan_rnd_256(U256, T256, wcum)
             pset = bm_to_ints(np64_to_bm(np.array([pset["s1"], pset["s2"], pset["s3"], pset["s4"]],
                                                   dtype=np.uint64)))
+
+        if self.k > 4:
+            pset, score = self.isums[0][v].scan_rnd(U, T, wcum)
+            pset = bm_to_ints(np64_to_bm(pset))
 
         return pset, score

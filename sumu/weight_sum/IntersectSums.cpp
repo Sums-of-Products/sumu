@@ -19,8 +19,9 @@ bool decr_ws(T x, T y) { return x.weight > y.weight; }
 template <typename T>
 void sort_ws(vector<T> &c) { sort(c.begin(), c.end(), decr_ws<T>); }
 
-IntersectSums::IntersectSums(double *w0, bm64 *pset0, bm64 m0, int k, double eps0){
+IntersectSums::IntersectSums(double *w0, bm64 *pset0, bm64 m0, int k0, double eps0){
   m = m0;
+  k = k0;
   bm64 i = 0;
   bm64 j = 0;
   while (i < m) {
@@ -29,14 +30,84 @@ IntersectSums::IntersectSums(double *w0, bm64 *pset0, bm64 m0, int k, double eps
 	else if (k == 2) {s128.push_back( { {pset0[j++], pset0[j++]}, w} );}
 	else if (k == 3) {s192.push_back( { {pset0[j++], pset0[j++], pset0[j++]}, w} );}
 	else if (k == 4) {s256.push_back( { {pset0[j++], pset0[j++], pset0[j++], pset0[j++]}, w} );}
+	else if (k > 4) {
+	  vector<bm64> set;
+	  for (int l = 0; l < k; ++l) { set.push_back(pset0[j++]); }
+	  s.push_back( {set, w} );
+	}
   }
-  sort_ws(s64); sort_ws(s128); sort_ws(s192); sort_ws(s256);
+  sort_ws(s64); sort_ws(s128); sort_ws(s192); sort_ws(s256); sort_ws(s);
   eps = eps0;
 };
 
 // d=1 tapauksessa konstruktorille ei anneta pset, koska kaikki on valid?
 
 IntersectSums::~IntersectSums(){ };
+
+bool IntersectSums::intersects(vector<bm64> A, vector<bm64> B) {
+  for (int i = 0; i < k; ++i) {
+	if (A[i] & B[i]) return true;
+  }
+  return false;
+}
+
+bool IntersectSums::subseteq(vector<bm64> A, vector<bm64> B) {
+  bool sse = true;
+  for (int i = 0; i < k; ++i) {
+	sse = sse && A[i] == (A[i] & B[i]);
+  }
+  return sse;
+}
+
+double IntersectSums::scan_sum(double w0, vector<bm64> U, vector<bm64> T, bm64 t_ub) {
+  Treal sum; sum = 0.0;
+  if (w0 != -std::numeric_limits<double>::infinity()) {sum.set_log(w0);}
+  Treal slack; slack = eps/t_ub;
+  Treal factor; factor = 0.0;
+  bm64 i = 0;
+  for (; i < m; ++i) {
+    vector<bm64> P = s[i].set;
+    if ( subseteq(P, U) && intersects(P, T) ) {
+      sum += s[i].weight;
+	  factor = sum * slack;
+	  ++i; break;
+    }
+  }
+  for (; i < m; ++i){
+    vector<bm64> P = s[i].set;
+    if ( subseteq(P, U) && intersects(P, T) ) {
+      Treal score; score = s[i].weight;
+      if (score < factor) { break; }
+      sum += score;
+    }
+  }
+  return sum.get_log();
+}
+
+pair<vector<bm64>, double> IntersectSums::scan_rnd(vector<bm64> U, vector<bm64> T, double wcum) {
+  Treal sum; sum = 0.0;
+  Treal target; target.set_log(wcum);
+  bm64 i = 0; vector<bm64> P; bm64 P_i = 0;
+  for (; i < m; ++i) {
+    P = s[i].set;
+    if ( subseteq(P, U) && intersects(P, T) ) {
+	  P_i = i;
+      sum = s[i].weight;
+	  if (sum > target) i = m;
+	  ++i;
+	  break;
+    }
+  }
+  for (; i < m; ++i) {
+    P = s[i].set;
+    if ( subseteq(P, U) && intersects(P, T) ) {
+	  P_i = i;
+	  Treal score = s[i].weight; sum += score;
+	  if (sum > target) break;
+    }
+  }
+  return make_pair(s[P_i].set, s[P_i].weight.get_log());
+}
 
 double IntersectSums::scan_sum_64(double w0, bm64 U, bm64 T, bm64 t_ub) {
   Treal sum; sum = 0.0;
