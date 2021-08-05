@@ -35,7 +35,7 @@ from .stats import Stats, stats
 default = {
     "run_mode": {"name": "normal"},
     "mcmc": {
-        "n_indep": 4,
+        "n_indep": 1,
         "iters": 320000,
         "mc3": 16,
         "burn_in": 0.5,
