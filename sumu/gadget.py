@@ -5,6 +5,7 @@
 import sys
 import os
 import time
+import copy
 
 import numpy as np
 
@@ -23,60 +24,147 @@ from .scorer import BDeu, BGe
 from .candidates import candidate_parent_algorithm as cpa
 from .stats import Stats, stats
 
-# default parameter values used by multiple classes
-default = {
-    "run_mode": {"name": "normal"},
-    "mcmc": {
-        "n_indep": 1,
-        "iters": 320000,
-        "mc3": 16,
-        "burn_in": 0.5,
-        "n_dags": 10000},
-    "score": lambda discrete: {
-        "name": "bdeu",
-        "params": {"ess": 10}} if discrete else {"name": "bge"},
-    "prior": {
-        "name": "fair"
-    },
-    "cons": {
-        "max_id": -1,
-        "K": lambda n: min(n-1, 16),
-        "d": lambda n: min(n-1, 3),
-        "pruning_eps": 0.001,
-        "score_sum_eps": 0.1
-    },
-    "candp": {
-        "name": "greedy-lite",
-        "params": {"k": 6}},
-    "catc": {
-        "tolerance": 2**-32,
-        "cache_size": 10**7
-    },
-    "logging": {
-        "logfile": sys.stdout,
-        "stats_period": 15,
-        "tracefile": None,
-        "overwrite": False,
-    }
-}
+
+class Defaults:
+
+    # default parameter values used by multiple classes
+
+    def __init__(self):
+        self.default = {
+            "run_mode": {"name": "normal"},
+            "mcmc": {
+                "n_indep": 1,
+                "iters": 320000,
+                "mc3": 16,
+                "burn_in": 0.5,
+                "n_dags": 10000},
+            "score": lambda discrete: {
+                "name": "bdeu",
+                "params": {"ess": 10}} if discrete else {"name": "bge"},
+            "prior": {
+                "name": "fair"
+            },
+            "cons": {
+                "max_id": -1,
+                "K": lambda n: min(n-1, 16),
+                "d": lambda n: min(n-1, 3),
+                "pruning_eps": 0.001,
+                "score_sum_eps": 0.1
+            },
+            "candp": {
+                "name": "greedy-lite",
+                "params": {"k": 6}},
+            "catc": {
+                "tolerance": 2**-32,
+                "cache_size": 10**7
+            },
+            "logging": {
+                "logfile": sys.stdout,
+                "stats_period": 15,
+                "tracefile": None,
+                "overwrite": False,
+            }
+        }
+
+    def __call__(self):
+        return self.default
+
+    def __getitem__(self, key):
+        return self.default[key]
+
+
+class GadgetParameters():
+
+    def __init__(self, *,
+                 data, run_mode=dict(), mcmc=dict(), score=dict(), prior=dict(),
+                 cons=dict(), candp=dict(), catc=dict(), logging=dict(),
+                 ):
+
+        # Save parameters initially given by user.
+        # locals() has to be the first thing called in __init__.
+        self.init = dict(**locals())
+        del self.init["self"]
+        del self.init["data"]
+
+        self.data = Data(data)
+        self.default = Defaults()()
+        self.p = copy.deepcopy(self.init)
+
+        self._populate_default_parameters()
+        self._complete_user_given_parameters()
+        if self.p["run_mode"]["name"] == "normal":
+            self._adjust_inconsistent_parameters()
+        if self.p["run_mode"]["name"] == "budget":
+            self._set_budget_based_parameters()
+
+    def _populate_default_parameters(self):
+        # Some defaults are defined as functions of data.
+        # Evaluate the functions here.
+        self.default["cons"]["K"] = self.default["cons"]["K"](self.data.n)
+        self.default["cons"]["d"] = self.default["cons"]["d"](self.data.n)
+        self.default["score"] = self.default["score"](self.data.discrete)
+
+    def _complete_user_given_parameters(self):
+        for k in self.p:
+            if "name" in self.p[k] and self.p[k]["name"] != self.default[k]["name"]:
+                continue
+            self.p[k] = dict(self.default[k], **self.p[k])
+
+    def _adjust_inconsistent_parameters(self):
+        iters = self.p["mcmc"]["iters"]
+        mc3 = self.p["mcmc"]["mc3"]
+        burn_in = self.p["mcmc"]["burn_in"]
+        n_dags = self.p["mcmc"]["n_dags"]
+        self.p["mcmc"]["iters"] = iters // mc3 * mc3
+        self.p["mcmc"]["n_dags"] = min((iters - int(iters*burn_in)) // mc3, n_dags)
+        self.adjusted = (self.p["mcmc"]["iters"] != iters, self.p["mcmc"]["n_dags"] != n_dags)
+
+    def _set_budget_based_parameters(self):
+        self.gb = GadgetBudget(self.data, self.p["run_mode"]["params"]["t"])
+        params_to_predict = ["d", "K"]
+        # dict of preset values for params if any
+        preset_params = dict(i for i in ((k, self.init["cons"].get(k))
+                                         for k in params_to_predict)
+                             if i[1] is not None)
+
+        # params needs to be copied because of the remove below
+        for k in list(params_to_predict):
+            if k in preset_params:
+                self.p["cons"][k] = self.gb.get_and_pred(k, preset_params[k])
+                params_to_predict.remove(k)
+        for k in params_to_predict:
+            self.p["cons"][k] = self.gb.get_and_pred(k)
+
+        candp_cond = self.init["candp"] != dict()
+        candp_cond = candp_cond and self.init["candp"]["name"] == "greedy-lite"
+        candp_cond = candp_cond and "params" in self.init["candp"]
+        candp_cond = candp_cond and "k" in self.init["candp"]["params"]
+        if candp_cond:
+            self.gb.preset.add("candp")
+        else:
+            self.p["candp"] = {"name": "greedy-lite",
+                               "params": {"t_budget": int(self.gb.budget["candp"])}}
+
+    def __getitem__(self, key):
+        return self.p[key]
 
 
 class GadgetBudget:
-    """Class for predicting run times. Assumes run time is of the form
+    """Class for predicting run times.
 
     """
 
-    def __init__(self, gadget, share={"candp": 1/9, "crs": 1/9, "ccs": 1/9, "mcmc": 2/3}):
+    def __init__(self, data, t_budget, share={"candp": 1/9, "crs": 1/9, "ccs": 1/9, "mcmc": 2/3}):
         # The preferred order is: predict d, predict K, remaining precomp budget to candp.
         self.t0 = time.time()
-        self.g = gadget
-        self.n = self.g.data.n
+        self.n = data.n
+        self.data = data
         self.share = share
         # NOTE: After get_d and get_K the sum of budgets might exceed
         #       total, since remaining budget is adjusted upwards if previous
         #       phase is not predicted to use all of its budget.
         self.budget = dict()
-        self.budget["total"] = self.g.p["run_mode"]["params"]["t"]
+        self.budget["total"] = t_budget
         self.predicted = {phase: 0 for phase in share}
         self.used = {phase: 0 for phase in share}
         self._not_done = set(share)
@@ -92,11 +180,12 @@ class GadgetBudget:
         for phase in self._not_done:
             self.budget[phase] = self.share[phase] / normalizer * precomp_budget_left
 
-    def get_and_pred(self, param, value = None):
+    def get_and_pred(self, param, preset_value = None):
+        # if preset_value given only the time use is predicted
         if param == "d":
-            return self.get_and_pred_d(value)
+            return self.get_and_pred_d(preset_value)
         elif param == "K":
-            return self.get_and_pred_K(value)
+            return self.get_and_pred_K(preset_value)
 
     def get_and_pred_d(self, d_preset = None):
         phase = "ccs"
@@ -105,7 +194,7 @@ class GadgetBudget:
         C = {v: tuple([u for u in range(self.n) if u != v])
              for v in range(self.n)}
         C = {v: C[v][:K_max] for v in C}
-        ls = LocalScore(data=self.g.data)
+        ls = LocalScore(data=self.data)
         d = 0
         t_d = 0
         t_budget = self.budget[phase]
@@ -150,7 +239,7 @@ class GadgetBudget:
                 "logging": {"logfile": None}
             }
 
-            g = Gadget(data=self.g.data, **params)
+            g = Gadget(data=self.data, **params)
             g._find_candidate_parents()
             t_score = time.time()
             g._precompute_scores_for_all_candidate_psets()
@@ -312,7 +401,7 @@ class GadgetLogger(Logger):
                   file=self._logfile)
             self._logfile.flush()
         elif self.g.p["run_mode"]["name"] == "budget":
-            progress = round(100*t_elapsed/self.g.gb.budget["mcmc"])
+            progress = round(100*t_elapsed/self.g.p.gb.budget["mcmc"])
             progress = str(progress)
             print("Progress: {}% ({} iterations)".format(progress,
                                                          t*self.g.p["mcmc"]["mc3"]),
@@ -675,96 +764,34 @@ class Gadget():
     """
 
     def __init__(self, *,
-                 data,
-                 run_mode=default["run_mode"],
-                 mcmc=default["mcmc"],
-                 score=None,
-                 prior=default["prior"],
-                 cons=None,
-                 candp=default["candp"],
-                 catc=default["catc"],
-                 logging=default["logging"]
+                 data, run_mode=dict(), mcmc=dict(), score=dict(), prior=dict(),
+                 cons=dict(), candp=dict(), catc=dict(), logging=dict(),
                  ):
 
-        self.data = Data(data)
-        if score is None:
-            score = default["score"](self.data.discrete)
-        defcons = dict()
-        defcons["K"] = default["cons"]["K"](self.data.n)
-        defcons["d"] = default["cons"]["d"](self.data.n)
-        defcons["max_id"] = default["cons"]["max_id"]
-        defcons["pruning_eps"] = default["cons"]["pruning_eps"]
-        defcons["score_sum_eps"] = default["cons"]["score_sum_eps"]
-        if cons is None:
-            init_cons = dict()
-            cons = defcons
-        else:
-            init_cons = dict(cons)
-            cons = dict(defcons, **cons)
-
-        p = {
-            "run_mode": run_mode,
-            "mcmc": dict(default["mcmc"], **mcmc),
-            "score": score,
-            "prior": prior,
-            "cons": cons,
-            "candp": dict(default["candp"], **candp),
-            "catc": dict(default["catc"], **catc),
-            "logging": dict(default["logging"], **logging)
-        }
-
-        # Adjust "mcmc" parameters if inconsistent
-        if p["run_mode"]["name"] == "normal":
-            iters = p["mcmc"]["iters"]
-            mc3 = p["mcmc"]["mc3"]
-            burn_in = p["mcmc"]["burn_in"]
-            n_dags = p["mcmc"]["n_dags"]
-            p["mcmc"]["iters"] = iters // mc3 * mc3
-            p["mcmc"]["n_dags"] = min((iters - int(iters*burn_in)) // mc3, n_dags)
-            adjusted = (p["mcmc"]["iters"] != iters, p["mcmc"]["n_dags"] != n_dags)
-
-        self.p = p
-
-        if p["run_mode"]["name"] == "budget":
-            self.gb = GadgetBudget(self)
-            o = ["d", "K"]
-            pre = dict(i for i in ((k, init_cons.get(k)) for k in o) if i[1] is not None)
-            for k in list(o):  # o needs to be copied because of the remove below
-                if k in pre:
-                    p["cons"][k] = self.gb.get_and_pred(k, pre[k])
-                    o.remove(k)
-            for k in o:
-                p["cons"][k] = self.gb.get_and_pred(k)
-            cond =  candp["name"] == "greedy-lite"
-            cond = cond and "params" in candp
-            cond = cond and "k" in candp["params"]
-            if cond:
-                self.gb.preset.add("candp")
-            else:
-                p["candp"] = {"name": "greedy-lite",
-                              "params": {"t_budget": int(self.gb.budget["candp"])}}
+        # locals() has to be the first thing called in __init__.
+        user_given_parameters = locals()
+        del user_given_parameters["self"]
+        self.p = GadgetParameters(**user_given_parameters)
+        self.data = self.p.data
 
         self.log = GadgetLogger(self)
-        self.trace = Logger(logfile=p["logging"]["tracefile"],
-                            overwrite=p["logging"]["overwrite"])
-        # To prevent ugly print
-        del p["logging"]["logfile"]
-
+        self.trace = Logger(logfile=self.p["logging"]["tracefile"],
+                            overwrite=self.p["logging"]["overwrite"])
 
         self.log.print_title("PROBLEM INSTANCE")
         self.log.print_dict(self.data.info)
         self.log.newline()
 
         self.log.print_title("RUN PARAMETERS")
-        self.log.print_dict(self.p)
-        if p["run_mode"]["name"] == "normal":
-            if any(adjusted):
+        self.log.print_dict(self.p.p)
+        if self.p["run_mode"]["name"] == "normal":
+            if any(self.p.adjusted):
                 self.log.print("WARNING")
-            if adjusted[0]:
+            if self.p.adjusted[0]:
                 self.log.print("iters adjusted downwards: needs to be multiple of mc3.")
-            if adjusted[1]:
+            if self.p.adjusted[1]:
                 self.log.print("n_dags adjusted downwards: max is (iters * (1 - burn_in)) / mc3.")
-            if any(adjusted):
+            if any(self.p.adjusted):
                 self.log.newline()
         self.log.newline()
 
@@ -776,7 +803,7 @@ class Gadget():
         self._find_candidate_parents()
         stats["t"]["C"] = time.time() - stats["t"]["C"]
         self.log.print_numpy(self.C_array, "%i")
-        if self.p["run_mode"]["name"] == "budget" and "candp" not in self.gb.preset:
+        if self.p["run_mode"]["name"] == "budget" and "candp" not in self.p.gb.preset:
             # If time budget => greedy-lite
             self.log.newline()
             self.log.print("Adjusted for time budget: k = {}".format(stats["C"]["k"]))
@@ -791,7 +818,7 @@ class Gadget():
         self._precompute_candidate_restricted_scoring()
         stats["t"]["crscore"] = time.time() - stats["t"]["crscore"]
         if self.p["run_mode"]["name"] == "budget":
-            self.log.print("time predicted: {}s".format(round(self.gb.predicted["crs"])))
+            self.log.print("time predicted: {}s".format(round(self.p.gb.predicted["crs"])))
         self.log.print("time used: {}s".format(round(stats["t"]["crscore"])))
         self.log.newline(2)
 
@@ -800,7 +827,7 @@ class Gadget():
         self._precompute_candidate_complement_scoring()
         stats["t"]["ccscore"] = time.time() - stats["t"]["ccscore"]
         if self.p["run_mode"]["name"] == "budget":
-            self.log.print("time predicted: {}s".format(round(self.gb.predicted["ccs"])))
+            self.log.print("time predicted: {}s".format(round(self.p.gb.predicted["ccs"])))
         self.log.print("time used: {}s".format(round(stats["t"]["ccscore"])))
         self.log.newline(2)
 
@@ -902,8 +929,8 @@ class Gadget():
             dag_sample_cond = lambda: t >= iters_dag_sampling / self.p["mcmc"]["n_dags"] * dag_count
 
         elif self.p["run_mode"]["name"] == "budget":
-            self.gb.budget["mcmc"] = self.gb.left()
-            t_b_burnin = self.gb.budget["mcmc"] * self.p["mcmc"]["burn_in"]
+            self.p.gb.budget["mcmc"] = self.p.gb.left()
+            t_b_burnin = self.p.gb.budget["mcmc"] * self.p["mcmc"]["burn_in"]
             burn_in_cond = lambda: t_elapsed < t_b_burnin
             mcmc_cond = lambda: dag_count < self.p["mcmc"]["n_dags"] and t_elapsed < t_b_mcmc
             dag_sample_cond = lambda: dag_count < t_elapsed / t_per_dag
@@ -933,7 +960,7 @@ class Gadget():
 
         t_used_burnin = time.time() - t0
         if self.p["run_mode"]["name"] == "budget":
-            t_b_mcmc = self.p["run_mode"]["params"]["t"] - (time.time() - self.gb.t0)
+            t_b_mcmc = self.p["run_mode"]["params"]["t"] - (time.time() - self.p.gb.t0)
             t_per_dag = t_b_mcmc / self.p["mcmc"]["n_dags"]
 
         self.log.print("Sampling DAGs...")
@@ -1071,12 +1098,12 @@ class LocalScore:
 
     """
 
-    def __init__(self, *, data, score=None, prior=default["prior"],
-                 maxid=default["cons"]["max_id"]):
+    def __init__(self, *, data, score=None, prior=Defaults()["prior"],
+                 maxid=Defaults()["cons"]["max_id"]):
         self.data = Data(data)
         self.score = score
         if score is None:
-            self.score = default["score"](self.data.discrete)
+            self.score = Defaults()["score"](self.data.discrete)
         self.prior = prior
         self.priorf = {"fair": self._prior_fair,
                        "unif": self._prior_unif}
