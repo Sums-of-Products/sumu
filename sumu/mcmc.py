@@ -450,7 +450,7 @@ class PartitionMCMC:
     """Partition-MCMC sampler :footcite:`kuipers:2017` with efficient scoring.
     """
 
-    def __init__(self, C, score, d, temperature=1.0):
+    def __init__(self, C, score, d, temperature=1.0, move_weights=[1, 1, 2]):
 
         self.n = len(C)
         self.C = C
@@ -458,20 +458,19 @@ class PartitionMCMC:
         self.score = score
         self.d = d
         self.stay_prob = 0.01
-        if self.temp != 1:
-            self._moves = [self.R_basic_move, self.R_swap_any]
-            weights = [1, 1]
-        else:
-            self._moves = [self.R_basic_move, self.R_swap_any, self.DAG_edgerev]
-            weights = [1, 1, 2]
-        # Each move is repeated weights[move] times to allow uniform sampling
-        # from the list (np.random.choice can be very slow).
-        self._moves = [m for m, w in zip(self._moves, weights) for _ in range(w)]
+        self._moves = [self.R_basic_move, self.R_swap_any, self.DAG_edgerev]
 
-        for move in set(self._moves):
+        for move in self._moves:
             stats["mcmc"][self.temp][move.__name__]["proposed"] = 0
             stats["mcmc"][self.temp][move.__name__]["accepted"] = 0
             stats["mcmc"][self.temp][move.__name__]["accept_ratio"] = 0
+
+        if self.temp != 1:
+            move_weights = move_weights[:-1]#[1, 1]
+        # Each move is repeated weights[move] times to allow uniform sampling
+        # from the list (np.random.choice can be very slow).
+        self._moves = [m for m, w in zip(self._moves, move_weights) for _ in range(w)]
+
 
         self.R = self._random_partition()
         self.R_node_scores = self._pi(self.R)

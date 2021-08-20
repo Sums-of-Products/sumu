@@ -37,7 +37,9 @@ class Defaults:
                 "iters": 320000,
                 "mc3": 16,
                 "burn_in": 0.5,
-                "n_dags": 10000},
+                "n_dags": 10000,
+                "move_weights": [1, 1, 2]
+            },
             "score": lambda discrete: {
                 "name": "bdeu",
                 "params": {"ess": 10}} if discrete else {"name": "bge"},
@@ -898,15 +900,17 @@ class Gadget():
                            c_r_score=self.c_r_score,
                            c_c_score=self.c_c_score)
 
-        self.mcmc = [None]*self.p["mcmc"]["n_indep"]
+        self.mcmc = list()
         for i in range(self.p["mcmc"]["n_indep"]):
             if self.p["mcmc"]["mc3"] > 1:
-                self.mcmc[i] = MC3([PartitionMCMC(self.C, self.score, self.p["cons"]["d"],
-                                                  temperature=i/(self.p["mcmc"]["mc3"]-1))
-                                    for i in range(self.p["mcmc"]["mc3"])])
+                self.mcmc.append(MC3([PartitionMCMC(self.C, self.score, self.p["cons"]["d"],
+                                                    temperature=i/(self.p["mcmc"]["mc3"]-1),
+                                                    move_weights=self.p["mcmc"]["move_weights"])
+                                      for i in range(self.p["mcmc"]["mc3"])]))
 
             else:
-                self.mcmc[i] = PartitionMCMC(self.C, self.score, self.p["cons"]["d"])
+                self.mcmc.append(PartitionMCMC(self.C, self.score, self.p["cons"]["d"],
+                                               move_weights=self.p["mcmc"]["move_weights"]))
 
     def _mcmc_run(self):
 
