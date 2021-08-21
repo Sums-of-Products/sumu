@@ -3,7 +3,7 @@ from scipy.special import loggamma as lgamma
 from scipy.linalg import solve_triangular
 
 from ..utils.math_utils import subsets, comb
-from ..utils.bitmap import bm, bm_to_np64
+from ..utils.bitmap import bm, bm_to_np64, msb
 
 
 class BGe:
@@ -95,18 +95,17 @@ class BGe:
     def candidate_score_array(self, C_array):
         C = dict({v: tuple(C_array[v]) for v in range(C_array.shape[0])})
         scores = np.full((self.n, 2**len(C[0])), -float('inf'))
-        for v in range(self.n):
-            for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
-                scores[v, bm(pset, ix=C[v])] = self.local(v, pset)
-
-        # NOTE: This does not seem to work reliably yet
         # for v in range(self.n):
-        #     vset = tuple(sorted(C[v] + (v,)))
-        #     self.precompute_dets(np.array(vset))
         #     for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
-        #         pset_ = index(pset, vset)
-        #         v_ = vset.index(v)
-        #         scores[v, bm(pset, ix=C[v])] = self.local_precomputed(v_, pset_)
+        #         scores[v, bm(pset, idx=C[v])] = self.local(v, pset)
+
+        for v in range(self.n):
+            vset = tuple(sorted(C[v] + (v,)))
+            self.precompute_dets(np.array(vset))
+            for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
+                pset_ = index(pset, vset)
+                v_ = vset.index(v)
+                scores[v, bm(pset, idx=C[v])] = self.local_precomputed(v_, pset_)
 
         return scores
 
@@ -121,31 +120,13 @@ class BGe:
         scores = np.array([self.local(v, pset) for pset in pset_tuple])
         return np.array(pset_bm), scores, pset_len
 
+
 def index(from_, to_):
     return tuple(map(lambda k: to_.index(k), from_))
 
 
-def bm(ints, ix=None):
-    if type(ints) not in [frozenset, set, tuple]:
-        ints = {int(ints)}
-    if ix is not None:
-        ints = [ix.index(i) for i in ints]
-    bitmap = 0
-    for k in ints:
-        bitmap += 2**k
-    return int(bitmap)  # without the cast np.int64 might sneak in somehow and break drv
-
-
 def bitcmp(mask, k):
     return ((1 << k) - 1) ^ mask
-
-
-def msb(n):
-    blen = 0
-    while (n > 0):
-        n >>= 1
-        blen += 1
-    return blen
 
 
 def mat2pm(a, thresh=None):
@@ -198,13 +179,13 @@ def mat2pm(a, thresh=None):
         q = qq
 
     for mask in zeropivs:
-        delta = msb(mask)
+        delta = 2**(msb(mask)-1)
         delta2 = 2*delta
-        ipm1 = mask & bitcmp(delta, 48)
+        ipm1 = (mask + 1) & bitcmp(delta, 48)
         if ipm1 == 0:
             pm[mask] -= ppivot
         else:
-            pm[mask] = (pm[mask] / pm[ipm1] - ppivot) * pm[ipm1]
+            pm[mask] = (pm[mask] / pm[ipm1-1] - ppivot) * pm[ipm1-1]
         for j in range(mask+delta2, 2**n, delta2):
             pm[j] -= ppivot*pm[j - delta]
 
