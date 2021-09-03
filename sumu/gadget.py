@@ -54,8 +54,8 @@ class Defaults:
                 "score_sum_eps": 0.1
             },
             "candp": {
-                "name": "greedy-lite",
-                "params": {"k": 6}},
+                "name": "greedy",
+                "params": {"k": 6, "criterion": "score"}},
             "catc": {
                 "tolerance": 2**-32,
                 "cache_size": 10**7
@@ -111,6 +111,9 @@ class GadgetParameters():
             if "name" in self.p[k] and self.p[k]["name"] != self.default[k]["name"]:
                 continue
             self.p[k] = dict(self.default[k], **self.p[k])
+            for k2 in self.p[k]:
+                if type(self.p[k][k2]) == dict:
+                    self.p[k][k2] = dict(self.default[k][k2], **self.p[k][k2])
 
     def _adjust_inconsistent_parameters(self):
         iters = self.p["mcmc"]["iters"]
