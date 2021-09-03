@@ -27,7 +27,7 @@ def test_Gadget_empirical_edge_prob_error_decreases():
         },
 
         # algorithm to use for finding candidate parents
-        "candp": {"name": "greedy-lite", "params": {"k": 6}},
+        "candp": {"name": "greedy", "params": {"k": 6}},
 
 
         # preparing for catastrofic cancellations
@@ -67,7 +67,7 @@ def test_Gadget_runs_n_between_2_and_64():
     data = bn.sample(200, seed=0)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
-                    candp={"name": "top"}, cons={"K": 10, "d": 2})
+                    candp={"name": "rnd"}, cons={"K": 10, "d": 2})
     g.sample()
     assert True
 
@@ -80,7 +80,7 @@ def test_Gadget_runs_n_between_65_and_128():
     data = bn.sample(1000, seed=0)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
-                    candp={"name": "top"}, cons={"K": 10, "d": 2})
+                    candp={"name": "rnd"}, cons={"K": 10, "d": 2})
     g.sample()
     assert True
 
@@ -93,7 +93,7 @@ def test_Gadget_runs_n_between_129_and_192():
     data = bn.sample(200, seed=0)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
-                    candp={"name": "top"}, cons={"K": 10, "d": 2})
+                    candp={"name": "rnd"}, cons={"K": 10, "d": 2})
     g.sample()
     assert True
 
@@ -106,7 +106,7 @@ def test_Gadget_runs_n_between_193_and_256():
     data = bn.sample(200, seed=0)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
-                    candp={"name": "top"}, cons={"K": 10, "d": 2})
+                    candp={"name": "rnd"}, cons={"K": 10, "d": 2})
     g.sample()
     assert True
 
@@ -122,7 +122,7 @@ def test_Gadget_runs_n_greater_than_256():
     sumu.Gadget(
         data=data,
         mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
-        candp={"name": "top"},
+        candp={"name": "rnd"},
         cons={"K": 8, "d": 1}
     ).sample()
     assert True

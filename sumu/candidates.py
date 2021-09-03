@@ -34,15 +34,6 @@ def opt(K, **kwargs):
     return C, None
 
 
-def top(K, *, scores, **kwargs):
-    return greedy(K, scores=scores, params={"k": K, "criterion": "score"})
-
-
-def greedy_gain(K, *, scores, params={"k": 6, "t_budget": None}, **kwargs):
-    params["criterion"] = "gain"
-    return greedy(K, scores=scores, params=params)
-
-
 def greedy(K, *, scores, params={"k": 6, "t_budget": None, "criterion": "score"}, **kwargs):
     t0 = time.time()
     k = params.get("k")
@@ -119,7 +110,5 @@ def greedy(K, *, scores, params={"k": 6, "t_budget": None, "criterion": "score"}
 candidate_parent_algorithm = {
     "opt": opt,
     "rnd": rnd,
-    "top": top,
-    "greedy": greedy,
-    "greedy-gain": greedy_gain
+    "greedy": greedy
 }

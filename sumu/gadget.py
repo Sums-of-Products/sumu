@@ -140,15 +140,16 @@ class GadgetParameters():
         for k in params_to_predict:
             self.p["cons"][k] = self.gb.get_and_pred(k)
 
-        candp_cond = self.init["candp"] != dict()
-        candp_cond = candp_cond and self.init["candp"]["name"] == "greedy-lite"
-        candp_cond = candp_cond and "params" in self.init["candp"]
-        candp_cond = candp_cond and "k" in self.init["candp"]["params"]
-        if candp_cond:
+        candp_is_given = self.init["candp"] != dict()
+        candp_is_greedy = candp_is_given and self.init["candp"]["name"] == Defaults()["candp"]["name"]
+        candp_params_is_given = candp_is_given and "params" in self.init["candp"]
+        candp_k_is_preset = candp_is_greedy and candp_params_is_given and "k" in self.init["candp"]["params"]
+        if candp_k_is_preset:
             self.gb.preset.add("candp")
         else:
-            self.p["candp"] = {"name": "greedy-lite",
-                               "params": {"t_budget": int(self.gb.budget["candp"])}}
+            if not candp_params_is_given:
+                self.p["candp"]["params"] = dict()
+            self.p["candp"]["params"]["t_budget"] = int(self.gb.budget["candp"])
 
     def __getitem__(self, key):
         return self.p[key]
@@ -808,8 +809,7 @@ class Gadget():
         self._find_candidate_parents()
         stats["t"]["C"] = time.time() - stats["t"]["C"]
         self.log.print_numpy(self.C_array, "%i")
-        if self.p["run_mode"]["name"] == "budget" and "candp" not in self.p.gb.preset:
-            # If time budget => greedy-lite
+        if self.p["run_mode"]["name"] == "budget" and "candp" not in self.p.gb.preset and self.p["candp"]["name"] == Defaults()["candp"]["name"]:
             self.log.newline()
             self.log.print("Adjusted for time budget: k = {}".format(stats["C"]["k"]))
             self.log.print("time budgeted: {}s".format(round(self.p["candp"]["params"]["t_budget"])))
