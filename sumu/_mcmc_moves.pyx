@@ -6,20 +6,24 @@ from .bnet import transitive_closure
 
 def DAG_edgerev(**kwargs):
 
-    def valid(DAG):
+    def valid(edges):
         # Check that there's at least one edge to reverse
-        # return any([len(f) > 1 for f in DAG])
-        return any([len(f[1]) > 0 for f in DAG])
+        return len(edges) > 0
 
     DAG = kwargs["DAG"]
     R = kwargs["R"]
     score = kwargs["score"]
     n = len(DAG)
-
-    if "validate" in kwargs and kwargs["validate"] is True:
-        return valid(DAG)
+    # C is needed to make sure the move can be done if d=0
+    C = kwargs["C"]
+    d = kwargs["d"]
 
     edges = list((u, f[0]) for f in DAG for u in f[1])
+    if d == 0:
+        edges = [e for e in edges if e[1] in C[e[0]]]
+
+    if "validate" in kwargs and kwargs["validate"] is True:
+        return valid(edges)
 
     Ndagger = len(edges)
     Ndaggertilde = len(edges)

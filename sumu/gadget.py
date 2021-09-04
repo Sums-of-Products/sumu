@@ -884,7 +884,7 @@ class Gadget():
 
     def _precompute_candidate_complement_scoring(self):
         self.c_c_score = None
-        if self.p["cons"]["K"] < self.data.n - 1:
+        if self.p["cons"]["K"] < self.data.n - 1 and self.p["cons"]["d"] > 0:
             # NOTE: CandidateComplementScore gives error if K = n-1,
             #       and is unnecessary.
             # NOTE: Does this really need to be reinitialized?
@@ -1246,6 +1246,9 @@ class Score:  # should be renamed to e.g. ScoreHandler
         U_bm = bm(U.intersection(self.C[v]), idx=self.C[v])
         T_bm = bm(T.intersection(self.C[v]), idx=self.C[v])
 
+        if len(T) > 0 and T_bm == 0 and self.c_c_score is None:
+            raise RuntimeError("Cannot meet constraints if d=0 (c_c_score is None) and T does not intersect C[v]")
+
         if len(T) > 0:
             if T_bm == 0:
                 w_crs = -float("inf")
@@ -1262,7 +1265,7 @@ class Score:  # should be renamed to e.g. ScoreHandler
                 # Empty pset is handled in c_r_score
                 w_ccs = self.c_c_score.sum(v, U, U)
 
-        if -np.random.exponential() < w_crs - np.logaddexp(w_ccs, w_crs):
+        if self.c_c_score is None or -np.random.exponential() < w_crs - np.logaddexp(w_ccs, w_crs):
             # Sampling from candidate psets.
             pset, family_score = self.c_r_score.sample_pset(v, U_bm, T_bm, w_crs - np.random.exponential())
             family = (v, set(self.C[v][i] for i in bm_to_ints(pset)))

@@ -608,11 +608,11 @@ class PartitionMCMC:
             stats["mcmc"][self.temp][move.__name__]["proposed"] += 1
             if move.__name__ == 'DAG_edgerev':
                 DAG, _ = self.score.sample_DAG(self.R)
-                if not move(DAG=DAG, score=self.score, R=self.R, validate=True):
+                if not move(DAG=DAG, score=self.score, R=self.R, C=self.C, d=self.d, validate=True):
                     return self.R, self.R_score
                 # NOTE: DAG equals DAG_prime after this, since no copy
                 #       is made. If necessary, make one.
-                DAG_prime, ap, edge = move(DAG=DAG, score=self.score, R=self.R)
+                DAG_prime, ap, edge = move(DAG=DAG, score=self.score, R=self.R, C=self.C, d=self.d)
                 R_prime = partition(DAG_prime)
 
                 R_prime_node_scores = self._pi(R_prime,
