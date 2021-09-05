@@ -466,7 +466,7 @@ class PartitionMCMC:
             stats["mcmc"][self.temp][move.__name__]["accept_ratio"] = 0
 
         if self.temp != 1:
-            move_weights = move_weights[:-1]#[1, 1]
+            move_weights = move_weights[:-1]
         # Each move is repeated weights[move] times to allow uniform sampling
         # from the list (np.random.choice can be very slow).
         self._moves = [m for m, w in zip(self._moves, move_weights) for _ in range(w)]
@@ -566,16 +566,16 @@ class PartitionMCMC:
                                                   set().union(*R[:inpart[v]]),
                                                   R[inpart[v]-1])
 
-        if -float("inf") in R_node_scores:
-            print("Something is wrong")
-            u = R_node_scores.index(-float("inf"))
-            print("R {}".format(R))
-            print("R_node_scores {}".format(R_node_scores))
-            print("u = {},\tC[{}] = {}".format(u, u, self.C[u]))
-            print("u = {},\tU = {},\tT = {}".format(u, set().union(*R[:inpart[u]]), R[inpart[u]-1]))
-            print("")
-            self.score.sum(u, set().union(*R[:inpart[u]]), R[inpart[u]-1], debug=True)
-            exit()
+        # if -float("inf") in R_node_scores:
+        #     print("Something is wrong")
+        #     u = R_node_scores.index(-float("inf"))
+        #     print("R {}".format(R))
+        #     print("R_node_scores {}".format(R_node_scores))
+        #     print("u = {},\tC[{}] = {}".format(u, u, self.C[u]))
+        #     print("u = {},\tU = {},\tT = {}".format(u, set().union(*R[:inpart[u]]), R[inpart[u]-1]))
+        #     print("")
+        #     self.score.sum(u, set().union(*R[:inpart[u]]), R[inpart[u]-1], debug=True)
+        #     exit()
 
         return R_node_scores
 
