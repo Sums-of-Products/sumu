@@ -6,10 +6,6 @@ from .bnet import transitive_closure
 
 def DAG_edgerev(**kwargs):
 
-    def valid(edges):
-        # Check that there's at least one edge to reverse
-        return len(edges) > 0
-
     DAG = kwargs["DAG"]
     R = kwargs["R"]
     score = kwargs["score"]
@@ -22,8 +18,8 @@ def DAG_edgerev(**kwargs):
     if d == 0:
         edges = [e for e in edges if e[1] in C[e[0]]]
 
-    if "validate" in kwargs and kwargs["validate"] is True:
-        return valid(edges)
+    if len(edges) == 0:
+        return False
 
     Ndagger = len(edges)
     Ndaggertilde = len(edges)
@@ -90,9 +86,6 @@ def R_basic_move(**kwargs):
 
     """
 
-    def valid():
-        return True
-
     def nbd_size(R):
         """Size of split/merge neighbourhood of input root-partition
 
@@ -105,9 +98,6 @@ def R_basic_move(**kwargs):
         m = len(R)
         sum_binoms = [sum([comb(len(R[i]), v) for v in range(1, len(R[i]))]) for i in range(m)]
         return m - 1 + sum(sum_binoms), sum_binoms
-
-    if "validate" in kwargs and kwargs["validate"] is True:
-        return valid()
 
     R = kwargs["R"]
     m = len(R)
@@ -148,15 +138,11 @@ def R_basic_move(**kwargs):
 
 def R_swap_any(**kwargs):
 
-    def valid(R):
-        return len(R) > 1
-
     R = kwargs["R"]
-
     m = len(R)
 
-    if "validate" in kwargs and kwargs["validate"] is True:
-        return valid(R)
+    if len(R) < 2:
+        return False
 
     if m == 2:
         j = 0
