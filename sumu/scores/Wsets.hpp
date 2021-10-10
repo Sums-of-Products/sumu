@@ -77,9 +77,18 @@ struct wse4 {bma4 set; double weight; };
 wse4 get_wse4(int* X, int l, double val){ return { get_bma4(X, l), val }; }
 
 //=== bmax ========= Can represent a subset of {0, 1, 2, ..., 2^16 - 1 }.
-struct bmax {bmap s; uint16_t i[4]; bool operator==(const bmax& S) const { return s==S.s && i[0]==S.i[0] && i[1]==S.i[1] && i[2]==S.i[2] && i[3]==S.i[3]; } }; 
-struct hasx { size_t operator()(const bmax& S) const { return S.s ^ (bmap)(S.i[0] ^ S.i[1] ^ S.i[2] ^ S.i[3]); } }; 
-bmax get_bmax(int* X, int l){ bmax S = { (bmap)0 , (uint16_t)0 }; for (int j = 0; j < l; ++j){ S.i[j] = X[j] << 4; S.s |= (X[j] & 0xF) << (16 * j); } return S; }
+struct bmax {uint32_t s; uint32_t i; bool operator==(const bmax& S) const { return s==S.s && i==S.i; } }; 
+struct hasx { size_t operator()(const bmax& S) const { return (bmap)(S.s ^ S.i); } }; 
+bmax get_bmax(int* X, int l){ 
+	bmax S = { (uint32_t)0 , (uint32_t)0 }; 
+	int shift = 0;
+	for (int j = 0; j < l; ++j){ 
+		S.i |= (X[j] >> 3) << shift; 
+		S.s |= (X[j] & 0xFF) << shift;
+		shift += 8; 
+	} 
+	return S; 
+}
 
 //=== wsex ========= Paired with a weight.
 struct wsex {bmax set; double weight; };
