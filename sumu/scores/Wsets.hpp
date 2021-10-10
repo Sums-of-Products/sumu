@@ -76,6 +76,16 @@ bma4 get_bma4(int* X, int l){ bma4 S = { (bmap)0 }; for (int j = 0; j < l; ++j) 
 struct wse4 {bma4 set; double weight; };
 wse4 get_wse4(int* X, int l, double val){ return { get_bma4(X, l), val }; }
 
+//=== bmax ========= Can represent a subset of {0, 1, 2, ..., 2^16 - 1 }.
+struct bmax {bmap s; uint16_t i[4]; bool operator==(const bmax& S) const { return s==S.s && i[0]==S.i[0] && i[1]==S.i[1] && i[2]==S.i[2] && i[3]==S.i[3]; } }; 
+struct hasx { size_t operator()(const bmax& S) const { return S.s ^ (bmap)(S.i[0] ^ S.i[1] ^ S.i[2] ^ S.i[3]); } }; 
+bmax get_bmax(int* X, int l){ bmax S = { (bmap)0 , (uint16_t)0 }; for (int j = 0; j < l; ++j){ S.i[j] = X[j] << 4; S.s |= (X[j] & 0xF) << (16 * j); } return S; }
+
+//=== wsex ========= Paired with a weight.
+struct wsex {bmax set; double weight; };
+wsex get_wsex(int* X, int l, double val){ return { get_bmax(X, l), val }; }
+
+
 //=== Wsets ======== Storage for collections indexed by bmap or bma4.
 class Wsets { // Chooses how to implement a put/get-storage for wsets.
     public:
@@ -85,19 +95,23 @@ class Wsets { // Chooses how to implement a put/get-storage for wsets.
 	void clear()      { M1.clear(); M4.clear(); }
 	void set_n(int n0){ n = n0; } 
 	void put  (int* X, int len, double val){ 
-		if (n <= 64){ wset x = get_wset(X, len, val); M1.insert({ x.set, x.weight }); }
-		else        { wse4 x = get_wse4(X, len, val); M4.insert({ x.set, x.weight }); }
+		if      (n <= 64){ wset x = get_wset(X, len, val); M1.insert({ x.set, x.weight }); }
+		else if (n < 256){ wse4 x = get_wse4(X, len, val); M4.insert({ x.set, x.weight }); }
+		else             { wsex x = get_wsex(X, len, val); Mx.insert({ x.set, x.weight }); }
 	}
 	bool get  (int* X, int len, double* val){
 		if (n <= 64){ 
 			bmap S = get_bmap(X, len); it1 = M1.find(S);
 			if (it1 == M1.end()){ return false; } *val = it1->second; return true;
-		} else { 
+		} else if (n < 256) { 
 			bma4 S = get_bma4(X, len); it4 = M4.find(S);
 			if (it4 == M4.end()){ return false; } *val = it4->second; return true;
+		} else { 
+			bmax S = get_bmax(X, len); itx = Mx.find(S);
+			if (itx == Mx.end()){ return false; } *val = itx->second; return true;
 		}
 	}
-	int  size(){ if (n <= 64) return M1.size(); return M4.size(); }
+	int  size(){ if (n <= 64) return M1.size(); else if (n < 256) return M4.size(); return Mx.size(); }
 	void demo(){
 		int X[3] = {6, 4, 1}; int Y[4] = {1, 183, 4, 3}; double vx = 6.41; double vy = 1.18343; double val; bool b;  
 		put(X, 3, vx); b = get(X, 3, &val); 
@@ -112,6 +126,8 @@ class Wsets { // Chooses how to implement a put/get-storage for wsets.
 	unordered_map < bmap, double >::iterator	it1;	// Iterator. Yes, STL containers force us to use one, unfortunately.
 	unordered_map < bma4, double, has4 >  		M4;	// Supports ground sets up to 256 elements.
 	unordered_map < bma4, double, has4 >::iterator	it4;	// Iterator. Yes, STL containers force us to use one, unfortunately.
+	unordered_map < bmax, double, hasx >  		Mx;	// Supports ground sets over 256 elements.
+	unordered_map < bmax, double, hasx >::iterator	itx;	// Iterator. Yes, STL containers force us to use one, unfortunately.
 };
 
 #endif
