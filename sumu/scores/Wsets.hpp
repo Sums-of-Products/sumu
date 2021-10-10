@@ -20,30 +20,32 @@ using bmap = uint64_t;
 
 inline void allzero   (bmap *S) {*S = (bmap) 0;}
 inline bmap setbit    (bmap S, int i){ return (S | ((bmap)1 << i)); }
-inline bmap setbits   (bmap S, uint8_t block, int p){ return (S | (((bmap)block) << p)); }
+inline bmap setbits   (bmap S, uint8_t  block, int p){ return (S | (((bmap)block) << p)); }
+inline bmap setbits   (bmap S, uint16_t block, int p){ return (S | (((bmap)block) << p)); }
 inline bool intersects(bmap A, bmap B){ return A & B; }
 inline bool subseteq  (bmap A, bmap B){ return (A == (A & B)); } 
 
 void show(bmap S){ for (bmap i = 0; i < 64; ++i){ cout << (S & (bmap)1) << ""; S = S >> 1; }}
 void show(bmap* a, int m){ for(int i = 0; i < m; ++i){ show(a[i]); }}
 
-bmap get_bmap_s(int* X, int l){ bmap S = (bmap)0; for (int j = 0; j < l; ++j){ 
-//	if (X[j] >= 70){ cerr << " ????? bmap_s " << X[j] << ", j = " << j << endl; exit(1); } 
-	S = setbits(S, (uint8_t)(X[j]+1), 8 * j);} return S; } // X[0] = the least significant bits.
+bmap get_bmap_x(int* X, int l){ bmap S = (bmap)0; for (int j = 0; j < l; ++j){ 
+	S = setbits(S, (uint16_t)(X[j]+1), 16 * j);} return S; } // X[0] = the least significant bits.
+bmap get_bmap_s(int* X, int l){ bmap S = (bmap)0; for (int j = 0; j < l; ++j){  
+	S = setbits(S, (uint8_t )(X[j]+1),  8 * j);} return S; } // X[0] = the least significant bits.
 bmap get_bmap_d(int* X, int l){ bmap S = (bmap)0; for (int j = 0; j < l; ++j) S = setbit (S, X[j]); return S; }
 bmap get_bmap  (int* X, int l){ return get_bmap_d(X, l); } // Default is dense.
 
-void get_sset    (bmap S, int* X, int &l){ l = 0; while (S){ X[l] = (S & (bmap)0xFF) - 1; 
-//	if (X[l] >= 70){ cerr << " ????? " << (S & 0xFFLL) << endl; exit(1); } 
-	++l; S >>= 8; } } // The creation order. X[0] = the least significant 8 bits.
+void get_xset    (bmap S, int* X, int &l){ l = 0; while (S){ X[l] = (S & (bmap)0xFFFF) - 1; ++l; S >>= 16; } }
+void get_sset    (bmap S, int* X, int &l){ l = 0; while (S){ X[l] = (S & (bmap)0xFF  ) - 1; ++l; S >>=  8; } } // The creation order. X[0] = the least significant 8 bits.
 void get_dset_inc(bmap S, int* X, int &l){ l = 0; int i = 0;  while (S){ if ((bmap)1 & S){ X[l] = i; ++l; } ++i; S >>= 1; } } // INC order.
 void get_dset_dec(bmap S, int* X, int &l){ l = 0; int i = 63; while (S){ if (((bmap)1 << 63) & S){ X[l] = i; ++l; } --i; S <<= 1; } } // DEC order.
 
 void get_set(bmap S, int* X, int &l)          { get_dset_inc(S, X, l); }
-void get_set(bmap S, int* X, int &l, int card){ if (card <= 64) get_dset_dec(S, X, l); else get_sset(S, X, l); }
+void get_set(bmap S, int* X, int &l, int card){ 
+	if (card <= 64) get_dset_dec(S, X, l); else if (card < 256) get_sset(S, X, l); else get_xset(S, X, l); }
 
 //============
-struct wset { bmap set; double weight; }; // Either "dense" for any subset of [64], or "sparse" for any subset of [256] of size at most 8. 
+struct wset { bmap set; double weight; }; // Either "dense" for any subset of [64], or "sparse" for any subset of [256] of size at most 8, or "extended" for any subset of [256*256] of size at most 4. 
 
 bool incr(wset x, wset y){ return x.weight < y.weight; }
 bool decr(wset x, wset y){ return x.weight > y.weight; }
@@ -56,10 +58,12 @@ void sort_set(wset *c, int m){ std::sort(c, c + m, incr_set); } // Increasing or
 void show(wset s){ show(s.set); cout << " : " << s.weight << endl; }
 void show(wset* c, int m){ for(int i = 0; i < m; ++i){ show(c[i]); }}
 
+wset get_wset_x(int* X, int l, double v){ return { get_bmap_x(X, l), v }; }
 wset get_wset_s(int* X, int l, double v){ return { get_bmap_s(X, l), v }; }
 wset get_wset_d(int* X, int l, double v){ return { get_bmap_d(X, l), v }; }
 wset get_wset  (int* X, int l, double v){ return   get_wset_d(X, l, v); } // Default is dense.
-wset get_wset  (int* X, int l, double v, int card){ if (card <= 64) return get_wset_d(X, l, v); return get_wset_s(X, l, v); }
+wset get_wset  (int* X, int l, double v, int card){ 
+	if (card <= 64) return get_wset_d(X, l, v); else if (card < 256) return get_wset_s(X, l, v); return get_wset_x(X, l, v); }
 
 
 //=== bma4 ========= Can represent a subset of {0, 1, 2, ..., 255 }.
