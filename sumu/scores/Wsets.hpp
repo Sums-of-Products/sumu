@@ -2,6 +2,8 @@
 // Wsets.hpp
 //////////////////////////////////////////////////////////////////////////////
 
+// Last update, 10 October, 2021: isdense (bool) replaced by the size of the groundset (int)
+
 #ifndef WSETS_HPP
 #define WSETS_HPP
 
@@ -38,7 +40,7 @@ void get_dset_inc(bmap S, int* X, int &l){ l = 0; int i = 0;  while (S){ if ((bm
 void get_dset_dec(bmap S, int* X, int &l){ l = 0; int i = 63; while (S){ if (((bmap)1 << 63) & S){ X[l] = i; ++l; } --i; S <<= 1; } } // DEC order.
 
 void get_set(bmap S, int* X, int &l)          { get_dset_inc(S, X, l); }
-void get_set(bmap S, int* X, int &l, bool isd){ if (isd) get_dset_dec(S, X, l); else get_sset(S, X, l); }
+void get_set(bmap S, int* X, int &l, int card){ if (card <= 64) get_dset_dec(S, X, l); else get_sset(S, X, l); }
 
 //============
 struct wset { bmap set; double weight; }; // Either "dense" for any subset of [64], or "sparse" for any subset of [256] of size at most 8. 
@@ -57,7 +59,7 @@ void show(wset* c, int m){ for(int i = 0; i < m; ++i){ show(c[i]); }}
 wset get_wset_s(int* X, int l, double v){ return { get_bmap_s(X, l), v }; }
 wset get_wset_d(int* X, int l, double v){ return { get_bmap_d(X, l), v }; }
 wset get_wset  (int* X, int l, double v){ return   get_wset_d(X, l, v); } // Default is dense.
-wset get_wset  (int* X, int l, double v, bool isdense){ if (isdense) return get_wset_d(X, l, v); return get_wset_s(X, l, v); }
+wset get_wset  (int* X, int l, double v, int card){ if (card <= 64) return get_wset_d(X, l, v); return get_wset_s(X, l, v); }
 
 
 //=== bma4 ========= Can represent a subset of {0, 1, 2, ..., 255 }.
@@ -77,13 +79,13 @@ class Wsets { // Chooses how to implement a put/get-storage for wsets.
 	~Wsets(){};
 	void init (int n0){ set_n(n0); }
 	void clear()      { M1.clear(); M4.clear(); }
-	void set_n(int n0){ n = n0; small = (n <= 64); } 
+	void set_n(int n0){ n = n0; } 
 	void put  (int* X, int len, double val){ 
-		if (small){ wset x = get_wset(X, len, val); M1.insert({ x.set, x.weight }); }
-		else      { wse4 x = get_wse4(X, len, val); M4.insert({ x.set, x.weight }); }
+		if (n <= 64){ wset x = get_wset(X, len, val); M1.insert({ x.set, x.weight }); }
+		else        { wse4 x = get_wse4(X, len, val); M4.insert({ x.set, x.weight }); }
 	}
 	bool get  (int* X, int len, double* val){
-		if (small){ 
+		if (n <= 64){ 
 			bmap S = get_bmap(X, len); it1 = M1.find(S);
 			if (it1 == M1.end()){ return false; } *val = it1->second; return true;
 		} else { 
@@ -91,7 +93,7 @@ class Wsets { // Chooses how to implement a put/get-storage for wsets.
 			if (it4 == M4.end()){ return false; } *val = it4->second; return true;
 		}
 	}
-	int  size(){ if (small) return M1.size(); return M4.size(); }
+	int  size(){ if (n <= 64) return M1.size(); return M4.size(); }
 	void demo(){
 		int X[3] = {6, 4, 1}; int Y[4] = {1, 183, 4, 3}; double vx = 6.41; double vy = 1.18343; double val; bool b;  
 		put(X, 3, vx); b = get(X, 3, &val); 
@@ -102,7 +104,6 @@ class Wsets { // Chooses how to implement a put/get-storage for wsets.
 	}   
     private:
 	int						n;	// Assumes the stored sets are subsets of {0, 1, 2, ..., n-1}.
-	bool						small;	// True if n <= 64 and false otherwise.
 	unordered_map < bmap, double >  		M1;	// Currently only supports small ground sets, using the 64-bit bmap.
 	unordered_map < bmap, double >::iterator	it1;	// Iterator. Yes, STL containers force us to use one, unfortunately.
 	unordered_map < bma4, double, has4 >  		M4;	// Supports ground sets up to 256 elements.

@@ -1,5 +1,7 @@
 // Compile with g++ using options -Wall -O3 
 
+// Last update, 10 October, 2021: isdense (bool) replaced by the size of the groundset (int)
+
 #ifndef BDEU_HPP
 #define BDEU_HPP
 
@@ -20,7 +22,7 @@ using bm64 = uint64_t;
 struct Param { 
 	vector<int>	C;		// The given set of candidates; the labeling of Y is relative to C.
 	int 		u;		// The given upper bound for the size |Y|.
-	bool 		isdense;	// The truth value of (|C| <= 64); determines the encoding of Y. 
+	int 		card;	// The cardinality |C|; determines the encoding of Y. 
 };
 
 
@@ -83,7 +85,7 @@ class BDeu {
 	double score_all ();			// Just for testing.
 
 	double cliqa(int* S, int lS, int u);	// Scores and stores all subsets of S of size at most u that contain the last of S.
-	double dfo2 (int* X, int lX, int lmax, int* S, int jmin, int jmax, int mleft, double rq, bool isdense); // Bunch of scores rec.
+	double dfo2 (int* X, int lX, int lmax, int* S, int jmin, int jmax, int mleft, double rq, int card); // Bunch of scores rec.
 	double score_all1();			// Just for testing.
 
 	int     index(int *X, int lX, int u);	// Index to cscores, relative to the S used when built; X in dec order. 
@@ -187,14 +189,13 @@ double BDeu::cliq (int* S, int d, int u){
 	cscores.clear(); cscores.shrink_to_fit(); // Completely clears and resizes cscores.
 	preindex(31);	// Computes binomsum[][]. For some unknown reason not sufficient to do this in the init() function.
 	cscores.reserve(binomsum[d][u]); // Note: indexing will be relative to S. 
-	double scoresum = dfo2(X, 0, u, S, 0, d, m, 1.0, (d <= 64)); // Visit and score in depth-first order.
+	double scoresum = dfo2(X, 0, u, S, 0, d, m, 1.0, d); // Visit and score in depth-first order.
 	delete[] X; return scoresum;	
 }
 // Frees the memory allocated by ascores, a cahche for arbitrary clique score queries.
 void BDeu::clear_cliqc(){ ascores.clear(); /* Note that ascores is not a vector but a Wsets object.*/ }
-// Frees the memory allocated by cscores, an array indexing scores of regural clique collections.
+// Frees the memory allocated by cscores, an array indexing scores of regular clique collections.
 void BDeu::clear_cliq (){ cscores.clear(); cscores.shrink_to_fit(); }
-
 
 // Returns the BDeu score of the family (i, Y) where Y is of size d. 
 double BDeu::fami (int i, int* Y, int d){
@@ -206,12 +207,12 @@ double BDeu::fami (int i, int* Y, int d){
 // Scores ALL families (i, Y) where i is an element of S and Y is a subset of S of size at most u.
 double BDeu::fami(int* S, int lS, int u){
 	clear_fami();
-	int uu = min(u+1, lS); bool isdense = (lS <= 64); 
-	double scoresum = cliq(S, lS, uu); // Note: Compute clique scores with u+1. Note: "isdense" not passed, but rediscovered.
+	int uu = min(u+1, lS); int card = lS; 
+	double scoresum = cliq(S, lS, uu); // Note: Compute clique scores with u+1. Note: "card" not passed, but rediscovered.
 	int ll = cscores.size(); int* X = new int[uu]; int lX; int* Y = new int[uu]; int* Z = new int[uu];
 	for (int j = 0; j < lS; ++j) fscores[j].reserve(ll+1); // Note: Currently reserving a bit too much.
 	for (int k = 0; k < ll; ++k){ // Go through all the cliques X.
-		wset Xw = cscores.at(k); get_set(Xw.set, X, lX, isdense); // Note: X is in DEC order. Pass "isdense".
+		wset Xw = cscores.at(k); get_set(Xw.set, X, lX, card); // Note: X is in DEC order. Pass "card".
 		int lY = lX - 1;
 		for (int h = 0; h < lY; ++h){ Y[h] = X[h+1]; Z[h] = Y[h]; } // Init Y and its proxy Z with the smallest elements.
 		for (int j = 0; j < lX; ++j){
@@ -219,13 +220,13 @@ double BDeu::fami(int* S, int lS, int u){
 			if (j > 0){ Y[j-1] = X[j-1]; Z[j-1] = Y[j-1]-1; } //  A bit clumsy, but works.
 			int indY = index(Y, lY, uu); wset Yw = cscores.at(indY); // Note: computing the index does take O(lY) time.
 			// Now, indY and Yw are wrt S. However, we want to represent Y wrt S\{i}, for tight indexing etc...
-			wset Yiw = get_wset(Z, lY, Xw.weight - Yw.weight, isdense); fscores[i].push_back(Yiw);
+			wset Yiw = get_wset(Z, lY, Xw.weight - Yw.weight, card); fscores[i].push_back(Yiw);
 			// Sanity check:
 			if ((int) index(Z, lY, u) != (int) fscores[i].size()-1){ cerr << " *** ERROR *** EXIT NOW \n"; exit(1); }
 		}
 	}
 	for (int j = 0; j < lS; ++j){ // Set fparams.
-		fparams[j].u = u; fparams[j].isdense = isdense;
+		fparams[j].u = u; fparams[j].card = card;
 		fparams[j].C.clear(); fparams[j].C.shrink_to_fit();
 		for (int h = 0; h < 5; ++h){ if (h != j) fparams[j].C.push_back(S[h]); } 
 	}
@@ -244,17 +245,17 @@ double BDeu::fami(int i, int* C, int lC, int u){
 	fscores[i].reserve(l2/2); 		// Exactly what is needed, since (i, Y) is obtained from Y and Y U {i}. 
 	int* X = new int[u+1]; int lX; int* Y = new int[u]; int lY;	  
 	for (int k = l1; k < l2; ++k){ // Go through all the cliques X that contain i. In fact, i is encoded as lS-1.
-		wset Xw = cscores.at(k); get_set(Xw.set, X, lX, (lS <= 64));	// Note: X is in DEC order. Pass "isdense".
+		wset Xw = cscores.at(k); get_set(Xw.set, X, lX, lS);	// Note: X is in DEC order. Pass "card" (lS).
 		lY = lX - 1; for (int h = 0; h < lY; ++h) Y[h] = X[h+1];	// Get Y. Could simplify to "Y = X+1".
 		int indY = index(Y, lY, u); wset Yw = cscores.at(indY);		// Y is among the first list of cliques.		
-		wset Yiw = get_wset(Y, lY, Xw.weight - Yw.weight, (lC <= 64));	// The encoding of Y is wrt C. 
+		wset Yiw = get_wset(Y, lY, Xw.weight - Yw.weight, lC);	// The encoding of Y is wrt C. 
 		fscores[i].push_back(Yiw);
 		// Sanity check:
 		if (indY != (int) fscores[i].size()-1){ cerr << " *** ERROR, k = "<< k <<" *** EXIT NOW \n"; exit(1); }
 	}
 	//cout<<" [fami:] (i, fscores[i].size) = "; for (int i = 0; i < n; i ++){ cout<<"("<<i<<", "<<fscores[i].size()<<"); "; } cout<<endl;
 	// Set fparams.
-	fparams[i].u = u; fparams[i].isdense = (lC <= 64);
+	fparams[i].u = u; fparams[i].card = lC;
 	fparams[i].C.clear(); fparams[i].C.shrink_to_fit();
 	for (int h = 0; h < lC; ++h) fparams[i].C.push_back(S[h]); 
 	delete[] S; delete[] X; delete[] Y; 
@@ -268,7 +269,6 @@ double BDeu::fscore(int i, int* Y, int lY){ // We assume Y is in increasing orde
 	int u = fparams[i].u; int ind = iindex(Y, lY, u); 
 	return fscores[i][ind].weight;
 }
-
 
 ///////////////////
 // Private methods: 
@@ -446,11 +446,11 @@ double BDeu::cliqa(int* S, int lS, int u){
 	int* X = new int[lS];  
 	for (int t = 0; t < m; ++t){ tmp[0][t] = t; } // Init tmp[0][]. No need to init prt[].
 	int ll = cscores.size(); cscores.reserve(ll + binomsum[lS-1][u-1]); // Note: indexing will be relative to S. 
-	double scoresum = dfo2(X, 0, u, S, lS-1, lS, m, 1.0, (lS <= 64)); // Argument lS-1 makes it put X[0] = lS-1.
+	double scoresum = dfo2(X, 0, u, S, lS-1, lS, m, 1.0, lS); // Argument lS-1 makes it put X[0] = lS-1.
 	delete[] X; return scoresum;	
 }
 // Subsets X of S in depth-first order. Gathers singleton into "dark material". This is quite a hack.  
-double BDeu::dfo2(int* X, int lX, int lmax, int* S, int jmin, int jmax, int mleft, double rq, bool isdense){
+double BDeu::dfo2(int* X, int lX, int lmax, int* S, int jmin, int jmax, int mleft, double rq, int card){
 //	if (lX == 1) cerr << " " << X[0];
 	double val = 0;
 	if (lX){ // Score X based on the counts that can be read from prt[lX-1][]. 		
@@ -462,7 +462,7 @@ double BDeu::dfo2(int* X, int lX, int lmax, int* S, int jmin, int jmax, int mlef
 		double essrq = ess/rq; val = base_delta_lgamma; // lgamma(ess) - lgamma(m + ess); // THE SAME FOR ALL.	
 		double baslg = lgamma(essrq); for (int c = 1; c <= maxc; ++c) if (fre[c]) val += fre[c] * (lgamma(c + essrq) - baslg); 
 	}
-	if (jmin == 0){ wset xv = get_wset(X, lX, val, isdense); cscores.push_back(xv); } // When forcing X[0], don't store the empty set.
+	if (jmin == 0){ wset xv = get_wset(X, lX, val, card); cscores.push_back(xv); } // When forcing X[0], don't store the empty set.
 	if (lX == lmax) return val; 
 	// Branch on "lower variables".
 	for (int j = jmin; j < jmax; ++j){ // Alternatively, could consider the opposite order, from depth-1 downto 0.
@@ -524,7 +524,7 @@ double BDeu::dfo2(int* X, int lX, int lmax, int* S, int jmin, int jmax, int mlef
 				++p; tot += qmax; loc += qact; for (int h = 0; h < lhit; ++h) num[hit[h]] = 0; 
 			}
 		}
-		val += dfo2(X, lX+1, lmax, S, 0, j, loc, rq * ri, isdense); // Updated mleft to loc. Forced jmin := 0. 
+		val += dfo2(X, lX+1, lmax, S, 0, j, loc, rq * ri, card); // Updated mleft to loc. Forced jmin := 0. 
 	} 
 	return val;
 }
