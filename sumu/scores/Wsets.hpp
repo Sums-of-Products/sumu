@@ -77,21 +77,10 @@ struct wse4 {bma4 set; double weight; };
 wse4 get_wse4(int* X, int l, double val){ return { get_bma4(X, l), val }; }
 
 //=== bmax ========= Can represent a subset of {0, 1, 2, ..., 2^16 - 1 }.
-struct bmax {uint32_t s; uint32_t i; bool operator==(const bmax& S) const { return s==S.s && i==S.i; } }; 
-struct hasx { size_t operator()(const bmax& S) const { return (bmap)(S.s ^ S.i); } }; 
-bmax get_bmax(int* X, int l){ 
-	bmax S = { (uint32_t)0 , (uint32_t)0 }; 
-	int shift = 0;
-	for (int j = 0; j < l; ++j){ 
-		S.i |= (X[j] >> 3) << shift; 
-		S.s |= (X[j] & 0xFF) << shift;
-		shift += 8; 
-	} 
-	return S; 
-}
+bmap get_bmax(int* X, int l){ return get_bmap_x(X, l); }
 
 //=== wsex ========= Paired with a weight.
-struct wsex {bmax set; double weight; };
+struct wsex {bmap set; double weight; };
 wsex get_wsex(int* X, int l, double val){ return { get_bmax(X, l), val }; }
 
 
@@ -116,7 +105,7 @@ class Wsets { // Chooses how to implement a put/get-storage for wsets.
 			bma4 S = get_bma4(X, len); it4 = M4.find(S);
 			if (it4 == M4.end()){ return false; } *val = it4->second; return true;
 		} else { 
-			bmax S = get_bmax(X, len); itx = Mx.find(S);
+			bmap S = get_bmax(X, len); itx = Mx.find(S);
 			if (itx == Mx.end()){ return false; } *val = itx->second; return true;
 		}
 	}
@@ -135,8 +124,8 @@ class Wsets { // Chooses how to implement a put/get-storage for wsets.
 	unordered_map < bmap, double >::iterator	it1;	// Iterator. Yes, STL containers force us to use one, unfortunately.
 	unordered_map < bma4, double, has4 >  		M4;	// Supports ground sets up to 256 elements.
 	unordered_map < bma4, double, has4 >::iterator	it4;	// Iterator. Yes, STL containers force us to use one, unfortunately.
-	unordered_map < bmax, double, hasx >  		Mx;	// Supports ground sets over 256 elements.
-	unordered_map < bmax, double, hasx >::iterator	itx;	// Iterator. Yes, STL containers force us to use one, unfortunately.
+	unordered_map < bmap, double >  		Mx;	// Supports ground sets over 256 elements.
+	unordered_map < bmap, double >::iterator	itx;	// Iterator. Yes, STL containers force us to use one, unfortunately.
 };
 
 #endif
