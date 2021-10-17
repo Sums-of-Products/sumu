@@ -7,6 +7,7 @@
 
 using namespace wsum;
 
+using bm8  = uint8_t;
 using bm16 = uint16_t;
 
 struct bm128 { bm64 s1; bm64 s2; };

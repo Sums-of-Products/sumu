@@ -335,12 +335,12 @@ double IntersectSums::scan_sum_x(double w0, vector<bm64> U, vector<bm64> T, bm64
   Treal slack; slack = eps/t_ub;
   Treal factor; factor = 0.0;
 
-  uint8_t *u = new uint8_t[k * 64]; uint8_t *t = new uint8_t[k * 64]; int p = 0;
-/*
+  bm8 *u = new bm8[k * 64]; bm8 *t = new bm8[k * 64]; int p = 0;
   for (int l = 0; l < k; ++l){
 	bm64 Ul = U[l]; bm64 Tl = T[l];
-	for (int j = 0; j < 64; ++j){ u[p] = Ul & (bm64)1; t[p] = Tl & (bm64)1; Ul >>= 1; Tl >>= 1; ++p; }
+	for (int j = 0; j < 64; ++j){ u[p] = Ul & 0x01; t[p] = Tl & 0x01; Ul >>= 1; Tl >>= 1; ++p; }
   }
+/*
   bm64 i = 0;
   for (; i < m; ++i) {
     bmx = sx[i].set;
