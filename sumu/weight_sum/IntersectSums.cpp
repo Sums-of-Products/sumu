@@ -340,10 +340,9 @@ double IntersectSums::scan_sum_x(double w0, vector<bm64> U, vector<bm64> T, bm64
 	bm64 Ul = U[l]; bm64 Tl = T[l];
 	for (int j = 0; j < 64; ++j){ u[p] = Ul & 0x01; t[p] = Tl & 0x01; Ul >>= 1; Tl >>= 1; ++p; }
   }
-/*
   bm64 i = 0;
   for (; i < m; ++i) {
-    bmx = sx[i].set;
+    bmx P = sx[i].set;
     if ((u[P.v1] & u[P.v2] & u[P.v3] & u[P.v4]) & (t[P.v1] | t[P.v2] | t[P.v3] | t[P.v4])) {
       sum += sx[i].weight;
 	  factor = sum * slack;
@@ -358,7 +357,6 @@ double IntersectSums::scan_sum_x(double w0, vector<bm64> U, vector<bm64> T, bm64
       sum += score;
     }
   }
-*/
   delete[] u; delete[] t;
 
   return sum.get_log();
