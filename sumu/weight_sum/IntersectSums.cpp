@@ -362,4 +362,45 @@ double IntersectSums::scan_sum_x(double w0, vector<bm64> U, vector<bm64> T, bm64
   return sum.get_log();
 }
 
+pair<vector<bm64>, double> IntersectSums::scan_rnd_x(vector<bm64> U, vector<bm64> T, double wcum) {
+  Treal sum; sum = 0.0;
+  Treal target; target.set_log(wcum);
+
+  bm8 *u = new bm8[k * 64]; bm8 *t = new bm8[k * 64]; int p = 0;
+  for (int l = 0; l < k; ++l){
+	bm64 Ul = U[l]; bm64 Tl = T[l];
+	for (int j = 0; j < 64; ++j){ u[p] = Ul & 0x01; t[p] = Tl & 0x01; Ul >>= 1; Tl >>= 1; ++p; }
+  }
+
+  bm64 i = 0; bmx P; bm64 P_i = 0;
+  for (; i < m; ++i) {
+    P = sx[i].set;
+    if ( (u[P.v1] & u[P.v2] & u[P.v3] & u[P.v4]) & (t[P.v1] | t[P.v2] | t[P.v3] | t[P.v4]) ) {
+	  P_i = i;
+      sum = sx[i].weight;
+	  if (sum > target) i = m;
+	  ++i;
+	  break;
+    }
+  }
+  for (; i < m; ++i) {
+    P = sx[i].set;
+    if ( (u[P.v1] & u[P.v2] & u[P.v3] & u[P.v4]) & (t[P.v1] | t[P.v2] | t[P.v3] | t[P.v4]) ) {
+	  P_i = i;
+	  Treal score = sx[i].weight; sum += score;
+	  if (sum > target) break;
+    }
+  }
+  delete[] u; delete[] t;
+
+  P = sx[P_i].set; bm16 v;
+  vector<bm64> Q; for (int l = 0; l < k; ++l){ Q.push_back(0); }
+  v = P.v1; Q[v >> 6] |= ((bm64)1 << (v & 0x3F));
+  v = P.v2; Q[v >> 6] |= ((bm64)1 << (v & 0x3F));
+  v = P.v3; Q[v >> 6] |= ((bm64)1 << (v & 0x3F));
+  v = P.v4; Q[v >> 6] |= ((bm64)1 << (v & 0x3F));
+
+  return make_pair(Q, sx[P_i].weight.get_log());
+}
+
 

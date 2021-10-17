@@ -54,6 +54,7 @@ public:
   std::pair<bm192, double> scan_rnd_192(bm192 U, bm192 T, double wcum);
   std::pair<bm256, double> scan_rnd_256(bm256 U, bm256 T, double wcum);
   std::pair<std::vector<bm64>, double> scan_rnd(std::vector<bm64> U, std::vector<bm64> T, double wcum);
+  std::pair<std::vector<bm64>, double> scan_rnd_x(std::vector<bm64> U, std::vector<bm64> T, double wcum);
 
   bool intersects(std::vector<bm64> A, std::vector<bm64> B);
   bool subseteq(std::vector<bm64> A, std::vector<bm64> B);
