@@ -7,15 +7,19 @@
 
 using namespace wsum;
 
+using bm16 = uint16_t;
+
 struct bm128 { bm64 s1; bm64 s2; };
 struct bm192 { bm64 s1; bm64 s2; bm64 s3; };
 struct bm256 { bm64 s1; bm64 s2; bm64 s3; bm64 s4; };
+struct bmx   { bm16 v1, v2, v3, v4; };
 
 struct ws64 { bm64 set; Treal weight; };
 struct ws128 { bm128 set; Treal weight; };
 struct ws192 { bm192 set; Treal weight; };
 struct ws256 { bm256 set; Treal weight; };
 struct ws { std::vector<bm64> set; Treal weight; };
+struct wsx   { bmx set; Treal weight; };
 
 inline bool intersects_64(bm64 A, bm64 B){ return A & B; }
 inline bool subseteq_64(bm64 A, bm64 B){ return (A == (A & B)); }
@@ -61,6 +65,7 @@ private:
   std::vector<ws192> s192;
   std::vector<ws256> s256;
   std::vector<ws> s;
+  std::vector<wsx> sx;
   bm64 *idx;               // Sorted indices.
 };
 
