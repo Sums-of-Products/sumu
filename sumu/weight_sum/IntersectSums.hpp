@@ -46,6 +46,7 @@ public:
   double scan_sum_192(double w, bm192 U, bm192 T, bm64 t_ub);
   double scan_sum_256(double w, bm256 U, bm256 T, bm64 t_ub);
   double scan_sum(double w, std::vector<bm64> U, std::vector<bm64> T, bm64 t_ub);
+  double scan_sum_x(double w, std::vector<bm64> U, std::vector<bm64> T, bm64 t_ub);
 
   std::pair<bm64, double> scan_rnd_64(bm64 U, bm64 T, double wcum);
   std::pair<bm128, double> scan_rnd_128(bm128 U, bm128 T, double wcum);

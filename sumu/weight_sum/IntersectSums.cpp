@@ -36,9 +36,10 @@ IntersectSums::IntersectSums(double *w0, bm64 *pset0, bm64 m0, int k0, double ep
 	  s.push_back( {set, w} );
 	}
 	else if (k < 0) {	// Read at most elements for the (-k) 64-bit vectors and represent them in a bmx.
-		bmx set = {};	// We re-implement some required operations from Wsets.hpp here, at least for now.
+		k = -k;
+		bmx set = {};	
 		int p = 0;		// Number of elements (found).
-		for (int l = 0; l < -k; ++l) {
+		for (int l = 0; l < k; ++l) {
 			bm64 block = pset0[j++]; int v = l * 64;
 			while (block > 0){	// Somewhat slow scanning. On the other hand, not many blocks can be nonzero.
 				if (block & (bm64)1){	// New element v found; insert to the set.
@@ -327,3 +328,36 @@ pair<bm256, double> IntersectSums::scan_rnd_256(bm256 U, bm256 T, double wcum) {
   }
   return make_pair(s256[P_i].set, s256[P_i].weight.get_log());
 }
+
+double IntersectSums::scan_sum_x(double w0, vector<bm64> U, vector<bm64> T, bm64 t_ub) {
+  Treal sum; sum = 0.0;
+  if (w0 != -std::numeric_limits<double>::infinity()) {sum.set_log(w0);}
+  Treal slack; slack = eps/t_ub;
+  Treal factor; factor = 0.0;
+  uint8_t *u = new uint8_t[k * 64]; uint8_t *t = new uint8_t[k * 64]; int p = 0;
+  for (int l = 0; l < k; ++l){
+	bm64 Ul = U[l]; bm64 Tl = T[l];
+	for (int j = 0; j < 64; ++j){ u[p] = Ul & (bm64)1; t[p] = Tl & (bm64)1; Ul >>= 1; Tl >>= 1; ++p; }
+  }
+  bm64 i = 0;
+  for (; i < m; ++i) {
+    bmx = sx[i].set;
+    if ((u[P.v1] & u[P.v2] & u[P.v3] & u[P.v4]) & (t[P.v1] | t[P.v2] | t[P.v3] | t[P.v4])) {
+      sum += sx[i].weight;
+	  factor = sum * slack;
+	  ++i; break;
+    }
+  }
+  for (; i < m; ++i){
+    bmx P = sx[i].set;
+    if ((u[P.v1] & u[P.v2] & u[P.v3] & u[P.v4]) & (t[P.v1] | t[P.v2] | t[P.v3] | t[P.v4])) {
+      Treal score; score = sx[i].weight;
+      if (score < factor) { break; }
+      sum += score;
+    }
+  }
+  delete[] u; delete[] t;
+  return sum.get_log();
+}
+
+
