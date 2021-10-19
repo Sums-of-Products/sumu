@@ -636,7 +636,7 @@ void BDeu::init(int m0, int n0){
 	r = new int[n]; w = new int[n]; lng = new double[m+1]; fre = new uint32_t[m+1]();
 	for (int i = 0; i < n; ++i){ 
 		dat[i] = new Tdat[m]; tmp[i] = new int[m]; prt[i] = new int[m]; binomsum[i] = new int[32]; 
-		for (int t = 0; t < m; ++t) tmp[i][t] = 0; 
+		for (int t = 0; t < m; ++t) tmp[i][t] = 0; for (int t = 0; t < 32; ++t) binomsum[i][t] = 0;
 	}
 	fscores = new vector<wset>[n]; fparams.resize(n); ascores.init(n); //ascores.demo();
 	preindex(31); initdone = true;
