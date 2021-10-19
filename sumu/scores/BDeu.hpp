@@ -27,7 +27,7 @@ struct Param {
 
 
 #define Tdat 		int //uint8_t
-#define BDEU_MAXN 	4096 //256
+#define BDEU_MAXN 	2048 //256
 #define BDEU_MAXARITY 	256
 //#define BDEU_MAXM	1024*1024	
 class BDeu {
