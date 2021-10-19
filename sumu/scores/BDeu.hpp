@@ -632,17 +632,19 @@ BDeu::BDeu(void){ initdone = false; }
 BDeu::~BDeu(void){ if (initdone) fini(); }
 void BDeu::init(int m0, int n0){
 	m = m0; n = n0; //set_ess(1.0); 
-	dat = new Tdat*[n]; tmp = new int*[n]; prt = new int*[n]; binomsum = new int*[n];
+	dat = new Tdat*[n]; tmp = new int*[n]; prt = new int*[n]; binomsum = new int*[n+1];
 	r = new int[n]; w = new int[n]; lng = new double[m+1]; fre = new uint32_t[m+1]();
 	for (int i = 0; i < n; ++i){ 
 		dat[i] = new Tdat[m]; tmp[i] = new int[m]; prt[i] = new int[m]; binomsum[i] = new int[32]; 
-		for (int t = 0; t < m; ++t) tmp[i][t] = 0; for (int t = 0; t < 32; ++t) binomsum[i][t] = 0;
+		for (int t = 0; t < m; ++t) tmp[i][t] = 0;
 	}
+	binomsum[n] = new int[32];
 	fscores = new vector<wset>[n]; fparams.resize(n); ascores.init(n); //ascores.demo();
 	preindex(31); initdone = true;
 }
 void BDeu::fini(){
 	for (int i = 0; i < n; ++i){ delete[] dat[i]; delete[] tmp[i]; delete[] prt[i]; delete[] binomsum[i]; }  
+	delete[] binomsum[n];
 	delete[] dat; delete[] tmp; delete[] r; delete[] w; delete[] lng; delete[] fre; delete[] prt; delete[] binomsum;
 	delete[] fscores; initdone = false; 
 }
