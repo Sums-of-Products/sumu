@@ -72,7 +72,7 @@ class BDeu {
 	uint32_t*	fre;			// Helper array of size m+1 to store a multiset of counts, indexed by counts. 
 	double* 	lng;			// Helper array of size m+1 to store ln(Gamma(j + ess')/Gamma(ess')).
 	int**   	prt;			// Helper array of size n x m, yet another;
-	int binomsum[BDEU_MAXN][32];		// Tail sums of binomial coefficients. Would be better make this static.
+	int** 		binomsum;		// Tail sums of binomial coefficients.
 	double 		base_delta_lgamma;	// lgamma(m + ess) - lgamma(ess);
 	bool 		initdone;		// Flag: whether mem dynamically allocated (to be released at the end). 	
 
@@ -632,18 +632,18 @@ BDeu::BDeu(void){ initdone = false; }
 BDeu::~BDeu(void){ if (initdone) fini(); }
 void BDeu::init(int m0, int n0){
 	m = m0; n = n0; //set_ess(1.0); 
-	dat = new Tdat*[n]; tmp = new int*[n]; prt = new int*[n];
+	dat = new Tdat*[n]; tmp = new int*[n]; prt = new int*[n]; binomsum = new int*[n];
 	r = new int[n]; w = new int[n]; lng = new double[m+1]; fre = new uint32_t[m+1]();
 	for (int i = 0; i < n; ++i){ 
-		dat[i] = new Tdat[m]; tmp[i] = new int[m]; prt[i] = new int[m]; 
+		dat[i] = new Tdat[m]; tmp[i] = new int[m]; prt[i] = new int[m]; binomsum[i] = new int[32]; 
 		for (int t = 0; t < m; ++t) tmp[i][t] = 0; 
 	}
 	fscores = new vector<wset>[n]; fparams.resize(n); ascores.init(n); //ascores.demo();
 	preindex(31); initdone = true;
 }
 void BDeu::fini(){
-	for (int i = 0; i < n; ++i){ delete[] dat[i]; delete[] tmp[i]; delete[] prt[i]; }  
-	delete[] dat; delete[] tmp; delete[] r; delete[] w; delete[] lng; delete[] fre; delete[] prt;
+	for (int i = 0; i < n; ++i){ delete[] dat[i]; delete[] tmp[i]; delete[] prt[i]; delete[] binomsum[i]; }  
+	delete[] dat; delete[] tmp; delete[] r; delete[] w; delete[] lng; delete[] fre; delete[] prt; delete[] binomsum;
 	delete[] fscores; initdone = false; 
 }
 void BDeu::print_tmp(){
