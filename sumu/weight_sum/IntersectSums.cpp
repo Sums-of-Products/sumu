@@ -36,11 +36,10 @@ IntersectSums::IntersectSums(double *w0, bm64 *pset0, bm64 m0, int k0, double ep
 	  s.push_back( {set, w} );
 	}
 	else if (k < 0) {	// Read at most elements for the (-k) 64-bit vectors and represent them in a bmx.
-		k = -k;
 		bmx set = {};	
 		int p = 0;		// Number of elements (found).
-		for (int l = 0; l < k; ++l) {
-			bm64 block = pset0[j++]; int v = l * 64;
+		for (int l = 0; l < (-k); ++l) {
+			bm64 block = pset0[j++]; bm16 v = l * 64;
 			while (block > 0){	// Somewhat slow scanning. On the other hand, not many blocks can be nonzero.
 				if (block & (bm64)1){	// New element v found; insert to the set.
 					++p;
@@ -58,6 +57,7 @@ IntersectSums::IntersectSums(double *w0, bm64 *pset0, bm64 m0, int k0, double ep
 		sx.push_back( {set, w} );
 	}
   }
+  if (k < 0) k = -k; 
   sort_ws(s64); sort_ws(s128); sort_ws(s192); sort_ws(s256); sort_ws(s); sort_ws(sx);
   eps = eps0;
 };
