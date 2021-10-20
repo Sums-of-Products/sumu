@@ -117,7 +117,7 @@ def test_Gadget_runs_continuous_data():
     assert True
 
 
-def test_Gadget_runs_n_greater_than_256():
+def test_Gadget_runs_n_greater_than_256_continuous():
     data = np.random.rand(600, 300)
     sumu.Gadget(
         data=data,
@@ -128,9 +128,24 @@ def test_Gadget_runs_n_greater_than_256():
     assert True
 
 
+def test_Gadget_runs_n_greater_than_256_discrete():
+    data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
+    bn_path = data_path / "pigs.dsc"
+    bn = sumu.utils.io.read_dsc(bn_path)
+    data = bn.sample(1000, seed=0)
+    sumu.Gadget(
+        data=data,
+        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        candp={"name": "rnd"},
+        cons={"K": 8, "d": 1}
+    ).sample()
+    assert True
+
+
 if __name__ == '__main__':
-    test_Gadget_runs_n_between_2_and_64()
+    #test_Gadget_runs_n_between_2_and_64()
     #test_Gadget_runs_n_between_65_and_128()
     #test_Gadget_runs_n_between_129_and_192()
     #test_Gadget_runs_n_between_193_and_256()
     #test_Gadget_empirical_edge_prob_error_decreases()
+    test_Gadget_runs_n_greater_than_256_discrete()
