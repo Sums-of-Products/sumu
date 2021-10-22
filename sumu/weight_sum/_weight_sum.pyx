@@ -175,8 +175,8 @@ cdef class CandidateComplementScore:
 
         if self.k == 1:
             return self.isums[0][v].scan_sum_64(w,
-                                                bm_to_np64(bm(U))[0],
-                                                bm_to_np64(bm(T))[0],
+                                                U[0],
+                                                T[0],
                                                 self.t_ub[len(U)-1][len(T)-1])
         if self.k == 2:
             U128 = [U[0], U[1]]
@@ -184,8 +184,8 @@ cdef class CandidateComplementScore:
             return self.isums[0][v].scan_sum_128(w, U128, T128,
                                                  self.t_ub[len(U)-1][len(T)-1])
         if self.k == 3:
-            U192 = [U_bm[0], U_bm[1], U_bm[2]]
-            T192 = [T_bm[0], T_bm[1], T_bm[2]]
+            U192 = [U[0], U[1], U[2]]
+            T192 = [T[0], T[1], T[2]]
             return self.isums[0][v].scan_sum_192(w, U192, T192,
                                                  self.t_ub[len(U)-1][len(T)-1])
         if self.k == 4:
@@ -244,6 +244,10 @@ cdef class CandidateComplementScore:
             pset, score = self.isums[0][v].scan_rnd_256(U256, T256, wcum)
             pset = bm_to_ints(np64_to_bm(np.array([pset["s1"], pset["s2"], pset["s3"], pset["s4"]],
                                                   dtype=np.uint64)))
+
+        if self.k > 4:
+            pset, score = self.isums[0][v].scan_rnd(U, T, wcum)
+            pset = bm_to_ints(np64_to_bm(pset))
 
         if self.k < 0:
             pset, score = self.isums[0][v].scan_rnd_x(U, T, wcum)
