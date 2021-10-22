@@ -24,6 +24,9 @@ from .scorer import BDeu, BGe
 from .candidates import candidate_parent_algorithm as cpa
 from .stats import Stats, stats
 
+from .utils.math_utils import subsets, comb
+from .utils.bitmap import bm, bm_to_np64
+
 
 class Defaults:
 
@@ -1148,7 +1151,10 @@ class LocalScore:
         self.maxid = maxid
         self._precompute_prior()
 
-        if self.score["name"] == "bdeu":
+        if self.data.N == 0:
+            self.scorer = EmptyDataScore()
+
+        elif self.score["name"] == "bdeu":
             self.scorer = BDeu(data=self.data.data,
                                maxid=self.maxid,
                                ess=self.score["params"]["ess"])
@@ -1221,6 +1227,32 @@ class LocalScore:
                 tmp[pset] = self._local(v, np.array(pset))
             scores[v] = tmp
         return scores
+
+
+class EmptyDataScore:
+
+    def __init__(self, **kwargs):
+        pass
+
+    def local(self, v, pset):
+        return 0
+
+    def candidate_score_array(self, C):
+        return np.zeros((len(C), 2**len(C[0])))
+
+    def clear_cache(self):
+        pass
+
+    def complement_psets_and_scores(self, v, C, d):
+        n = len(C)
+        K = len(C[0])
+        k = (n - 1) // 64 + 1
+        pset_tuple = list(filter(lambda ss: not set(ss).issubset(C[v]),
+                                 subsets([u for u in C if u != v], 1, d)))
+        pset_len = np.array(list(map(len, pset_tuple)), dtype=np.int32)
+        pset_bm = list(map(lambda pset: bm_to_np64(bm(set(pset)), k), pset_tuple))
+        scores = np.array([self.local(v, pset) for pset in pset_tuple])
+        return np.array(pset_bm), scores, pset_len
 
 
 class Score:  # should be renamed to e.g. ScoreHandler

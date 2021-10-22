@@ -142,6 +142,28 @@ def test_Gadget_runs_n_greater_than_256_discrete():
     assert True
 
 
+def test_Gadget_runs_empty_data_continuous():
+    data = np.array([], dtype=np.float64).reshape(0, 14)
+    sumu.Gadget(
+        data=data,
+        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        candp={"name": "rnd"},
+        cons={"K": 8, "d": 1}
+    ).sample()
+    assert True
+
+
+def test_Gadget_runs_empty_data_discrete():
+    data = np.array([], dtype=np.int32).reshape(0, 14)
+    sumu.Gadget(
+        data=data,
+        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        candp={"name": "rnd"},
+        cons={"K": 8, "d": 1}
+    ).sample()
+    assert True
+
+
 if __name__ == '__main__':
     #test_Gadget_runs_n_between_2_and_64()
     #test_Gadget_runs_n_between_65_and_128()
