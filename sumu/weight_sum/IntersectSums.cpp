@@ -24,7 +24,6 @@ IntersectSums::IntersectSums(double *w0, bm64 *pset0, bm64 m0, int k0, double ep
   k = k0;
   bm64 i = 0;
   bm64 j = 0;
-  if (k < 0) k = -k;	// For testing phase only, to be removed at the end.
   while (i < m) {
 	Treal w; w.set_log(w0[i++]);
 	if (k == 1) {s64.push_back( {pset0[j++], w} );}
@@ -331,9 +330,6 @@ pair<bm256, double> IntersectSums::scan_rnd_256(bm256 U, bm256 T, double wcum) {
 }
 
 double IntersectSums::scan_sum_x(double w0, vector<bm64> U, vector<bm64> T, bm64 t_ub) {
-
-  return scan_sum(w0, U, T, t_ub);	// For testing phase only.
-
   Treal sum; sum = 0.0;
   if (w0 != -std::numeric_limits<double>::infinity()) {sum.set_log(w0);}
   Treal slack; slack = eps/t_ub;
@@ -367,9 +363,6 @@ double IntersectSums::scan_sum_x(double w0, vector<bm64> U, vector<bm64> T, bm64
 }
 
 pair<vector<bm64>, double> IntersectSums::scan_rnd_x(vector<bm64> U, vector<bm64> T, double wcum) {
-
-  return scan_rnd(U, T, wcum);	// For testing phase only.
-
   Treal sum; sum = 0.0;
   Treal target; target.set_log(wcum);
 
