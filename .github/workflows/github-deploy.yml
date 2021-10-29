@@ -1,19 +1,21 @@
+# Online linter: https://rhysd.github.io/actionlint/
+
 name: build
 
-on:
+on: 
   push:
+    branches:
+      - master
     paths-ignore:
     - 'doc/**'
-    - 'profiling/**'
-    - 'run_scripts/**'
     - 'README.md'
     - 'README.rst'
     - 'COPYING'
   pull_request:
+    branches:
+      - master    
     paths-ignore:
     - 'doc/**'
-    - 'profiling/**'
-    - 'run_scripts/**'
     - 'README.md'
     - 'README.rst'
     - 'COPYING'
@@ -22,7 +24,7 @@ on:
       - published
 
 env:
-  CIBW_BUILD: cp37-* cp37-* cp38-*
+  CIBW_BUILD: cp37-* cp38-* cp39-*
   # Skip 32-bit platforms
   CIBW_SKIP: "*-win32 *-manylinux_i686"
   CIBW_TEST_REQUIRES: pytest

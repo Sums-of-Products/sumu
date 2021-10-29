@@ -32,7 +32,7 @@ The library aims to facilitate:
 Requirements
 ------------
 
-Sumu has been tested to work with Python versions 3.6, 3.7 and 3.8.
+Sumu has been tested to work with Python versions 3.7, 3.8 and 3.9.
 If you would like to use the library in R see :doc:`use in R <use-in-R>`,
 after installing as per the :doc:`installation instructions <installation>`.
 
