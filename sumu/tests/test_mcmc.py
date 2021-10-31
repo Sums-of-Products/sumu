@@ -64,7 +64,7 @@ def test_Gadget_runs_n_between_2_and_64():
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "sachs.dsc"
     bn = sumu.BNet.read_file(bn_path)
-    data = bn.sample(200, seed=0)
+    data = bn.sample(200)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
                     candp={"name": "rnd"}, cons={"K": 10, "d": 2})
@@ -77,7 +77,7 @@ def test_Gadget_runs_n_between_65_and_128():
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "hepar2.dsc"
     bn = sumu.BNet.read_file(bn_path)
-    data = bn.sample(1000, seed=0)
+    data = bn.sample(1000)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
                     candp={"name": "rnd"}, cons={"K": 10, "d": 2})
@@ -90,7 +90,7 @@ def test_Gadget_runs_n_between_129_and_192():
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "munin1.dsc"
     bn = sumu.BNet.read_file(bn_path)
-    data = bn.sample(200, seed=0)
+    data = bn.sample(200)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
                     candp={"name": "rnd"}, cons={"K": 10, "d": 2})
@@ -103,7 +103,7 @@ def test_Gadget_runs_n_between_193_and_256():
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "andes.dsc"
     bn = sumu.BNet.read_file(bn_path)
-    data = bn.sample(200, seed=0)
+    data = bn.sample(200)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
                     candp={"name": "rnd"}, cons={"K": 10, "d": 2})
@@ -131,8 +131,8 @@ def test_Gadget_runs_n_greater_than_256_continuous():
 def test_Gadget_runs_n_greater_than_256_discrete():
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "pigs.dsc"
-    bn = sumu.utils.io.read_dsc(bn_path)
-    data = bn.sample(1000, seed=0)
+    bn = sumu.BNet.read_file(bn_path)
+    data = bn.sample(1000)
     sumu.Gadget(
         data=data,
         mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
