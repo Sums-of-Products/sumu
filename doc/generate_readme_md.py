@@ -1,8 +1,9 @@
+import sys
 import pypandoc
 
 
 readme = pypandoc.convert_file(
-    "https://sumu.readthedocs.io/en/latest/readme.html",
+    sys.argv[1],
     to='markdown_github-native_divs',
     format="html",
     extra_args=["--wrap=none"]
