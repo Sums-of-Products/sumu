@@ -1,19 +1,21 @@
+# Online linter: https://rhysd.github.io/actionlint/
+
 name: build
 
-on:
+on: 
   push:
+    branches:
+      - master
     paths-ignore:
     - 'doc/**'
-    - 'profiling/**'
-    - 'run_scripts/**'
     - 'README.md'
     - 'README.rst'
     - 'COPYING'
   pull_request:
+    branches:
+      - master    
     paths-ignore:
     - 'doc/**'
-    - 'profiling/**'
-    - 'run_scripts/**'
     - 'README.md'
     - 'README.rst'
     - 'COPYING'
@@ -22,21 +24,23 @@ on:
       - published
 
 env:
-  CIBW_BUILD: cp37-* cp37-* cp38-*
   # Skip 32-bit platforms
-  CIBW_SKIP: "*-win32 *-manylinux_i686"
-  CIBW_TEST_REQUIRES: pytest
-  CIBW_TEST_COMMAND: pytest {project}/sumu/tests
+  CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_*"
+  CIBW_TEST_REQUIRES: pytest pytest-xdist
+  CIBW_TEST_COMMAND: pytest -n 3 {project}/sumu/tests
 
 
 jobs:
   
   build_wheels:
-    name: Build wheels on ${{ matrix.os }}
+    name: Build wheels on ${{ matrix.os }} ${{ matrix.CIBW_BUILD }}
     runs-on: ${{ matrix.os }}
+    env:
+      CIBW_BUILD: ${{ matrix.CIBW_BUILD }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        CIBW_BUILD: [cp37-*, cp38-*, cp39-*]
 
     steps:
       - uses: actions/checkout@v2
@@ -48,7 +52,7 @@ jobs:
 
       - name: Install cibuildwheel
         run: |
-          python -m pip install cibuildwheel==1.6.3
+          python -m pip install cibuildwheel==2.2.2
 
       - name: Build wheels
         run: |
@@ -102,10 +106,10 @@ jobs:
         env:
           CYTHON_TRACE: 1
         run: |
-          python -m pip install pytest pytest-cov coverage
+          python -m pip install pytest pytest-cov coverage pytest-xdist
           # Without "--editable" pip builds a wheel which doesn't allow Cython coverage analysis
           python -m pip install --editable .
-          mkdir codecov && pytest -v --cov=. --cov-report=xml:codecov/coverage.xml
+          mkdir codecov && pytest -n 2 -v --cov=. --cov-report=xml:codecov/coverage.xml
 
       - name: Upload coverage.xml to Codecov
         uses: codecov/codecov-action@v1
