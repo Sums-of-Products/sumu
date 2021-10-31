@@ -1,13 +1,13 @@
-# -*- coding: utf-8 -*-
 """Module for representation and basic functionalities for Bayesian networks.
-
-The module now includes both module level functions for input DAGs
-and some overlapping Structure class functions. Is it ok to have both?
 """
+import logging
 
 import numpy as np
+import scipy
 import itertools
 import copy
+
+from scipy.stats import dirichlet
 
 
 def family_sequence_to_adj_mat(dag, row_parents=False):
@@ -33,9 +33,7 @@ def family_sequence_to_adj_mat(dag, row_parents=False):
 
 
 def partition(dag):
-
     adj_mat = family_sequence_to_adj_mat(dag, row_parents=True)
-
     partitions = list()
     matrix_pruned = adj_mat
     indices = np.arange(adj_mat.shape[0])
@@ -79,7 +77,6 @@ def topological_sort(dag):
 
 
 def transitive_closure(dag, R=None, mat=False):
-
     tclosure = {v: {v} for v in range(len(dag))}
     if R is not None:
         toposort = [i for part in R for i in part][::-1]
@@ -96,78 +93,10 @@ def transitive_closure(dag, R=None, mat=False):
     return tclomat
 
 
-class Structure:
-    """Represents Bayesian network structure as used by :py:class:`.BNet`."""
-
-    def __init__(self, names, edges):
-        self.names = names
-        self.edges = edges
-
-    @classmethod
-    def from_nodes(cls, nodes):
-        names = [node.name for node in nodes]
-        edges = set((parent.name, node.name)
-                    for node in nodes
-                    for parent in node.parents)
-        return cls(names, edges)
-
-    @classmethod
-    def from_matrix(cls, mat):
-        names = [str(x) for x in range(len(mat))]
-        edges = set([(names[i], names[x]) for i in range(len(mat)) for x in np.where(mat[i, :] == 1)[0]])
-        return cls(names, edges)
-
-    @property
-    def matrix(self):
-        mat = np.zeros(shape=(len(self.names), len(self.names)))
-        for edge in self.edges:
-            mat[self.names.index(edge[0]), self.names.index(edge[1])] = 1
-        return mat
-    
-    @classmethod
-    def from_family_list(cls, family_list):
-        """Initialize a Structure object from list of families.
-
-        Args:
-           list: List of iterables where first item of each  is the node and the following, if any, are the parents.
-
-        Returns:
-            Structure
-
-        """
-        raise NotImplementedError
-
-    @property
-    def family_list(self):
-        """Returns a family list representation of Structure.
-
-        Returns:
-            list: List of iterables where first item of each is the node and the following, if  any, are the parents.
-
-        """
-
-    @property
-    def map(self):
-        p = dict([(n, set()) for n in self.names])
-        c = copy.deepcopy(p)
-        for edge in self.edges:
-            p[edge[1]].add(edge[0])
-            c[edge[0]].add(edge[1])
-        return {'p': p, 'c': c}
-
-    @property
-    def partition(self):
-        partitions = list()
-        matrix_pruned = self.matrix
-        indices = np.arange(0, len(self.names))
-        while True:
-            pmask = np.sum(matrix_pruned, axis=0) == 0
-            if not any(pmask):
-                break
-            matrix_pruned = matrix_pruned[:, pmask == False][pmask == False, :]
-            partitions.append(indices[pmask])
-            indices = indices[pmask == False]
-        return partitions
+def nodes_to_family_list(nodes):
+    return [
+        (u, set([nodes.index(v) for v in node.parents])) for u, node in enumerate(nodes)
+    ]
 
 
 class BNet:
@@ -175,50 +104,161 @@ class BNet:
 
     def __init__(self, nodes):
         self.nodes = nodes
-        self.structure = Structure.from_nodes(nodes)
+        self.topo_sort = topological_sort(nodes_to_family_list(nodes))
+        self.index_to_pset_indices = {
+            u: [self.nodes.index(p) for p in node.parents]
+            for u, node in enumerate(self.nodes)
+        }
 
-    def sample(self, n, **kwargs):
-        if 'seed' in kwargs and isinstance(kwargs['seed'], int):
-            np.random.seed(kwargs['seed'] * n)
+    @classmethod
+    def from_dag(cls, dag, *, data=None, arity=2, ess=0.5, params="MP"):
+        # Reordering just in case the nodes are not in order.
+        nodes = {f[0]: Node() for f in dag}
+        for f in dag:
+            nodes[f[0]].parents = [nodes[p] for p in sorted(f[1])]
+        nodes = [nodes[u] for u in sorted(nodes)]
+
+        if data is None:
+            data = np.array([], dtype=np.int32).reshape(0, len(nodes))
+
+        for i, node in enumerate(nodes):
+            if type(arity) == list:
+                node.arity = arity[i]
+            else:
+                node.arity = arity
+
+        for i, node in enumerate(nodes):
+            p_indices = [nodes.index(p) for p in node.parents]
+            p_configs = list(itertools.product(*[range(p.arity) for p in node.parents]))
+            for p_config in p_configs:
+                r = node.arity
+                q = len(p_configs)
+                p_config_counts = np.array(
+                    [
+                        np.all(
+                            data[:, p_indices + [i]] == p_config + (i_val,), axis=1
+                        ).sum()
+                        for i_val in range(node.arity)
+                    ]
+                )
+                if params == "MLE":
+                    if p_config_counts.sum() == 0:
+                        p_config_counts += 1
+                    probs = p_config_counts / p_config_counts.sum()
+                if params == "random":
+                    probs = dirichlet.rvs(p_config_counts + ess / (r * q)).squeeze()
+                if params == "MP":
+                    probs = (p_config_counts + ess / (r * q)) / (
+                        p_config_counts + ess / (r * q)
+                    ).sum()
+                if params == "MAP":
+                    probs = p_config_counts + ess / (r * q) - 1
+                    # The -1 may yield negative counts. Correct way to handle?
+                    probs[probs < 0] = 0
+                    probs /= probs.sum()
+                node.cpt[p_config] = probs
+
+        return cls(nodes)
+
+    @classmethod
+    def read_file(cls, path_to_dsc_file):
+        """Read and parse a .dsc file in the input path into a object of type :py:class:`.BNet`.
+
+        Args:
+           filepath path to the .dsc file to load.
+
+        Returns:
+            BNet: a fully specified Bayesian network.
+
+        """
+
+        def normalize(node_name, pset_config, probs):
+            if abs(probs.sum() - 1.0) > 1e-10:
+                logging.info(f"Probs for {} with pset config {} need to be normalized.\n" + f"Probs: {probs}")
+                return probs / probs.sum()
+            return probs
+
+        names = list()
+        nodes = dict()
+
+        with open(path_to_dsc_file, "r") as dsc_file:
+
+            rows = dsc_file.readlines()
+            current_node_name = None
+            for i, row in enumerate(rows):
+                try:
+                    items = row.split()
+                    if items[0] == "node":
+                        current_node_name = items[1]
+                        names.append(current_node_name)
+                        nodes[current_node_name] = Node(name=current_node_name)
+                    if current_node_name and items[0] == "type":
+                        arity = int(items[4])
+                        nodes[current_node_name].arity = arity
+                    if items[0] == "probability":
+                        current_node_name = items[2]
+                        if items[3] == "|":
+                            pnames = "".join(items[4:-2]).split(",")
+                            nodes[current_node_name].parents = [
+                                nodes[name] for name in pnames
+                            ]
+                    if current_node_name and items[0][0] == "(":
+                        items = "".join(items).split(":")
+                        config = tuple([int(x) for x in items[0][1:-1].split(",")])
+                        probs = np.array([float(x) for x in items[1][:-1].split(",")])
+                        probs = normalize(current_node_name, config, probs)
+                        nodes[current_node_name].cpt[config] = probs
+                    if current_node_name and items[0][0] in {str(x) for x in range(10)}:
+                        probs = np.array(
+                            [float(x) for x in "".join(items)[:-1].split(",")]
+                        )
+                        probs = normalize(current_node_name, (), probs)
+                        nodes[current_node_name].cpt[()] = probs
+                except ValueError as e:
+                    raise ValueError("Something wrong on row no. " + str(i)) from e
+                except KeyError as e:
+                    raise KeyError("Something wrong on row no. " + str(i)) from e
+
+        nodes = [nodes[name] for name in names]
+        return cls(nodes)
+
+    def sample(self, n=1):
         data = np.zeros(shape=(n, len(self.nodes)), dtype=np.int32)
         for i in range(n):
-            for node in self.nodes:
-                node.clear()
-            data[i] = tuple(node.sample() for node in self.nodes)
+            for i_node in self.topo_sort:
+                pset = self.index_to_pset_indices[i_node]
+                pset_config = tuple(data[i, pset])
+                data[i, i_node] = self.nodes[i_node].sample(config=pset_config)
         return data
 
-    def p(self, sample, log=False):
-        p = 1
-        for node in self.nodes:
-            p = p*node.p(sample[self.nodes.index(node)],
-                         tuple([sample[self.nodes.index(parent)] for parent in node.parents]))
-        return np.log(p) if log else p
+    def __getitem__(self, node_name):
+        try:
+            return [n for n in self.nodes if n.name == node_name][0]
+        except IndexError as e:
+            raise (
+                # Should be KeyError but it doesn't allow
+                # nice formatting of the message
+                IndexError(
+                    f"No node by the name {node_name}.\n"
+                    + f"Available nodes: {' '.join([n.name for n in self.nodes])}",
+                )
+            ) from e
 
 
 class Node:
-
-    def __init__(self, name, r=None, cpt=None, parents=[]):
+    def __init__(self, *, name=None, arity=None, cpt=None, parents=list()):
+        # parents are in a list because it specifies the order in cpt
         self.name = name
-        self.r = r
-        self.value = None
+        self.arity = arity
         self.cpt = dict() if not cpt else cpt
-        self.configs = ()
-        self.q = 0
-        self.parents = list()
-        self.set_parents(parents)
-
-    def clear(self):
-        self.value = None
-
-    def sample(self):
-        if self.value is None:
-            self.value = np.nonzero(np.random.multinomial(1, self.cpt[tuple([parent.sample() for parent in self.parents])]))[0][0]
-        return self.value
-
-    def p(self, val, config):
-        return self.cpt[config][val]
-
-    def set_parents(self, parents):
-        self.configs = list(itertools.product(*[range(p.r) for p in parents]))
-        self.q = len(self.configs)
         self.parents = parents
+
+    def sample(self, config=None):
+        if config is None:
+            value = np.random.choice(
+                range(self.arity),
+                p=self.cpt[tuple([parent.sample() for parent in self.parents])],
+            )
+        else:
+            value = np.random.choice(range(self.arity), p=self.cpt[config])
+        return value

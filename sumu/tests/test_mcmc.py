@@ -1,7 +1,8 @@
-import os
 import pathlib
 import numpy as np
 import sumu
+
+np.random.seed(0)
 
 
 def test_Gadget_empirical_edge_prob_error_decreases():
@@ -39,14 +40,13 @@ def test_Gadget_empirical_edge_prob_error_decreases():
         # Logging
         "logging": {
             "stats_period": 15,
-            #"logfile": "gadget.log"
         }
     }
 
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "sachs.dsc"
-    bn = sumu.utils.io.read_dsc(bn_path)
-    data = bn.sample(200, seed=0)
+    bn = sumu.BNet.read_file(bn_path)
+    data = bn.sample(200)
     ls = sumu.gadget.LocalScore(data=data, maxid=-1, score=params["score"])
     pset_probs = sumu.aps(ls.candidate_scores(), as_dict=True)
     edge_probs = sumu.utils.edge_probs_from_pset_probs(pset_probs)
@@ -63,7 +63,7 @@ def test_Gadget_runs_n_between_2_and_64():
     # NOTE: This does not test all numbers of variables up to 64
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "sachs.dsc"
-    bn = sumu.utils.io.read_dsc(bn_path)
+    bn = sumu.BNet.read_file(bn_path)
     data = bn.sample(200, seed=0)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
@@ -76,7 +76,7 @@ def test_Gadget_runs_n_between_65_and_128():
     # NOTE: This does not test all numbers of variables between 65 and 128
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "hepar2.dsc"
-    bn = sumu.utils.io.read_dsc(bn_path)
+    bn = sumu.BNet.read_file(bn_path)
     data = bn.sample(1000, seed=0)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
@@ -89,7 +89,7 @@ def test_Gadget_runs_n_between_129_and_192():
     # NOTE: This does not test all numbers of variables between 129 and 192
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "munin1.dsc"
-    bn = sumu.utils.io.read_dsc(bn_path)
+    bn = sumu.BNet.read_file(bn_path)
     data = bn.sample(200, seed=0)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
@@ -102,7 +102,7 @@ def test_Gadget_runs_n_between_193_and_256():
     # NOTE: This does not test all numbers of variables between 193 and 256
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "andes.dsc"
-    bn = sumu.utils.io.read_dsc(bn_path)
+    bn = sumu.BNet.read_file(bn_path)
     data = bn.sample(200, seed=0)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
