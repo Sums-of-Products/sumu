@@ -56,6 +56,10 @@ def test_Gadget_empirical_edge_prob_error_decreases():
     max_errors = sumu.utils.utils.edge_empirical_prob_max_error(dags,
                                                                 edge_probs)
     print(max_errors[-1])
+
+    # TODO: Some better test for the validity of returned DAG scores
+    assert -float("inf") not in scores
+
     assert max_errors[-1] < 0.05
 
 
