@@ -59,10 +59,11 @@ pair<bm32, double> GroundSetIntersectSums::scan_rnd(bm32 U, bm32 T, double wcum)
 	int m = s.size();
 	Treal sum; sum = 0.0;
 	Treal target; target.set_log(wcum);
-	int i = 0; bm32 P = 0L;
+	int i = 0; int P_i = 0; bm32 P = 0L;
 	for (; i < m; ++i){
 	  P = s[i].set;
 	  if ( subseteq(P, U) && intersects(P, T) ) {
+		P_i = i;
 		sum = s[i].weight; ++i;
 		if (sum > target) i = m;
 		break;
@@ -71,11 +72,12 @@ pair<bm32, double> GroundSetIntersectSums::scan_rnd(bm32 U, bm32 T, double wcum)
 	for (; i < m; ++i){
 	  P = s[i].set;
 	  if ( subseteq(P, U) && intersects(P, T) ) {
+		P_i = i;
 		Treal score = s[i].weight; sum += score;
 		if (sum > target) break;
 	  }
 	}
-	return make_pair(P, s[i].weight.get_log());
+	return make_pair(s[P_i].set, s[P_i].weight.get_log());
 }
 
 Treal GroundSetIntersectSums::scan_sum(bm32 U){
@@ -106,21 +108,23 @@ pair<bm32, double> GroundSetIntersectSums::scan_rnd(bm32 U, double wcum){
 	int m = s.size();
 	Treal sum; sum = 0.0;
 	Treal target; target.set_log(wcum);
-	int i = 0; bm32 P = 0L;
+	int i = 0; int P_i = 0; bm32 P = 0L;
 	for (; i < m; ++i){
 		P = s[i].set;
 		if ( subseteq(P, U) ) {
-			sum = s[i].weight; ++i;
-			if (sum > target) i = m;
-			break;
+		  P_i = i;
+		  sum = s[i].weight; ++i;
+		  if (sum > target) i = m;
+		  break;
 		}
 	}
 	for (; i < m; ++i){
 		P = s[i].set;
 		if ( subseteq(P, U) ) {
-			Treal score = s[i].weight; sum += score;
-			if (sum > target) break;
+		  P_i = i;
+		  Treal score = s[i].weight; sum += score;
+		  if (sum > target) break;
 		}
 	}
-	return make_pair(P, s[i].weight.get_log());
+	return make_pair(s[P_i].set, s[P_i].weight.get_log());
 }
