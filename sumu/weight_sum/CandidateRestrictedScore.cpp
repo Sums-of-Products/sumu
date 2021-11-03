@@ -42,7 +42,7 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
 
   m_tau_simple = new Treal*[n];
   m_tau_cc = new unordered_map< bm64, Treal >[n];
-  m_score_array = new Treal[n * ((bm32) 1 << K)];
+  m_score_array = new Treal[n * ((bm64) 1 << K)];
 
   m_C = new int*[n];
   isums = new GroundSetIntersectSums*[n];
@@ -57,7 +57,7 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
     m_tau_simple[v] = new Treal[ (bm32) 1 << K];
 	m_tau_cc[v] = unordered_map< bm64, Treal >();
     m_C[v] = new int[K];
-    isums[v] = new GroundSetIntersectSums(K, &score_array[v * ((bm32) 1 << K)], isum_tol);
+    isums[v] = new GroundSetIntersectSums(K, &score_array[v * ((bm64) 1 << K)], isum_tol);
 
 	cout << v << "\t" << isums[v]->s.size() << "\t" << (double) isums[v]->s.size() / (1L << K) << endl;
 
@@ -71,7 +71,7 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
   }
   cout << endl;
 
-  for (bm32 i = 0; i < n * ((bm32) 1 << K); ++i) { m_score_array[i].set_log(score_array[i]);}
+  for (bm64 i = 0; i < n * ((bm64) 1 << K); ++i) { m_score_array[i].set_log(score_array[i]);}
 
   precompute_tau_simple();
   precompute_tau_cc_basecases();
@@ -116,11 +116,11 @@ void CandidateRestrictedScore::precompute_tau_cc_basecases() {
       bm32 U_minus_j = (( (bm32) 1 << m_K) - 1) & ~j;
       Treal* tmp = new Treal[1 << (m_K - 1)];
 
-	  tmp[0] = m_score_array[v*( (bm32) 1 << m_K) + j]; // Make indexing inline function?
+	  tmp[0] = m_score_array[v*( (bm64) 1 << m_K) + j]; // Make indexing inline function?
 
       // Iterate over subsets of U_minus_j.
       for (bm32 S = U_minus_j; S > 0; S = (S-1) & U_minus_j) {
-		tmp[dkbit_32(S, k)] = m_score_array[v*( (bm32) 1 << m_K) + (S | j)];
+		tmp[dkbit_32(S, k)] = m_score_array[v*( (bm64) 1 << m_K) + (S | j)];
       }
       fzt_inpl(tmp, (m_K - 1));
 
@@ -179,7 +179,7 @@ Treal CandidateRestrictedScore::sum(int v, bm32 U, bm32 T, bool isum) {
   }
 
   if (U == 0 && T == 0) {
-    return m_score_array[v*(1 << m_K)];
+    return m_score_array[v*((bm64) 1 << m_K)];
   }
 
   if (T == 0) {
