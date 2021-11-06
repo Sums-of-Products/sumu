@@ -874,7 +874,7 @@ class Gadget():
         self.log.print_run_stats()
         self.log.print("no. dags sampled: {}".format(len(self.dags)))
 
-        return self.dags, self.dag_scores
+        return self.dags, dict(scores=self.dag_scores, candidates=self.C)
 
     def _find_candidate_parents(self):
         self.l_score = LocalScore(data=self.data,
