@@ -21,6 +21,19 @@ import sys
 import numpy as np
 
 
+_dag = {
+    "should be in the format [(int, set()), ...] where int is a node label and the set contains its parents' labels": lambda dag: all(
+        [
+            type(dag) == list,
+            all([type(f) == tuple for f in dag]),
+            all([len(f) == 2 for f in dag]),
+            all([isinstance(f[0], (np.integer, int))] for f in dag),
+            all([type(f[1]) == set for f in dag]),
+            all([isinstance(p, (np.integer, int)) for f in dag for p in f[1]]),
+        ]
+    )
+}
+
 _candidates = {
     "should be given as tuples of ints in a dict": lambda C: all(
         [
