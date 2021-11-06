@@ -26,6 +26,7 @@ from .stats import Stats, stats
 
 from .utils.math_utils import subsets, comb
 from .utils.bitmap import bm, bm_to_np64
+from . import validate
 
 
 class Defaults:
@@ -97,10 +98,16 @@ class GadgetParameters():
 
         self._populate_default_parameters()
         self._complete_user_given_parameters()
+        self._validate_parameters()
         if self.p["run_mode"]["name"] == "normal":
             self._adjust_inconsistent_parameters()
         if self.p["run_mode"]["name"] == "budget":
             self._set_budget_based_parameters()
+
+    def _validate_parameters(self):
+        # only validating possible user given candidate parents for now
+        if "name" not in self.p["candp"] and "path" not in self.p["candp"]:
+            validate.candidates(self.p["candp"])
 
     def _populate_default_parameters(self):
         # Some defaults are defined as functions of data.
@@ -112,6 +119,8 @@ class GadgetParameters():
     def _complete_user_given_parameters(self):
         for k in self.p:
             if "name" in self.p[k] and self.p[k]["name"] != self.default[k]["name"]:
+                continue
+            if validate.candidates_is_valid(self.p[k]):
                 continue
             self.p[k] = dict(self.default[k], **self.p[k])
             for k2 in self.p[k]:
@@ -874,23 +883,24 @@ class Gadget():
         self.log.print_run_stats()
         self.log.print("no. dags sampled: {}".format(len(self.dags)))
 
-        return self.dags, self.dag_scores
+        return self.dags, dict(scores=self.dag_scores, candidates=self.C)
 
     def _find_candidate_parents(self):
         self.l_score = LocalScore(data=self.data,
                                   score=self.p["score"],
                                   maxid=self.p["cons"]["max_id"])
 
-        if self.p["candp"].get("path") is None:
+        if "path" in self.p["candp"]:
+            self.C = read_candidates(self.p["candp"]["path"])
+
+        elif "name" in self.p["candp"]:
             self.C, stats["C"] = cpa[self.p["candp"]["name"]](self.p["cons"]["K"],
                                                               scores=self.l_score,
                                                               data=self.data,
                                                               params=self.p["candp"].get("params"))
-
         else:
-            self.C = read_candidates(self.p["candp"]["path"])
+            self.C = self.p["candp"]
 
-        # TODO: Use this everywhere instead of the dict
         self.C_array = np.empty((self.data.n, self.p["cons"]["K"]), dtype=np.int32)
         for v in self.C:
             self.C_array[v] = np.array(self.C[v])

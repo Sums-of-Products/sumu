@@ -60,7 +60,7 @@ def test_Gadget_empirical_edge_prob_error_decreases():
     # TODO: Some better test for the validity of returned DAG scores
     assert -float("inf") not in scores
 
-    assert max_errors[-1] < 0.05
+    assert max_errors[-1] < 0.10
 
 
 def test_Gadget_runs_n_between_2_and_64():
