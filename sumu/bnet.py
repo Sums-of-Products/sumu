@@ -130,9 +130,9 @@ class BNet:
         for i, node in enumerate(nodes):
             p_indices = [nodes.index(p) for p in node.parents]
             p_configs = list(itertools.product(*[range(p.arity) for p in node.parents]))
+            r = node.arity
+            q = len(p_configs)
             for p_config in p_configs:
-                r = node.arity
-                q = len(p_configs)
                 p_config_counts = np.array(
                     [
                         np.all(
@@ -146,7 +146,10 @@ class BNet:
                         p_config_counts += 1
                     probs = p_config_counts / p_config_counts.sum()
                 if params == "random":
-                    probs = dirichlet.rvs(p_config_counts + ess / (r * q)).squeeze()
+                    # see https://github.com/numpy/numpy/issues/5851
+                    probs = np.array([np.nan] * r)
+                    while np.isnan(probs).any():
+                        probs = dirichlet.rvs(p_config_counts + ess / (r * q)).squeeze()
                 if params == "MP":
                     probs = (p_config_counts + ess / (r * q)) / (
                         p_config_counts + ess / (r * q)
