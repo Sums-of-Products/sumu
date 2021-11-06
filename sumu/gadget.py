@@ -96,9 +96,9 @@ class GadgetParameters():
         self.default = Defaults()()
         self.p = copy.deepcopy(self.init)
 
-        self._validate_parameters()
         self._populate_default_parameters()
         self._complete_user_given_parameters()
+        self._validate_parameters()
         if self.p["run_mode"]["name"] == "normal":
             self._adjust_inconsistent_parameters()
         if self.p["run_mode"]["name"] == "budget":
@@ -120,8 +120,7 @@ class GadgetParameters():
         for k in self.p:
             if "name" in self.p[k] and self.p[k]["name"] != self.default[k]["name"]:
                 continue
-            if k == "candp" and "name" not in self.p[k] and "path" not in self.p[k]:
-                # user given candidate parents
+            if validate.candidates_is_valid(self.p[k]):
                 continue
             self.p[k] = dict(self.default[k], **self.p[k])
             for k2 in self.p[k]:
