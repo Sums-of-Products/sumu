@@ -98,7 +98,7 @@ class BGe:
         for v in range(self.n):
             for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
                 scores[v, bm(pset, ix=C[v])] = self.local(v, pset)
-
+            self.clear_cache()
         # NOTE: This does not seem to work reliably yet
         # for v in range(self.n):
         #     vset = tuple(sorted(C[v] + (v,)))
@@ -119,6 +119,7 @@ class BGe:
         pset_len = np.array(list(map(len, pset_tuple)), dtype=np.int32)
         pset_bm = list(map(lambda pset: bm_to_np64(bm(set(pset)), k), pset_tuple))
         scores = np.array([self.local(v, pset) for pset in pset_tuple])
+        self.clear_cache()
         return np.array(pset_bm), scores, pset_len
 
 def index(from_, to_):
