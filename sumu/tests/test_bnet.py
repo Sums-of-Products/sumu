@@ -29,3 +29,11 @@ def test_bnet_samples_from_correct_distribution():
         kl += p * np.log(p / q)
 
     assert kl < 0.05
+
+
+def test_bnet_from_dag_produces_bnet():
+    dag = sumu.validate.dag([(0, set()), (1, {0, 2}), (2, set())])
+    bn = sumu.BNet.from_dag(dag, arity=3, ess=10, params="random")
+    bn.sample(20)
+    assert True
+
