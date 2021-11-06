@@ -56,45 +56,42 @@ class ValidationError(Exception):
     pass
 
 
-def _validate(validator, validator_name, item, only_check_is_valid=False):
-    for f in validator:
-        try:
-            if not validator[f](item):
+def _make_validator(validator, validator_name, only_check_is_valid=False):
+    def validate(item):
+        for f in validator:
+            try:
+                if not validator[f](item):
+                    if only_check_is_valid:
+                        return False
+                    raise ValidationError(f"{validator_name}: {f}")
+            except:
                 if only_check_is_valid:
                     return False
                 raise ValidationError(f"{validator_name}: {f}")
-        except:
-            if only_check_is_valid:
-                return False
-            raise ValidationError(f"{validator_name}: {f}")
-    if only_check_is_valid:
-        return True
-    return item
+        if only_check_is_valid:
+            return True
+        return item
 
+    return validate
 
-_validators = [
-    x for x in globals() if type(globals()[x]) == dict and x[:2] != "__"
-]
 
 [
     (
         setattr(
             sys.modules[__name__],
             k[1:],
-            lambda item: _validate(globals()[k], k[1:].capitalize(), item),
+            _make_validator(globals()[k], k[1:].capitalize()),
         ),
         setattr(
             sys.modules[__name__],
             k[1:] + "_is_valid",
-            lambda item: _validate(
-                globals()[k],
-                k[1:].capitalize(),
-                item,
-                only_check_is_valid=True,
+            _make_validator(
+                globals()[k], k[1:].capitalize(), only_check_is_valid=True
             ),
         ),
     )
-    for k in _validators
+    for k in list(globals())
+    if type(globals()[k]) == dict and k[:2] != "__"
 ]
 
-del _validators
+del _make_validator
