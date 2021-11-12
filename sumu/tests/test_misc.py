@@ -15,7 +15,10 @@ def test_write_read_jkl():
     fpath = tempfile.mkstemp(dir=".")[1]
     sumu.utils.io.write_jkl(scores, fpath)
     assert scores == sumu.utils.io.read_jkl(fpath)
-    Path(fpath).unlink()
+    try:
+        Path(fpath).unlink()
+    except PermissionError as e:
+        print(e)
 
 
 if __name__ == "__main__":
