@@ -1,13 +1,12 @@
 """Module for representation and basic functionalities for Bayesian networks.
 """
 import logging
-
 import numpy as np
-import scipy
 import itertools
-import copy
-
+from . import validate
 from scipy.stats import dirichlet
+from scipy.stats import multivariate_t as mvt
+from .data import Data
 
 
 def family_sequence_to_adj_mat(dag, row_parents=False):
@@ -23,13 +22,20 @@ def family_sequence_to_adj_mat(dag, row_parents=False):
         adjacency matrix
 
     """
-    adj_mat = np.zeros((len(dag), len(dag)))
+    adj_mat = np.zeros((len(dag), len(dag)), dtype=np.int8)
     for f in dag:
         adj_mat[tuple(f[1]), f[0]] = 1
 
     if row_parents is False:
         adj_mat = adj_mat.T
     return adj_mat
+
+
+def adj_mat_to_family_sequence(adj_mat, row_parents=False):
+    if row_parents:
+        adj_mat = adj_mat.T
+    dag = [(i, set(np.where(adj_mat[i])[0])) for i in range(len(adj_mat))]
+    return dag
 
 
 def partition(dag):
@@ -95,8 +101,78 @@ def transitive_closure(dag, R=None, mat=False):
 
 def nodes_to_family_list(nodes):
     return [
-        (u, set([nodes.index(v) for v in node.parents])) for u, node in enumerate(nodes)
+        (u, set([nodes.index(v) for v in node.parents]))
+        for u, node in enumerate(nodes)
     ]
+
+
+def random_dag_with_expected_neighbourhood_size(n, *, enb=4):
+    pedge = min(1, enb / (n - 1))
+    order = np.random.permutation(n)
+    dag = np.tril(
+        np.random.choice(range(2), (n, n), p=[1 - pedge, pedge]), k=-1
+    )
+    dag = dag[:, order][order, :]
+    return adj_mat_to_family_sequence(dag)
+
+
+class GaussianBNet:
+    def __init__(self, dag, *, data=None):
+        self.n = len(validate.dag(dag))
+        self.dag = family_sequence_to_adj_mat(dag)
+        self.sample_params(data=data)
+
+    def sample_params(self, data=None, lb_e=0.1, ub_e=2, lb_ce=0.5, ub_ce=1.5):
+        nu = np.zeros(self.n)
+        am = 1
+        aw = self.n + am + 1
+        Tmat = np.identity(self.n) * (aw - self.n - 1) / (am + 1)
+
+        N = 0
+        if data is not None:
+            data = Data(data)
+            N = data.N
+
+            # Sufficient statistics
+            xN = np.mean(data.data, axis=0)
+            SN = (data.data - xN).T @ (data.data - xN)
+
+            # Parameters for the posterior
+            R = (
+                Tmat
+                + SN
+                + ((am * N) / (am + N)) * np.outer((nu - xN), (nu - xN))
+            )
+        else:
+            R = Tmat
+
+        if True:  # params == "random":
+            self.Ce = np.diag(np.random.uniform(lb_ce, ub_ce, self.n))
+            self.B = np.zeros((self.n, self.n))
+            for node in range(self.n):
+                pa = np.where(self.dag[node])[0]
+                if len(pa) == 0:
+                    continue
+                l = len(pa) + 1
+                R11 = R[node, node]
+                R12 = R[pa, node]
+                R11inv = np.linalg.inv(R[pa[:, None], pa])
+                df = aw + N - self.n + l
+                mb = R11inv @ R12
+                divisor = R11 - R11inv @ R12
+                covb = divisor / df * R11inv
+                b = mvt.rvs(loc=mb, shape=covb, df=df)
+                self.B[node, pa] = b
+
+    def sample(self, N=1):
+        iA = np.linalg.inv(np.eye(self.n) - self.B)
+        data = np.random.normal(size=(N, self.n))
+        data = (iA @ np.sqrt(self.Ce) @ data.T).T
+        return data
+
+    @classmethod
+    def random(cls, *, n, enb=4):
+        return cls(random_dag_with_expected_neighbourhood_size(n, enb=enb))
 
 
 class BNet:
@@ -238,16 +314,28 @@ class BNet:
                 data[i, i_node] = self.nodes[i_node].sample(config=pset_config)
         return data
 
-    def __getitem__(self, node_name):
+    def __getitem__(self, node_name_or_index):
+
+        # TODO: bn["node1", "node2"].sample()
+        is_name = type(node_name_or_index) == str
+
         try:
-            return [n for n in self.nodes if n.name == node_name][0]
+            if is_name:
+                return [n for n in self.nodes if n.name == node_name_or_index][
+                    0
+                ]
+            else:
+                return self.nodes[node_name_or_index]
         except IndexError as e:
             raise (
                 # Should be KeyError but it doesn't allow
                 # nice formatting of the message
                 IndexError(
-                    f"No node by the name {node_name}.\n"
-                    + f"Available nodes: {' '.join([n.name for n in self.nodes])}",
+                    str(  # doesn't print newline without the explicit str
+                        f"No node by the name or index {node_name_or_index}.\n"
+                        + f"Available nodes names: {' '.join([str(n.name) for n in self.nodes])}\n"
+                        + f"Available node indices: 0-{len(self.nodes)-1}",
+                    )
                 )
             ) from e
 
