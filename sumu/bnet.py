@@ -168,7 +168,7 @@ class GaussianBNet:
         iA = np.linalg.inv(np.eye(self.n) - self.B)
         data = np.random.normal(size=(N, self.n))
         data = (iA @ np.sqrt(self.Ce) @ data.T).T
-        return data
+        return Data(data)
 
     @classmethod
     def random(cls, *, n, enb=4):
@@ -329,7 +329,7 @@ class DiscreteBNet:
                 pset = self.index_to_pset_indices[i_node]
                 pset_config = tuple(data[i, pset])
                 data[i, i_node] = self.nodes[i_node].sample(config=pset_config)
-        return data
+        return Data(data)
 
     def __getitem__(self, node_name_or_index):
 
