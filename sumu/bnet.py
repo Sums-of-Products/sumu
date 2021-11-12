@@ -106,6 +106,16 @@ def nodes_to_family_list(nodes):
     ]
 
 
+def random_dag_with_expected_neighbourhood_size(n, *, enb=4):
+    pedge = min(1, enb / (n - 1))
+    order = np.random.permutation(n)
+    dag = np.tril(
+        np.random.choice(range(2), (n, n), p=[1 - pedge, pedge]), k=-1
+    )
+    dag = dag[:, order][order, :]
+    return adj_mat_to_family_sequence(dag)
+
+
 class GaussianBNet:
     def __init__(self, dag, *, data=None):
         self.n = len(validate.dag(dag))
@@ -162,13 +172,7 @@ class GaussianBNet:
 
     @classmethod
     def random(cls, *, n, enb=4):
-        pedge = min(1, enb / (n - 1))
-        order = np.random.permutation(n)
-        dag = np.tril(
-            np.random.choice(range(2), (n, n), p=[1 - pedge, pedge]), k=-1
-        )
-        dag = dag[:, order][order, :]
-        return cls(adj_mat_to_family_sequence(dag))
+        return cls(random_dag_with_expected_neighbourhood_size(n, enb=enb))
 
 
 class BNet:

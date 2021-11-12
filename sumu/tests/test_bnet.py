@@ -37,3 +37,32 @@ def test_bnet_from_dag_produces_bnet():
     bn.sample(20)
     assert True
 
+
+def test_random_dag_with_expected_neighbourhood_size():
+    n_dags = 1000
+    n = 10
+    enb = 4  # not counting the node itself
+
+    tolerance = 1e-1
+
+    def compute_error():
+        dags = np.array(
+            [
+                sumu.bnet.family_sequence_to_adj_mat(
+                    sumu.bnet.random_dag_with_expected_neighbourhood_size(
+                        n, enb=enb
+                    )
+                )
+                for i in range(n_dags)
+            ]
+        )
+        mean_nbsize = (
+            dags[:, 0, :].sum(axis=1).mean() + dags[:, :, 0].sum(axis=1).mean()
+        ).mean()
+        return abs(enb - mean_nbsize)
+
+    error = compute_error()
+    if error > tolerance:
+        error = compute_error()
+
+    assert error < tolerance
