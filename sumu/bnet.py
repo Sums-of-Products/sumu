@@ -314,8 +314,8 @@ class DiscreteBNet:
                     raise ValueError(
                         "Something wrong on row no. " + str(i)
                     ) from e
-                except KeyError as e:
-                    raise KeyError(
+                except ValueError as e:
+                    raise ValueError(
                         "Something wrong on row no. " + str(i)
                     ) from e
 
