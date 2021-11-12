@@ -22,7 +22,7 @@ def family_sequence_to_adj_mat(dag, row_parents=False):
         adjacency matrix
 
     """
-    adj_mat = np.zeros((len(dag), len(dag)))
+    adj_mat = np.zeros((len(dag), len(dag)), dtype=np.int8)
     for f in dag:
         adj_mat[tuple(f[1]), f[0]] = 1
 
