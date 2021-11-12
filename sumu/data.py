@@ -51,6 +51,10 @@ class Data:
                 "Unknown type for Data: {}.".format(type(data_or_path))
             )
 
+    def write_file(self, filepath):
+        fmt = "%i" if self.discrete else "%f"
+        np.savetxt(filepath, self.data, delimiter=" ", fmt=fmt)
+
     @property
     def n(self):
         return self.data.shape[1]
@@ -84,3 +88,9 @@ class Data:
                 min(self.arities), max(self.arities)
             )
         return info
+
+    def __repr__(self):
+        return self.data.__repr__()
+
+    def __getitem__(self, index):
+        return self.data.__getitem__(index)

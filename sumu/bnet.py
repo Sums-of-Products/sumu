@@ -168,14 +168,14 @@ class GaussianBNet:
         iA = np.linalg.inv(np.eye(self.n) - self.B)
         data = np.random.normal(size=(N, self.n))
         data = (iA @ np.sqrt(self.Ce) @ data.T).T
-        return data
+        return Data(data)
 
     @classmethod
-    def random(cls, *, n, enb=4):
+    def random(cls, n, *, enb=4):
         return cls(random_dag_with_expected_neighbourhood_size(n, enb=enb))
 
 
-class BNet:
+class DiscreteBNet:
     """Represents a Bayesian network."""
 
     def __init__(self, nodes):
@@ -189,7 +189,7 @@ class BNet:
     @classmethod
     def from_dag(cls, dag, *, data=None, arity=2, ess=0.5, params="MP"):
         # Reordering just in case the nodes are not in order.
-        nodes = {f[0]: Node() for f in dag}
+        nodes = {f[0]: DiscreteNode() for f in dag}
         for f in dag:
             nodes[f[0]].parents = [nodes[p] for p in sorted(f[1])]
         nodes = [nodes[u] for u in sorted(nodes)]
@@ -205,14 +205,17 @@ class BNet:
 
         for i, node in enumerate(nodes):
             p_indices = [nodes.index(p) for p in node.parents]
-            p_configs = list(itertools.product(*[range(p.arity) for p in node.parents]))
+            p_configs = list(
+                itertools.product(*[range(p.arity) for p in node.parents])
+            )
             r = node.arity
             q = len(p_configs)
             for p_config in p_configs:
                 p_config_counts = np.array(
                     [
                         np.all(
-                            data[:, p_indices + [i]] == p_config + (i_val,), axis=1
+                            data[:, p_indices + [i]] == p_config + (i_val,),
+                            axis=1,
                         ).sum()
                         for i_val in range(node.arity)
                     ]
@@ -225,7 +228,9 @@ class BNet:
                     # see https://github.com/numpy/numpy/issues/5851
                     probs = np.array([np.nan] * r)
                     while np.isnan(probs).any():
-                        probs = dirichlet.rvs(p_config_counts + ess / (r * q)).squeeze()
+                        probs = dirichlet.rvs(
+                            p_config_counts + ess / (r * q)
+                        ).squeeze()
                 if params == "MP":
                     probs = (p_config_counts + ess / (r * q)) / (
                         p_config_counts + ess / (r * q)
@@ -241,13 +246,13 @@ class BNet:
 
     @classmethod
     def read_file(cls, path_to_dsc_file):
-        """Read and parse a .dsc file in the input path into a object of type :py:class:`.BNet`.
+        """Read and parse a .dsc file in the input path into a object of type :py:class:`.DiscreteBNet`.
 
         Args:
            filepath path to the .dsc file to load.
 
         Returns:
-            BNet: a fully specified Bayesian network.
+            DiscreteBNet: a fully specified Bayesian network.
 
         """
 
@@ -274,7 +279,9 @@ class BNet:
                     if items[0] == "node":
                         current_node_name = items[1]
                         names.append(current_node_name)
-                        nodes[current_node_name] = Node(name=current_node_name)
+                        nodes[current_node_name] = DiscreteNode(
+                            name=current_node_name
+                        )
                     if current_node_name and items[0] == "type":
                         arity = int(items[4])
                         nodes[current_node_name].arity = arity
@@ -287,32 +294,42 @@ class BNet:
                             ]
                     if current_node_name and items[0][0] == "(":
                         items = "".join(items).split(":")
-                        config = tuple([int(x) for x in items[0][1:-1].split(",")])
-                        probs = np.array([float(x) for x in items[1][:-1].split(",")])
+                        config = tuple(
+                            [int(x) for x in items[0][1:-1].split(",")]
+                        )
+                        probs = np.array(
+                            [float(x) for x in items[1][:-1].split(",")]
+                        )
                         probs = normalize(current_node_name, config, probs)
                         nodes[current_node_name].cpt[config] = probs
-                    if current_node_name and items[0][0] in {str(x) for x in range(10)}:
+                    if current_node_name and items[0][0] in {
+                        str(x) for x in range(10)
+                    }:
                         probs = np.array(
                             [float(x) for x in "".join(items)[:-1].split(",")]
                         )
                         probs = normalize(current_node_name, (), probs)
                         nodes[current_node_name].cpt[()] = probs
                 except ValueError as e:
-                    raise ValueError("Something wrong on row no. " + str(i)) from e
+                    raise ValueError(
+                        "Something wrong on row no. " + str(i)
+                    ) from e
                 except KeyError as e:
-                    raise KeyError("Something wrong on row no. " + str(i)) from e
+                    raise KeyError(
+                        "Something wrong on row no. " + str(i)
+                    ) from e
 
         nodes = [nodes[name] for name in names]
         return cls(nodes)
 
-    def sample(self, n=1):
-        data = np.zeros(shape=(n, len(self.nodes)), dtype=np.int32)
-        for i in range(n):
+    def sample(self, N=1):
+        data = np.zeros(shape=(N, len(self.nodes)), dtype=np.int32)
+        for i in range(N):
             for i_node in self.topo_sort:
                 pset = self.index_to_pset_indices[i_node]
                 pset_config = tuple(data[i, pset])
                 data[i, i_node] = self.nodes[i_node].sample(config=pset_config)
-        return data
+        return Data(data)
 
     def __getitem__(self, node_name_or_index):
 
@@ -340,7 +357,7 @@ class BNet:
             ) from e
 
 
-class Node:
+class DiscreteNode:
     def __init__(self, *, name=None, arity=None, cpt=None, parents=list()):
         # parents are in a list because it specifies the order in cpt
         self.name = name
@@ -352,7 +369,9 @@ class Node:
         if config is None:
             value = np.random.choice(
                 range(self.arity),
-                p=self.cpt[tuple([parent.sample() for parent in self.parents])],
+                p=self.cpt[
+                    tuple([parent.sample() for parent in self.parents])
+                ],
             )
         else:
             value = np.random.choice(range(self.arity), p=self.cpt[config])

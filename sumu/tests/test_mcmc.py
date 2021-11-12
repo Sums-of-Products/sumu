@@ -45,7 +45,7 @@ def test_Gadget_empirical_edge_prob_error_decreases():
 
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "sachs.dsc"
-    bn = sumu.BNet.read_file(bn_path)
+    bn = sumu.DiscreteBNet.read_file(bn_path)
     data = bn.sample(200)
     ls = sumu.gadget.LocalScore(data=data, maxid=-1, score=params["score"])
     pset_probs = sumu.aps(ls.candidate_scores(), as_dict=True)
@@ -67,7 +67,7 @@ def test_Gadget_runs_n_between_2_and_64():
     # NOTE: This does not test all numbers of variables up to 64
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "sachs.dsc"
-    bn = sumu.BNet.read_file(bn_path)
+    bn = sumu.DiscreteBNet.read_file(bn_path)
     data = bn.sample(200)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
@@ -80,7 +80,7 @@ def test_Gadget_runs_n_between_65_and_128():
     # NOTE: This does not test all numbers of variables between 65 and 128
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "hepar2.dsc"
-    bn = sumu.BNet.read_file(bn_path)
+    bn = sumu.DiscreteBNet.read_file(bn_path)
     data = bn.sample(1000)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
@@ -93,7 +93,7 @@ def test_Gadget_runs_n_between_129_and_192():
     # NOTE: This does not test all numbers of variables between 129 and 192
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "munin1.dsc"
-    bn = sumu.BNet.read_file(bn_path)
+    bn = sumu.DiscreteBNet.read_file(bn_path)
     data = bn.sample(200)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
@@ -106,7 +106,7 @@ def test_Gadget_runs_n_between_193_and_256():
     # NOTE: This does not test all numbers of variables between 193 and 256
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "andes.dsc"
-    bn = sumu.BNet.read_file(bn_path)
+    bn = sumu.DiscreteBNet.read_file(bn_path)
     data = bn.sample(200)
     g = sumu.Gadget(data=data,
                     mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
@@ -135,7 +135,7 @@ def test_Gadget_runs_n_greater_than_256_continuous():
 def test_Gadget_runs_n_greater_than_256_discrete():
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "pigs.dsc"
-    bn = sumu.BNet.read_file(bn_path)
+    bn = sumu.DiscreteBNet.read_file(bn_path)
     data = bn.sample(1000)
     sumu.Gadget(
         data=data,
