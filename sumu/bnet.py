@@ -171,7 +171,7 @@ class GaussianBNet:
         return Data(data)
 
     @classmethod
-    def random(cls, *, n, enb=4):
+    def random(cls, n, *, enb=4):
         return cls(random_dag_with_expected_neighbourhood_size(n, enb=enb))
 
 

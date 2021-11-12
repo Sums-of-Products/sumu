@@ -18,7 +18,7 @@ except ImportError:
 from .weight_sum import CandidateRestrictedScore, CandidateComplementScore
 from .mcmc import PartitionMCMC, MC3
 from .utils.bitmap import bm, bm_to_ints, bm_to_np64
-from .utils.io import read_candidates, get_n, pretty_dict, pretty_title
+from .utils.io import read_candidates
 from .utils.math_utils import log_minus_exp, close, comb, subsets
 from .scorer import BDeu, BGe
 from .candidates import candidate_parent_algorithm as cpa
@@ -1161,7 +1161,7 @@ class LocalScore:
         for v in C:
             tmp = dict()
             for pset in subsets(C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]):
-                tmp[pset] = self._local(v, np.array(pset))
+                tmp[frozenset(pset)] = self._local(v, np.array(pset))
             scores[v] = tmp
         return scores
 

@@ -5,7 +5,7 @@ import sumu
 def test_pairwise_causal_estimation():
     np.random.seed(0)
     n = 6
-    bn = sumu.GaussianBNet.random(n=n)
+    bn = sumu.GaussianBNet.random(n)
     data = bn.sample(20000)
     dags, scores = sumu.Gadget(data=data, mcmc={"iters": 80000}).sample()
     causal_effects = sumu.beeps(dags, data)
