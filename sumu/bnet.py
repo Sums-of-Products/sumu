@@ -314,16 +314,28 @@ class BNet:
                 data[i, i_node] = self.nodes[i_node].sample(config=pset_config)
         return data
 
-    def __getitem__(self, node_name):
+    def __getitem__(self, node_name_or_index):
+
+        # TODO: bn["node1", "node2"].sample()
+        is_name = type(node_name_or_index) == str
+
         try:
-            return [n for n in self.nodes if n.name == node_name][0]
+            if is_name:
+                return [n for n in self.nodes if n.name == node_name_or_index][
+                    0
+                ]
+            else:
+                return self.nodes[node_name_or_index]
         except IndexError as e:
             raise (
                 # Should be KeyError but it doesn't allow
                 # nice formatting of the message
                 IndexError(
-                    f"No node by the name {node_name}.\n"
-                    + f"Available nodes: {' '.join([n.name for n in self.nodes])}",
+                    str(  # doesn't print newline without the explicit str
+                        f"No node by the name or index {node_name_or_index}.\n"
+                        + f"Available nodes names: {' '.join([str(n.name) for n in self.nodes])}\n"
+                        + f"Available node indices: 0-{len(self.nodes)-1}",
+                    )
                 )
             ) from e
 
