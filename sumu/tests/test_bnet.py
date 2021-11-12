@@ -53,7 +53,7 @@ def test_gaussian_bnet_from_dag_produces_bnet():
 
 def test_conversion_adj_matrix_family_sequence():
     dag = [(0, set()), (1, {0, 2}), (2, set())]
-    assert sumu.validate.dag(dag) == sumu.validate(
+    assert sumu.validate.dag(dag) == sumu.validate.dag(
         sumu.bnet.adj_mat_to_family_sequence(
             sumu.bnet.family_sequence_to_adj_mat(dag)
         )
