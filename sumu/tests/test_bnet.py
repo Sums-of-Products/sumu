@@ -3,7 +3,9 @@ import numpy as np
 import sumu
 
 
-def test_bnet_samples_from_correct_distribution():
+def test_discrete_bnet_node_samples_from_correct_distribution():
+
+    # TODO: Multivariate test
 
     np.random.seed(0)
 
@@ -18,7 +20,9 @@ def test_bnet_samples_from_correct_distribution():
 
     emp_probs = np.array(
         [
-            np.all(data[:, [i_u] + i_pset] == (uval,) + pset_config, axis=1).sum()
+            np.all(
+                data[:, [i_u] + i_pset] == (uval,) + pset_config, axis=1
+            ).sum()
             for uval in range(3)
         ]
     ).astype(np.float32)
@@ -31,11 +35,29 @@ def test_bnet_samples_from_correct_distribution():
     assert kl < 0.05
 
 
-def test_bnet_from_dag_produces_bnet():
+def test_discrete_bnet_from_dag_produces_bnet():
     dag = sumu.validate.dag([(0, set()), (1, {0, 2}), (2, set())])
     bn = sumu.BNet.from_dag(dag, arity=3, ess=10, params="random")
-    bn.sample(20)
+    sumu.BNet.from_dag(
+        dag, data=bn.sample(20), arity=3, ess=10, params="random"
+    )
     assert True
+
+
+def test_gaussian_bnet_from_dag_produces_bnet():
+    dag = sumu.validate.dag([(0, set()), (1, {0, 2}), (2, set())])
+    bn = sumu.GaussianBNet(dag=dag)
+    sumu.GaussianBNet(dag=dag, data=bn.sample(20))
+    assert True
+
+
+def test_conversion_adj_matrix_family_sequence():
+    dag = [(0, set()), (1, {0, 2}), (2, set())]
+    assert sumu.validate.dag(dag) == sumu.validate(
+        sumu.bnet.adj_mat_to_family_sequence(
+            sumu.bnet.family_sequence_to_adj_mat(dag)
+        )
+    )
 
 
 def test_random_dag_with_expected_neighbourhood_size():
