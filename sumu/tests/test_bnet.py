@@ -11,7 +11,7 @@ def test_discrete_bnet_node_samples_from_correct_distribution():
 
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "sachs.dsc"
-    bn = sumu.BNet.read_file(bn_path)
+    bn = sumu.DiscreteBNet.read_file(bn_path)
     data = bn.sample(5000)
 
     i_u = bn.nodes.index(bn["Mek"])
@@ -37,8 +37,8 @@ def test_discrete_bnet_node_samples_from_correct_distribution():
 
 def test_discrete_bnet_from_dag_produces_bnet():
     dag = sumu.validate.dag([(0, set()), (1, {0, 2}), (2, set())])
-    bn = sumu.BNet.from_dag(dag, arity=3, ess=10, params="random")
-    sumu.BNet.from_dag(
+    bn = sumu.DiscreteBNet.from_dag(dag, arity=3, ess=10, params="random")
+    sumu.DiscreteBNet.from_dag(
         dag, data=bn.sample(20), arity=3, ess=10, params="random"
     )
     assert True

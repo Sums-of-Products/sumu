@@ -6,7 +6,7 @@ import warnings
 
 import numpy as np
 
-from ..bnet import BNet, Node
+from ..bnet import DiscreteBNet, DiscreteNode
 from ..stats import Stats
 
 
