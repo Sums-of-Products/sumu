@@ -1130,6 +1130,10 @@ class LocalScore:
         # NOTE: How expensive are nested function calls?
         return self.scorer.local(v, pset) + self.priorf[self.prior["name"]](len(pset))
 
+    def score_dag(self, dag):
+        dag = validate.dag(dag)
+        return sum([self.local(v, np.array(list(pset))) for v, pset in dag])
+
     def clear_cache(self):
         self.scorer.clear_cache()
 
