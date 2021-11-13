@@ -54,20 +54,23 @@ def prune_scores(C, scores):
 
 def parse_DAG(DAG, C):
     """Translates family sequence representation of a DAG
-    where each family is a tuple (v, pset) with pset a integer bitmap 
+    where each family is a tuple (v, pset) with pset a integer bitmap
     in the space of v's candidate parents, into format (v, p_1, ..., p_n)
     where p_1 are the labels of the parents in the space of all nodes.
 
     Is this used anywhere?"""
-    return [(i[0],) + tuple(C[i[0]][u]
-                            for u in [bm_to_ints(i[1])
-                                      if len(i) > 1
-                                      else tuple()][0])
-            for i in sorted(DAG, key=lambda x: x[0])]
+    return [
+        (i[0],)
+        + tuple(
+            C[i[0]][u]
+            for u in [bm_to_ints(i[1]) if len(i) > 1 else tuple()][0]
+        )
+        for i in sorted(DAG, key=lambda x: x[0])
+    ]
 
 
 def pset_posteriors(DAGs):
-    """"Compute the empirical pset probabilities from input DAGs"""
+    """ "Compute the empirical pset probabilities from input DAGs"""
     posteriors = dict({v: dict() for v in range(len(DAGs[0]))})
     for DAG in DAGs:
         for v in DAG:
@@ -109,8 +112,9 @@ def edge_probs_from_pset_probs(unp_probs):
 
     # For each edge the corresponding pset probabilities are collected
     # into a list
-    edge_probs = dict({v: dict({v: list() for v in range(n)})
-                       for v in range(n)})
+    edge_probs = dict(
+        {v: dict({v: list() for v in range(n)}) for v in range(n)}
+    )
     for c in unp_probs:
         for pset in unp_probs[c]:
             for p in pset:
@@ -142,5 +146,5 @@ def edge_empirical_prob_max_error(dags, exact_probs):
         dag = family_sequence_to_adj_mat(dag, row_parents=True)
         n_dags += 1
         dag_sum += dag
-        max_abs_errors.append(np.max(np.abs(dag_sum/n_dags - exact_probs)))
+        max_abs_errors.append(np.max(np.abs(dag_sum / n_dags - exact_probs)))
     return max_abs_errors

@@ -8,39 +8,28 @@ np.random.seed(0)
 def test_Gadget_empirical_edge_prob_error_decreases():
 
     params = {
-
         # generic MCMC parameters
-        "mcmc": {"n_indep": 1, "iters": 600000,
-                 "mc3": 9, "burn_in": 0.5, "n_dags": 10000},
-
+        "mcmc": {
+            "n_indep": 1,
+            "iters": 600000,
+            "mc3": 9,
+            "burn_in": 0.5,
+            "n_dags": 10000,
+        },
         # score to use and its parameters
         "score": {"name": "bdeu", "params": {"ess": 10}},
-
         # modular structure prior and its parameters
         "prior": {"name": "fair"},
-
         # constraints on the DAG space
-        "cons": {
-            "max_id": -1,
-            "K": 8,
-            "d": 3,
-            "pruning_eps": 0.001
-        },
-
+        "cons": {"max_id": -1, "K": 8, "d": 3, "pruning_eps": 0.001},
         # algorithm to use for finding candidate parents
         "candp": {"name": "greedy", "params": {"k": 6}},
-
-
         # preparing for catastrofic cancellations
-        "catc": {
-            "tolerance": 2**-32,
-            "cache_size": 10**7
-        },
-
+        "catc": {"tolerance": 2 ** -32, "cache_size": 10 ** 7},
         # Logging
         "logging": {
             "stats_period": 15,
-        }
+        },
     }
 
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
@@ -53,8 +42,9 @@ def test_Gadget_empirical_edge_prob_error_decreases():
 
     g = sumu.Gadget(data=data, **params)
     dags, scores = g.sample()
-    max_errors = sumu.utils.utils.edge_empirical_prob_max_error(dags,
-                                                                edge_probs)
+    max_errors = sumu.utils.utils.edge_empirical_prob_max_error(
+        dags, edge_probs
+    )
     print(max_errors[-1])
 
     # TODO: Some better test for the validity of returned DAG scores
@@ -69,9 +59,12 @@ def test_Gadget_runs_n_between_2_and_64():
     bn_path = data_path / "sachs.dsc"
     bn = sumu.DiscreteBNet.read_file(bn_path)
     data = bn.sample(200)
-    g = sumu.Gadget(data=data,
-                    mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
-                    candp={"name": "rnd"}, cons={"K": 10, "d": 2})
+    g = sumu.Gadget(
+        data=data,
+        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        candp={"name": "rnd"},
+        cons={"K": 10, "d": 2},
+    )
     g.sample()
     assert True
 
@@ -82,9 +75,12 @@ def test_Gadget_runs_n_between_65_and_128():
     bn_path = data_path / "hepar2.dsc"
     bn = sumu.DiscreteBNet.read_file(bn_path)
     data = bn.sample(1000)
-    g = sumu.Gadget(data=data,
-                    mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
-                    candp={"name": "rnd"}, cons={"K": 10, "d": 2})
+    g = sumu.Gadget(
+        data=data,
+        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        candp={"name": "rnd"},
+        cons={"K": 10, "d": 2},
+    )
     g.sample()
     assert True
 
@@ -95,9 +91,12 @@ def test_Gadget_runs_n_between_129_and_192():
     bn_path = data_path / "munin1.dsc"
     bn = sumu.DiscreteBNet.read_file(bn_path)
     data = bn.sample(200)
-    g = sumu.Gadget(data=data,
-                    mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
-                    candp={"name": "rnd"}, cons={"K": 10, "d": 2})
+    g = sumu.Gadget(
+        data=data,
+        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        candp={"name": "rnd"},
+        cons={"K": 10, "d": 2},
+    )
     g.sample()
     assert True
 
@@ -108,9 +107,12 @@ def test_Gadget_runs_n_between_193_and_256():
     bn_path = data_path / "andes.dsc"
     bn = sumu.DiscreteBNet.read_file(bn_path)
     data = bn.sample(200)
-    g = sumu.Gadget(data=data,
-                    mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
-                    candp={"name": "rnd"}, cons={"K": 10, "d": 2})
+    g = sumu.Gadget(
+        data=data,
+        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        candp={"name": "rnd"},
+        cons={"K": 10, "d": 2},
+    )
     g.sample()
     assert True
 
@@ -127,7 +129,7 @@ def test_Gadget_runs_n_greater_than_256_continuous():
         data=data,
         mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
         candp={"name": "rnd"},
-        cons={"K": 8, "d": 1}
+        cons={"K": 8, "d": 1},
     ).sample()
     assert True
 
@@ -141,7 +143,7 @@ def test_Gadget_runs_n_greater_than_256_discrete():
         data=data,
         mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
         candp={"name": "rnd"},
-        cons={"K": 8, "d": 1}
+        cons={"K": 8, "d": 1},
     ).sample()
     assert True
 
@@ -152,7 +154,7 @@ def test_Gadget_runs_empty_data_continuous():
         data=data,
         mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
         candp={"name": "rnd"},
-        cons={"K": 8, "d": 1}
+        cons={"K": 8, "d": 1},
     ).sample()
     assert True
 
@@ -163,15 +165,15 @@ def test_Gadget_runs_empty_data_discrete():
         data=data,
         mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
         candp={"name": "rnd"},
-        cons={"K": 8, "d": 1}
+        cons={"K": 8, "d": 1},
     ).sample()
     assert True
 
 
-if __name__ == '__main__':
-    #test_Gadget_runs_n_between_2_and_64()
-    #test_Gadget_runs_n_between_65_and_128()
-    #test_Gadget_runs_n_between_129_and_192()
-    #test_Gadget_runs_n_between_193_and_256()
-    #test_Gadget_empirical_edge_prob_error_decreases()
-    test_Gadget_runs_n_greater_than_256_discrete()
+if __name__ == "__main__":
+    # test_Gadget_runs_n_between_2_and_64()
+    # test_Gadget_runs_n_between_65_and_128()
+    # test_Gadget_runs_n_between_129_and_192()
+    # test_Gadget_runs_n_between_193_and_256()
+    test_Gadget_empirical_edge_prob_error_decreases()
+    # test_Gadget_runs_n_greater_than_256_discrete()

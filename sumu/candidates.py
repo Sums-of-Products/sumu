@@ -3,7 +3,6 @@ import numpy as np
 
 from .utils.math_utils import subsets
 from .aps import aps
-#from .stats import stats
 
 
 def rnd(K, *, data, **kwargs):
@@ -11,7 +10,13 @@ def rnd(K, *, data, **kwargs):
     n = data.n
     C = dict()
     for v in range(n):
-        C[v] = tuple(sorted(np.random.choice([u for u in range(n) if u != v], K, replace=False)))
+        C[v] = tuple(
+            sorted(
+                np.random.choice(
+                    [u for u in range(n) if u != v], K, replace=False
+                )
+            )
+        )
     return C, None
 
 
@@ -20,22 +25,36 @@ def opt(K, **kwargs):
     scores = kwargs.get("scores")
     n = kwargs.get("n")
 
-    C = np.array([[v for v in range(n) if v != u] for u in range(n)], dtype=np.int32)
-    pset_posteriors = aps(scores.all_candidate_restricted_scores(C),
-                          as_dict=True, normalize=True)
+    C = np.array(
+        [[v for v in range(n) if v != u] for u in range(n)], dtype=np.int32
+    )
+    pset_posteriors = aps(
+        scores.all_candidate_restricted_scores(C), as_dict=True, normalize=True
+    )
 
     C = dict()
     for v in pset_posteriors:
         postsums = dict()
-        for candidate_set in subsets(set(pset_posteriors).difference({v}), K, K):
-            postsums[candidate_set] = np.logaddexp.reduce([pset_posteriors[v][pset]
-                                                           for pset in subsets(candidate_set, 0, K)])
+        for candidate_set in subsets(
+            set(pset_posteriors).difference({v}), K, K
+        ):
+            postsums[candidate_set] = np.logaddexp.reduce(
+                [
+                    pset_posteriors[v][pset]
+                    for pset in subsets(candidate_set, 0, K)
+                ]
+            )
         C[v] = max(postsums, key=lambda candidate_set: postsums[candidate_set])
     return C, None
 
 
-def greedy(K, *, scores, params={"k": 6, "t_budget": None, "criterion": "score"}, **kwargs):
-    t0 = time.time()
+def greedy(
+    K,
+    *,
+    scores,
+    params={"k": 6, "t_budget": None, "criterion": "score"},
+    **kwargs,
+):
     k = params.get("k")
     if k is not None:
         k = min(k, K)
@@ -45,16 +64,29 @@ def greedy(K, *, scores, params={"k": 6, "t_budget": None, "criterion": "score"}
     if criterion == "score":
         goodness = lambda v, S, u: scores._local(v, np.array(S + (u,)))
     elif criterion == "gain":
-        goodness = lambda v, S, u: scores._local(v, np.array(S + (u,))) - scores._local(v, np.array(S))
+        goodness = lambda v, S, u: scores._local(
+            v, np.array(S + (u,))
+        ) - scores._local(v, np.array(S))
 
     def k_highest_uncovered(v, U, k):
 
-        uncovereds = {u: max(
-            {
-            goodness(v, S, u)
-            for S in subsets(C[v], 0, [len(C[v]) if scores.maxid == -1 else min(len(C[v]), scores.maxid-1)][0])
-            }
-        ) for u in U}
+        uncovereds = {
+            u: max(
+                {
+                    goodness(v, S, u)
+                    for S in subsets(
+                        C[v],
+                        0,
+                        [
+                            len(C[v])
+                            if scores.maxid == -1
+                            else min(len(C[v]), scores.maxid - 1)
+                        ][0],
+                    )
+                }
+            )
+            for u in U
+        }
 
         k_highest = list()
         while len(k_highest) < k:
@@ -68,7 +100,6 @@ def greedy(K, *, scores, params={"k": 6, "t_budget": None, "criterion": "score"}
             return K
         U = set(range(1, len(C)))
         t_used = list()
-        n_scores = np.array([2**m for m in range(K+1)])
         t = time.time()
         t_pred_next_add = 0
         i = 0
@@ -107,8 +138,4 @@ def greedy(K, *, scores, params={"k": 6, "t_budget": None, "criterion": "score"}
     return C, {"k": k}
 
 
-candidate_parent_algorithm = {
-    "opt": opt,
-    "rnd": rnd,
-    "greedy": greedy
-}
+candidate_parent_algorithm = {"opt": opt, "rnd": rnd, "greedy": greedy}

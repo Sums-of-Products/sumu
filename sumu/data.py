@@ -4,8 +4,8 @@ import numpy as np
 class Data:
     """Class for holding data.
 
-    The data can be input as either a path to a space delimited csv
-    file, a numpy array or an object of type :py:class:`.Data` (in which case a new
+    The data can be input as either a path to a space delimited csv file, a
+    numpy array or an object of type :py:class:`.Data` (in which case a new
     object is created pointing to the same underlying data).
 
     Assumes the input data is either discrete or continuous. The type
