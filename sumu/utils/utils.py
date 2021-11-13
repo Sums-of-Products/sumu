@@ -1,3 +1,4 @@
+from pathlib import Path
 import numpy as np
 import re
 
@@ -6,16 +7,24 @@ from ..bnet import family_sequence_to_adj_mat
 
 
 def cite(this):
-    ks = [k for kl in [k.split(",")
-                       for k in re.findall(r':cite:`(.+?(?=`))', this.__doc__)]
-          for k in kl]
+    ks = [
+        k
+        for kl in [
+            k.split(",")
+            for pattern in [r":cite:`(.+?(?=`))", r":footcite:`(.+?(?=`))"]
+            for k in re.findall(pattern, this.__doc__)
+        ]
+        for k in kl
+    ]
     bibtex = list()
     inentry = False
-    with open("../sources.bib", "r") as f:
+    sources_path = Path(__file__).parents[1].resolve() / "sources.bib"
+    with open(sources_path, "r") as f:
         for row in f.readlines():
             if inentry:
                 if row[0] == "@":
-                    bibtex.append("".join(entry).strip())
+                    # entry exists by now. Consider refactoring.
+                    bibtex.append("".join(entry).strip())  # noqa
                     inentry = False
                     entry = list()
                 else:
