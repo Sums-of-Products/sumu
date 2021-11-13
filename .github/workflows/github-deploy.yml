@@ -33,8 +33,6 @@ env:
 jobs:
   
   build_wheels:
-    needs:
-      Lint
     name: Build wheels on ${{ matrix.os }} ${{ matrix.CIBW_BUILD }}
     runs-on: ${{ matrix.os }}
     env:
@@ -65,8 +63,6 @@ jobs:
 
           
   build_sdist:
-    needs:
-      Lint
     name: Build source distribution
     runs-on: ubuntu-latest
     steps:
@@ -91,8 +87,6 @@ jobs:
 
 
   coverage_analysis:
-    needs:
-      Lint
     name: Test coverage analysis
     runs-on: ubuntu-latest
     steps:
