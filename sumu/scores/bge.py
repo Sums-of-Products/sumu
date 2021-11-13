@@ -103,7 +103,7 @@ class BGe:
             for pset in subsets(
                 C[v], 0, [len(C[v]) if self.maxid == -1 else self.maxid][0]
             ):
-                scores[v, bm(pset, ix=C[v])] = self.local(v, pset)
+                scores[v, bm(pset, idx=C[v])] = self.local(v, pset)
             self.clear_cache()
 
         return scores
