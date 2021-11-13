@@ -319,7 +319,7 @@ class Logger:
         elif type(logfile) == str:
             if os.path.isfile(logfile):
                 if not overwrite:
-                    raise FileExistsError("{} exists.".format(logfile))
+                    raise FileExistsError(f"{logfile} exists.")
                 else:
                     os.remove(logfile)
             self._logfile = open(logfile, mode)
@@ -329,18 +329,18 @@ class Logger:
             self._logfile = logfile
             self._logfilename = ""
 
-    def print(self, string):
+    def __call__(self, string):
         print(string, file=self._logfile)
         self._logfile.flush()
 
-    def print_dict(self, data):
+    def dict(self, data):
 
         def pretty_dict(d, n=0, string=""):
             for k in d:
                 if type(d[k]) in (dict, Stats):
-                    string += "{}{}\n".format(" "*n, k)
+                    string += f"{' '*n}{k}\n"
                 else:
-                    string += "{}{}: {}\n".format(" "*n, k, d[k])
+                    string += f"{' '*n}{k}: {d[k]}\n"
                 if type(d[k]) in (dict, Stats):
                     string += pretty_dict(d[k], n=n+2)
             return string
@@ -348,11 +348,11 @@ class Logger:
         print(pretty_dict(data), file=self._logfile)
         self._logfile.flush()
 
-    def print_numpy(self, array, fmt="%.2f"):
+    def numpy(self, array, fmt="%.2f"):
         np.savetxt(self._logfile, array, fmt=fmt)
         self._logfile.flush()
 
-    def newline(self, n=1):
+    def br(self, n=1):
         print("\n"*(n-1), file=self._logfile)
         self._logfile.flush()
 
@@ -367,15 +367,15 @@ class GadgetLogger(Logger):
         self._linewidth = max(80, 12+6*gadget.p["mcmc"]["mc3"]-1)
         self.g = gadget
 
-    def print_title(self, title):
+    def h(self, title):
         self._running_sec_num += 1
         end = "."*(self._linewidth - len(title) - 4)
-        title = "{}. {} {}".format(self._running_sec_num, title, end)
+        title = f"{self._running_sec_num}. {title} {end}"
         print(title, file=self._logfile)
-        self.newline()
+        self.br()
         self._logfile.flush()
 
-    def print_periodic_stats(self, header=False):
+    def periodic_stats(self, header=False):
         msg_tmpl = "{:<12.12}" + " {:<5.5}"*self.g.p["mcmc"]["mc3"]
         temps = sorted(list(stats["mcmc"].keys()), reverse=True)
         temps_labels = [round(t, 2) for t in temps]
@@ -411,7 +411,7 @@ class GadgetLogger(Logger):
         print(file=self._logfile)
         self._logfile.flush()
 
-    def print_run_stats(self):
+    def run_stats(self):
         w_iters = str(max(len("iters"), len(str(stats["iters"]["total"]))) + 2)
         w_seconds = str(len(str(int(stats["t"]["mcmc"]))) + 2)
         msg_title_tmpl = "{:<15}{:<" + w_iters + "}{:<13}{:<" + w_seconds + "}{:<9}{:<13}"
@@ -433,29 +433,27 @@ class GadgetLogger(Logger):
         print(file=self._logfile)
         self._logfile.flush()
 
-    def print_progress(self, t, t_elapsed):
+    def progress(self, t, t_elapsed):
         if self.g.p["run_mode"]["name"] == "normal":
             progress = round(100*t/(self.g.p["mcmc"]["iters"] // self.g.p["mcmc"]["mc3"]))
             progress = str(progress)
-            print("Progress: {}% ({} iterations)".format(progress,
-                                                         t*self.g.p["mcmc"]["mc3"]),
+            print(f"Progress: {progress}% ({t*self.g.p['mcmc']['mc3']} iterations)",
                   file=self._logfile)
             self._logfile.flush()
         elif self.g.p["run_mode"]["name"] == "budget":
             progress = round(100*t_elapsed/self.g.p.gb.budget["mcmc"])
             progress = str(progress)
-            print("Progress: {}% ({} iterations)".format(progress,
-                                                         t*self.g.p["mcmc"]["mc3"]),
+            print("Progress: {progress}% ({t*self.g.p['mcmc']['mc3'])} iterations)",
                   file=self._logfile)
         elif self.g.p["run_mode"]["name"] == "anytime":
-            print("Progress: {} iterations".format(t*self.g.p["mcmc"]["mc3"]),
+            print("Progress: {t*self.g.p['mcmc']['mc3']} iterations",
                   file=self._logfile)
 
-    def print_r_scores(self, t, R_scores):
+    def r_scores(self, t, R_scores):
         msg = "Last root-partition scores: " + " ".join(str(int(score))
                                                         for score in R_scores[t % 1000])
         print(msg, file=self._logfile)
-        self.newline()
+        self.br()
         self._logfile.flush()
 
     def plot_score_trace(self, t, R_scores):
@@ -737,61 +735,64 @@ class Gadget():
         self.data = self.p.data
 
         self.log = GadgetLogger(self)
+        log = self.log
         self.trace = Logger(logfile=self.p["logging"]["tracefile"],
                             overwrite=self.p["logging"]["overwrite"])
 
-        self.log.print_title("PROBLEM INSTANCE")
-        self.log.print_dict(self.data.info)
-        self.log.newline()
+        log.h("PROBLEM INSTANCE")
+        log.dict(self.data.info)
+        log.br()
 
-        self.log.print_title("RUN PARAMETERS")
-        self.log.print_dict(self.p.p)
+        log.h("RUN PARAMETERS")
+        log.dict(self.p.p)
         if self.p["run_mode"]["name"] == "normal":
             if any(self.p.adjusted):
-                self.log.print("WARNING")
+                log("WARNING")
             if self.p.adjusted[0]:
-                self.log.print("iters adjusted downwards: needs to be multiple of mc3.")
+                log("iters adjusted downwards: needs to be multiple of mc3.")
             if self.p.adjusted[1]:
-                self.log.print("n_dags adjusted downwards: max is (iters * (1 - burn_in)) / mc3.")
+                log("n_dags adjusted downwards: max is (iters * (1 - burn_in)) / mc3.")
             if any(self.p.adjusted):
-                self.log.newline()
-        self.log.newline()
+                log.br()
+        log.br()
 
     def sample(self):
 
-        self.log.print_title("FINDING CANDIDATE PARENTS")
+        log = self.log
+
+        log.h("FINDING CANDIDATE PARENTS")
         stats["t"]["C"] = time.time()
         self._find_candidate_parents()
         stats["t"]["C"] = time.time() - stats["t"]["C"]
-        self.log.print_numpy(self.C_array, "%i")
+        log.numpy(self.C_array, "%i")
         if self.p["run_mode"]["name"] == "budget" and "candp" not in self.p.gb.preset and self.p["candp"]["name"] == Defaults()["candp"]["name"]:
-            self.log.newline()
-            self.log.print("Adjusted for time budget: k = {}".format(stats["C"]["k"]))
-            self.log.print("time budgeted: {}s".format(round(self.p["candp"]["params"]["t_budget"])))
-        self.log.newline()
-        self.log.print("time used: {}s".format(round(stats["t"]["C"])))
-        self.log.newline(2)
+            log.br()
+            log(f"Adjusted for time budget: k = {stats['C']['k']}")
+            log(f"time budgeted: {round(self.p['candp']['params']['t_budget'])}s")
+        log.br()
+        log(f"time used: {round(stats['t']['C'])}s")
+        log.br(2)
 
-        self.log.print_title("PRECOMPUTING SCORING STRUCTURES FOR CANDIDATE PARENT SETS")
+        log.h("PRECOMPUTING SCORING STRUCTURES FOR CANDIDATE PARENT SETS")
         stats["t"]["crscore"] = time.time()
         self._precompute_scores_for_all_candidate_psets()
         self._precompute_candidate_restricted_scoring()
         stats["t"]["crscore"] = time.time() - stats["t"]["crscore"]
         if self.p["run_mode"]["name"] == "budget":
-            self.log.print("time predicted: {}s".format(round(self.p.gb.predicted["crs"])))
-        self.log.print("time used: {}s".format(round(stats["t"]["crscore"])))
-        self.log.newline(2)
+            log(f"time predicted: {round(self.p.gb.predicted['crs'])}s")
+        log(f"time used: {round(stats['t']['crscore'])}s")
+        log.br(2)
 
-        self.log.print_title("PRECOMPUTING SCORING STRUCTURES FOR COMPLEMENTARY PARENT SETS")
+        log.h("PRECOMPUTING SCORING STRUCTURES FOR COMPLEMENTARY PARENT SETS")
         stats["t"]["ccscore"] = time.time()
         self._precompute_candidate_complement_scoring()
         stats["t"]["ccscore"] = time.time() - stats["t"]["ccscore"]
         if self.p["run_mode"]["name"] == "budget":
-            self.log.print("time predicted: {}s".format(round(self.p.gb.predicted["ccs"])))
-        self.log.print("time used: {}s".format(round(stats["t"]["ccscore"])))
-        self.log.newline(2)
+            log(f"time predicted: {round(self.p.gb.predicted['ccs'])}s")
+        log(f"time used: {round(stats['t']['ccscore'])}s")
+        log.br(2)
 
-        self.log.print_title("RUNNING MCMC")
+        log.h("RUNNING MCMC")
         stats["t"]["mcmc"] = time.time()
         self._mcmc_init()
         if self.p["run_mode"]["name"] == "anytime":
@@ -799,12 +800,12 @@ class Gadget():
         else:
             self._mcmc_run()
         stats["t"]["mcmc"] = time.time() - stats["t"]["mcmc"]
-        self.log.print("time used: {}s".format(round(stats["t"]["mcmc"])))
-        self.log.newline(2)
+        log(f"time used: {round(stats['t']['mcmc'])}s")
+        log.br(2)
 
-        self.log.print_title("RUN STATISTICS")
-        self.log.print_run_stats()
-        self.log.print("no. dags sampled: {}".format(len(self.dags)))
+        log.h("RUN STATISTICS")
+        log.run_stats()
+        log(f"no. dags sampled: {len(self.dags)}")
 
         return self.dags, dict(parameters=self.p.p, scores=self.dag_scores, candidates=self.C)
 
@@ -910,16 +911,16 @@ class Gadget():
                 R, R_score = self.mcmc[i].sample()
                 R_scores[t % r, i] = R_score
             if t > 0 and t % (r-1) == 0:
-                self.trace.print_numpy(R_scores)
+                self.trace.numpy(R_scores)
             if time.time() - timer > self.p["logging"]["stats_period"]:
                 timer = time.time()
-                self.log.print_periodic_stats(first)
-                self.log.print_progress(t, time.time() - t0)
+                self.log.periodic_stats(first)
+                self.log.progress(t, time.time() - t0)
                 if plot_trace:
-                    self.log.newline()
+                    self.log.br()
                     self.log.plot_score_trace(t, R_scores)
                 else:
-                    self.log.print_r_scores(t, R_scores)
+                    self.log.r_scores(t, R_scores)
                 first = False
 
             t += 1
@@ -931,8 +932,8 @@ class Gadget():
             t_b_mcmc = self.p["run_mode"]["params"]["t"] - (time.time() - self.p.gb.t0)
             t_per_dag = t_b_mcmc / self.p["mcmc"]["n_dags"]
 
-        self.log.print("Sampling DAGs...")
-        self.log.newline(2)
+        self.log("Sampling DAGs...")
+        self.log.br(2)
 
         dag_count = 0
         iters_burn_in = t
@@ -942,13 +943,13 @@ class Gadget():
         while mcmc_cond():
             if time.time() - timer > self.p["logging"]["stats_period"]:
                 timer = time.time()
-                self.log.print_periodic_stats(first)
-                self.log.print_progress(t + iters_burn_in, time.time() - t0 + t_used_burnin)
+                self.log.periodic_stats(first)
+                self.log.progress(t + iters_burn_in, time.time() - t0 + t_used_burnin)
                 if plot_trace:
-                    self.log.newline()
+                    self.log.br()
                     self.log.plot_score_trace(t, R_scores)
                 else:
-                    self.log.print_r_scores(t + iters_burn_in, R_scores)
+                    self.log.r_scores(t + iters_burn_in, R_scores)
                 first = False
             if dag_sample_cond():
                 for i in range(self.p["mcmc"]["n_indep"]):
@@ -963,13 +964,13 @@ class Gadget():
                     R, R_score = self.mcmc[i].sample()
                     R_scores[(t + iters_burn_in) % r, i] = R_score
             if t > 0 and t % (r-1) == 0:
-                self.trace.print_numpy(R_scores)
+                self.trace.numpy(R_scores)
 
             t += 1
             t_elapsed = time.time() - t0
         stats["t"]["after burn-in"] = t_elapsed
 
-        self.log.print_periodic_stats(first)
+        self.log.periodic_stats(first)
 
         stats["iters"] = {"burn-in": iters_burn_in, "after burn-in": t, "total": iters_burn_in + t}
         return self.dags, self.dag_scores
@@ -995,23 +996,23 @@ class Gadget():
                     R, R_score = self.mcmc[i].sample()
                     R_scores[t_b % r, i] = R_score
                 if t_b > 0 and t_b % (r-1) == 0:
-                    self.trace.print_numpy(R_scores)
+                    self.trace.numpy(R_scores)
                 if time.time() - timer > self.p["logging"]["stats_period"]:
                     timer = time.time()
-                    self.log.print_periodic_stats(first)
-                    self.log.print_progress(t_b, 0)
+                    self.log.periodic_stats(first)
+                    self.log.progress(t_b, 0)
                     if plot_trace:
-                        self.log.newline()
+                        self.log.br()
                         self.log.plot_score_trace(t_b, R_scores)
                     else:
-                        self.log.print_r_scores(t_b, R_scores)
+                        self.log.r_scores(t_b, R_scores)
                     first = False
         except KeyboardInterrupt:
             stats["t"]["burn-in"] = time.time() - t0
             stats["iters"]["burn-in"] = t_b
 
-        self.log.print("Sampling DAGs...")
-        self.log.newline(2)
+        self.log("Sampling DAGs...")
+        self.log.br(2)
 
         try:
             t0 = time.time()
@@ -1022,17 +1023,17 @@ class Gadget():
                 t += 1
                 if time.time() - timer > self.p["logging"]["stats_period"]:
                     timer = time.time()
-                    self.log.print_periodic_stats(first)
-                    self.log.print_progress(t_b + t, 0)
+                    self.log.periodic_stats(first)
+                    self.log.progress(t_b + t, 0)
                     if plot_trace:
-                        self.log.newline()
+                        self.log.br()
                         self.log.plot_score_trace(t + t_b, R_scores)
                     else:
-                        self.log.print_r_scores(t + t_b, R_scores)
+                        self.log.r_scores(t + t_b, R_scores)
                     first = False
                     msg = "{} DAGs with thinning {}."
-                    self.log.print(msg.format(len(self.dags), thinning))
-                    self.log.newline()
+                    self.log(msg.format(len(self.dags), thinning))
+                    self.log.br()
                 if t > 0 and t % thinning == 0:
                     for i in range(self.p["mcmc"]["n_indep"]):
                         dag_count += 1
@@ -1051,7 +1052,7 @@ class Gadget():
                         R_scores[(t + t_b) % r, i] = R_score
 
                 if t % (r-1) == 0:
-                    self.trace.print_numpy(R_scores)
+                    self.trace.numpy(R_scores)
 
         except KeyboardInterrupt:
             stats["t"]["after burn-in"] = time.time() - t0
@@ -1059,7 +1060,7 @@ class Gadget():
             stats["iters"]["total"] = stats["iters"]["burn-in"] + stats["iters"]["after burn-in"]
 
         if first:
-            self.log.print_periodic_stats(first)
+            self.log.periodic_stats(first)
 
         return self.dags, self.dag_scores
 
