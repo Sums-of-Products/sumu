@@ -1,14 +1,14 @@
-import sys
+import distutils.util
 import os
 import pathlib
-import setuptools  # noqa, importing this had some side effect?
-from distutils.core import setup, Extension
-from distutils.command.clean import clean as Clean
-import distutils.util
 import shutil
-from Cython.Build import cythonize
-import numpy
+import sys
+from distutils.command.clean import clean as Clean
+from distutils.core import Extension, setup
 
+import numpy
+import setuptools  # noqa, importing this had some side effect?
+from Cython.Build import cythonize
 
 # The directory containing this file
 HERE = pathlib.Path(__file__).parent

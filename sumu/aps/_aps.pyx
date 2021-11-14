@@ -1,10 +1,12 @@
 import numpy as np
+
 cimport numpy as np
-from libcpp.vector cimport vector
+from libc.stdint cimport uint32_t as bm32
 from libcpp cimport bool
 from libcpp.utility cimport move  # min Cython 0.29.17
-from libc.stdint cimport uint32_t as bm32
-from .utils.bitmap import bm_to_ints#, ikbit
+from libcpp.vector cimport vector
+
+from .utils.bitmap import bm_to_ints  # , ikbit
 
 
 cdef extern from "../bitmap/bitmap.hpp":

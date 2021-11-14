@@ -10,7 +10,8 @@ requires = [
 line-length = 79
 target_version = ['py37', 'py38', 'py39']
 experimental_string_processing = true
-exclude = '''
+# force-exclude instead of force makes pre-commit respect this
+force-exclude = '''
 
 (
   /(

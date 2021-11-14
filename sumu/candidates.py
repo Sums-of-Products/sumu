@@ -1,8 +1,9 @@
 import time
+
 import numpy as np
 
-from .utils.math_utils import subsets
 from .aps import aps
+from .utils.math_utils import subsets
 
 
 def rnd(K, *, data, **kwargs):

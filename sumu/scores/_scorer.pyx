@@ -1,17 +1,22 @@
 import time
+
 import numpy as np
+
 cimport numpy as np
-from libcpp.vector cimport vector
-from libc.stdint cimport uint64_t as bm64
 from libc.stdint cimport uint32_t as bm32
-from .utils.math_utils import subsets, comb
+from libc.stdint cimport uint64_t as bm64
+from libcpp.vector cimport vector
+
 from .utils.bitmap import bm, bm_to_np64
+from .utils.math_utils import comb, subsets
 
 cimport cython
 
 # A bit of a hack to make BGe available at sumu.scorer.BGe
 # Unnecessary after BGe is implemented in C++ similarly to BDeu
+
 from .scores.bge import BGe
+
 
 cdef extern from "../bitmap/bitmap.hpp":
     int count_32(bm32 bitmap)

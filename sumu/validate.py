@@ -24,8 +24,8 @@ Upon import of this module, for each validator two functions are created:
 # The formatting has to be handcrafted, for now.
 
 import sys
-import numpy as np
 
+import numpy as np
 
 _dag = {
 

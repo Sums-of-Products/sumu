@@ -2,10 +2,10 @@
 :footcite:`viinikka:2020a`.
 """
 
-import sys
-import os
-import time
 import copy
+import os
+import sys
+import time
 
 import numpy as np
 
@@ -16,17 +16,16 @@ try:
 except ImportError:
     plot_trace = False
 
-from .weight_sum import CandidateRestrictedScore, CandidateComplementScore
-from .mcmc import PartitionMCMC, MC3
+from . import validate
+from .candidates import candidate_parent_algorithm as cpa
+from .data import Data
+from .mcmc import MC3, PartitionMCMC
+from .scorer import BDeu, BGe
+from .stats import Stats, stats
 from .utils.bitmap import bm, bm_to_ints, bm_to_np64
 from .utils.io import read_candidates
 from .utils.math_utils import comb, subsets
-from .scorer import BDeu, BGe
-from .candidates import candidate_parent_algorithm as cpa
-from .stats import Stats, stats
-
-from . import validate
-from .data import Data
+from .weight_sum import CandidateComplementScore, CandidateRestrictedScore
 
 
 class Defaults:
@@ -503,10 +502,8 @@ class GadgetLogger(Logger):
             )
             progress = str(progress)
             print(
-                (
-                    f"Progress: {progress}% "
-                    f"({t*self.g.p['mcmc']['mc3']} iterations)"
-                ),
+                f"Progress: {progress}% "
+                f"({t*self.g.p['mcmc']['mc3']} iterations)",
                 file=self._logfile,
             )
             self._logfile.flush()
@@ -514,10 +511,8 @@ class GadgetLogger(Logger):
             progress = round(100 * t_elapsed / self.g.p.gb.budget["mcmc"])
             progress = str(progress)
             print(
-                (
-                    f"Progress: {progress}% "
-                    f"({t*self.g.p['mcmc']['mc3']} iterations)"
-                ),
+                f"Progress: {progress}% "
+                f"({t*self.g.p['mcmc']['mc3']} iterations)",
                 file=self._logfile,
             )
         elif self.g.p["run_mode"]["name"] == "anytime":
@@ -846,10 +841,8 @@ class Gadget:
                 log("iters adjusted downwards: needs to be multiple of mc3.")
             if self.p.adjusted[1]:
                 log(
-                    (
-                        "n_dags adjusted downwards: "
-                        "max is (iters * (1 - burn_in)) / mc3."
-                    )
+                    "n_dags adjusted downwards: "
+                    "max is (iters * (1 - burn_in)) / mc3."
                 )
             if any(self.p.adjusted):
                 log.br()
@@ -872,8 +865,8 @@ class Gadget:
             log.br()
             log(f"Adjusted for time budget: k = {stats['C']['k']}")
             log(
-                (f"time budgeted: "
-                 f"{round(self.p['candp']['params']['t_budget'])}s")
+                "time budgeted: "
+                f"{round(self.p['candp']['params']['t_budget'])}s"
             )
         log.br()
         log(f"time used: {round(stats['t']['C'])}s")
@@ -1301,10 +1294,8 @@ class LocalScore:
             return self._local(v, pset)
         if min(v, min(pset)) < 0 or max(v, max(pset)) >= self.data.n:
             raise IndexError(
-                (
-                    "Attempting to query score for (v, pset) "
-                    "where some variables don't exist in data"
-                )
+                "Attempting to query score for (v, pset) "
+                "where some variables don't exist in data"
             )
         return self._local(v, pset)
 
@@ -1450,8 +1441,8 @@ class Score:  # should be renamed to e.g. ScoreHandler
 
         if len(T) > 0 and T_bm == 0 and self.c_c_score is None:
             raise RuntimeError(
-                ("Cannot meet constraints if d=0 (c_c_score is None) "
-                 "and T does not intersect C[v]")
+                "Cannot meet constraints if d=0 (c_c_score is None) "
+                "and T does not intersect C[v]"
             )
 
         if len(T) > 0:

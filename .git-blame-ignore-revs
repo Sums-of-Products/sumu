@@ -8,6 +8,8 @@
 #
 # $ git config blame.ignoreRevsFile .git-blame-ignore-revs
 
-# PR 10: Clean up/linting
+# PR 10: flake8 + black
 dc29f6da14c3a11e9f523001ef7c79be8832ad9c
 
+# PR 11: Use isort (and a bit of black)
+8fe07a70bd5dd104bee44405cf9a35ec388420a5

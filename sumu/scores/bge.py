@@ -1,8 +1,8 @@
 import numpy as np
 from scipy.special import loggamma as lgamma
 
-from ..utils.math_utils import subsets
 from ..utils.bitmap import bm, bm_to_np64
+from ..utils.math_utils import subsets
 
 
 class BGe:

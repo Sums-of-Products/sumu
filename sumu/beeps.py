@@ -1,7 +1,8 @@
 import numpy as np
 from scipy.stats import multivariate_t as mvt
-from .gadget import Data
+
 from .bnet import family_sequence_to_adj_mat
+from .gadget import Data
 
 
 class Beeps:
