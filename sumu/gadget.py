@@ -522,7 +522,7 @@ class GadgetLogger(Logger):
             )
         elif self.g.p["run_mode"]["name"] == "anytime":
             print(
-                "Progress: {t*self.g.p['mcmc']['mc3']} iterations",
+                f"Progress: {t*self.g.p['mcmc']['mc3']} iterations",
                 file=self._logfile,
             )
 
