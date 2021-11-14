@@ -170,10 +170,41 @@ def test_Gadget_runs_empty_data_discrete():
     assert True
 
 
+def test_gadget_runs_with_anytime_mode():
+
+    import signal, time
+
+    def gadget_anytime():
+        data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
+        bn_path = data_path / "sachs.dsc"
+        bn = sumu.DiscreteBNet.read_file(bn_path)
+        data = bn.sample(200)
+        g = sumu.Gadget(
+            data=data,
+            run_mode={"name": "anytime"},
+            mcmc={"mc3": 2, "n_dags": 50},
+            candp={"name": "rnd"},
+            cons={"K": 6, "d": 2},
+        )
+        return g.sample()
+
+    def handler(signum, frame):
+        print("Simulating user sent CTRL-C", signum)
+        signal.alarm(5)
+        raise KeyboardInterrupt("CTRL-C")
+
+    signal.signal(signal.SIGALRM, handler)
+    signal.alarm(5)
+    dags, meta = gadget_anytime()
+    signal.alarm(0)
+    assert True
+
+
 if __name__ == "__main__":
     # test_Gadget_runs_n_between_2_and_64()
     # test_Gadget_runs_n_between_65_and_128()
     # test_Gadget_runs_n_between_129_and_192()
     # test_Gadget_runs_n_between_193_and_256()
-    test_Gadget_empirical_edge_prob_error_decreases()
+    # test_Gadget_empirical_edge_prob_error_decreases()
     # test_Gadget_runs_n_greater_than_256_discrete()
+    test_gadget_runs_with_anytime_mode()
