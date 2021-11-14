@@ -9,7 +9,6 @@ import shutil
 from Cython.Build import cythonize
 import numpy
 
-
 # The directory containing this file
 HERE = pathlib.Path(__file__).parent
 

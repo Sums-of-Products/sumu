@@ -1,11 +1,13 @@
 """Module for representation and basic functionalities for Bayesian networks.
 """
-import logging
-import numpy as np
 import itertools
-from . import validate
+import logging
+
+import numpy as np
 from scipy.stats import dirichlet
 from scipy.stats import multivariate_t as mvt
+
+from . import validate
 from .data import Data
 
 

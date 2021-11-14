@@ -1,13 +1,11 @@
-from .candidates import candidate_parent_algorithm
-from .gadget import Gadget, LocalScore
-from .mcmc import PartitionMCMC, MC3
-from . import bnet
-from . import gadget
-from .bnet import DiscreteBNet, GaussianBNet
-from .utils.utils import cite
-from .beeps import Beeps
-from .gadget import Data
+from . import bnet, gadget
 from .aps import aps
+from .beeps import Beeps
+from .bnet import DiscreteBNet, GaussianBNet
+from .candidates import candidate_parent_algorithm
+from .gadget import Data, Gadget, LocalScore
+from .mcmc import MC3, PartitionMCMC
+from .utils.utils import cite
 
 __all__ = [
     "gadget",

@@ -1,6 +1,7 @@
 import numpy as np
+
 from .bnet import partition
-from .mcmc_moves import R_basic_move, R_swap_any, DAG_edgerev
+from .mcmc_moves import DAG_edgerev, R_basic_move, R_swap_any
 from .stats import stats
 
 
