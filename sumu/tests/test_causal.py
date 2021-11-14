@@ -8,7 +8,7 @@ def test_pairwise_causal_estimation():
     bn = sumu.GaussianBNet.random(n)
     data = bn.sample(20000)
     dags, scores = sumu.Gadget(data=data, mcmc={"iters": 80000}).sample()
-    causal_effects = sumu.beeps(dags, data)
+    causal_effects = sumu.Beeps(dags=dags, data=data).sample_pairwise()
     mse = (
         (np.linalg.inv(np.eye(n) - bn.B) - causal_effects.mean(axis=0)) ** 2
     ).mean()

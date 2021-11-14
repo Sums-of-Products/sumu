@@ -14,9 +14,9 @@ def test_R_basic_move():
     passed = list()
     for i in range(100):
         R_prime, q, q_prime, rescore = mcmc_moves.R_basic_move(R=R)
-        if len(R_prime) == 1 and q == 1/3 and q_prime == 1/6:
+        if len(R_prime) == 1 and q == 1 / 3 and q_prime == 1 / 6:
             passed.append(True)
-        elif len(R_prime) == 3 and q == 1/3 and q_prime == 1/2:
+        elif len(R_prime) == 3 and q == 1 / 3 and q_prime == 1 / 2:
             passed.append(True)
         else:
             passed.append(False)

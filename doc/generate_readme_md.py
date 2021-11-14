@@ -1,12 +1,11 @@
 import sys
 import pypandoc
 
-
 readme = pypandoc.convert_file(
     sys.argv[1],
-    to='markdown_github-native_divs',
+    to="markdown_github-native_divs",
     format="html",
-    extra_args=["--wrap=none"]
+    extra_args=["--wrap=none"],
 )
 
 
@@ -18,14 +17,14 @@ for i, row in enumerate(readme):
 
 
 # Remove header and footer
-start, end = [i for i in range(len(readme)) if readme[i] == '-'*72]
-readme = readme[start+1:end-2]
+start, end = [i for i in range(len(readme)) if readme[i] == "-" * 72]
+readme = readme[start + 1 : end - 2]
 
 
 # Better formatting for rst admonitions
 for i, row in enumerate(readme):
-    if row == "Note" and i < len(readme)-2 and readme[i+1] == "":
-        readme[i+2] = "**" + readme[i+2] + "**"
+    if row == "Note" and i < len(readme) - 2 and readme[i + 1] == "":
+        readme[i + 2] = "**" + readme[i + 2] + "**"
 readme = "\n".join(readme).replace("Note\n\n", "> :warning: ").split("\n")
 
 
@@ -33,7 +32,12 @@ readme = "\n".join(readme).replace("Note\n\n", "> :warning: ").split("\n")
 _readme = list()
 prev_li = False
 for i, row in enumerate(readme):
-    if i < len(readme) - 1 and prev_li and row == "" and readme[i+1][:4] == "-   ":
+    if (
+        i < len(readme) - 1
+        and prev_li
+        and row == ""
+        and readme[i + 1][:4] == "-   "
+    ):
         continue
     if row[:4] == "-   ":
         prev_li = True
@@ -63,8 +67,10 @@ readme = _readme
 # Make relative links absolute
 for i, row in enumerate(readme):
     if 'class="reference internal"' in row:
-        readme[i] = row.replace('a href="', 'a href="https://sumu.readthedocs.io/en/latest/')
+        readme[i] = row.replace(
+            'a href="', 'a href="https://sumu.readthedocs.io/en/latest/'
+        )
 
 
 with open("../README.md", "w") as f:
-    f.write('\n'.join(readme))
+    f.write("\n".join(readme))

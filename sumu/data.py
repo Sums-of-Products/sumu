@@ -4,8 +4,8 @@ import numpy as np
 class Data:
     """Class for holding data.
 
-    The data can be input as either a path to a space delimited csv
-    file, a numpy array or an object of type :py:class:`.Data` (in which case a new
+    The data can be input as either a path to a space delimited csv file, a
+    numpy array or an object of type :py:class:`.Data` (in which case a new
     object is created pointing to the same underlying data).
 
     Assumes the input data is either discrete or continuous. The type
@@ -47,9 +47,7 @@ class Data:
             return
 
         else:
-            raise TypeError(
-                "Unknown type for Data: {}.".format(type(data_or_path))
-            )
+            raise TypeError(f"Unknown type for Data: {type(data_or_path)}.")
 
     def write_file(self, filepath):
         fmt = "%i" if self.discrete else "%f"
@@ -84,9 +82,9 @@ class Data:
             "type of data": ["continuous", "discrete"][1 * self.discrete],
         }
         if self.discrete:
-            info["arities [min, max]"] = "[{}, {}]".format(
-                min(self.arities), max(self.arities)
-            )
+            info[
+                "arities [min, max]"
+            ] = f"[{min(self.arities)}, {max(self.arities)}]"
         return info
 
     def __repr__(self):

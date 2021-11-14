@@ -10,13 +10,15 @@ from .data import Data
 
 
 def family_sequence_to_adj_mat(dag, row_parents=False):
-    """Format a sequence of families representing a DAG into an adjacency matrix.
+    """Format a sequence of families representing a DAG into an adjacency
+    matrix.
 
     Args:
-       dag (iterable): iterable like [(0, {}), (1, {2}), (2, {0, 1}), ...] where first
-                       int is the node and the second item is a set of the parents.
-       row_parents (bool): If true A[i,j] == 1 if :math:`i` is parent of :math:`j`,
-                           otherwise a transpose.
+       dag (iterable): iterable like [(0, {}), (1, {2}), (2, {0, 1}), ...]
+                       where first int is the node and the second item is a set
+                       of the parents.
+       row_parents (bool): If true A[i,j] == 1 if :math:`i` is parent of
+                           :math:`j`, otherwise a transpose.
 
     Returns:
         adjacency matrix
@@ -47,9 +49,9 @@ def partition(dag):
         pmask = np.sum(matrix_pruned, axis=0) == 0
         if not any(pmask):
             break
-        matrix_pruned = matrix_pruned[:, pmask == False][pmask == False, :]
+        matrix_pruned = matrix_pruned[:, ~pmask][~pmask, :]
         partitions.append(set(indices[pmask]))
-        indices = indices[pmask == False]
+        indices = indices[~pmask]
     return partitions
 
 
@@ -246,7 +248,8 @@ class DiscreteBNet:
 
     @classmethod
     def read_file(cls, path_to_dsc_file):
-        """Read and parse a .dsc file in the input path into a object of type :py:class:`.DiscreteBNet`.
+        """Read and parse a .dsc file in the input path into a object of type
+        :py:class:`.DiscreteBNet`.
 
         Args:
            filepath path to the .dsc file to load.
@@ -259,9 +262,9 @@ class DiscreteBNet:
         def normalize(node_name, pset_config, probs):
             if abs(probs.sum() - 1.0) > 1e-10:
                 logging.info(
-                    f"Probs for {node_name} with pset config {pset_config}"
-                    + f"need to be normalized.\n"
-                    + f"Probs: {probs}"
+                    f"Probs for {node_name} with pset config {pset_config} "
+                    "need to be normalized.\n "
+                    f"Probs: {probs}"
                 )
                 return probs / probs.sum()
             return probs
@@ -314,8 +317,8 @@ class DiscreteBNet:
                     raise ValueError(
                         "Something wrong on row no. " + str(i)
                     ) from e
-                except KeyError as e:
-                    raise KeyError(
+                except ValueError as e:
+                    raise ValueError(
                         "Something wrong on row no. " + str(i)
                     ) from e
 
@@ -350,7 +353,8 @@ class DiscreteBNet:
                 IndexError(
                     str(  # doesn't print newline without the explicit str
                         f"No node by the name or index {node_name_or_index}.\n"
-                        + f"Available nodes names: {' '.join([str(n.name) for n in self.nodes])}\n"
+                        + "Available nodes names:"
+                        f" {' '.join([str(n.name) for n in self.nodes])}\n"
                         + f"Available node indices: 0-{len(self.nodes)-1}",
                     )
                 )
