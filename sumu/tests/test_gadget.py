@@ -172,7 +172,7 @@ def test_Gadget_runs_empty_data_discrete():
 
 def test_gadget_runs_with_anytime_mode():
 
-    import signal, time
+    import signal
 
     def gadget_anytime():
         data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
