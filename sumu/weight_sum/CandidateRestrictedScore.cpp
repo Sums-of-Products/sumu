@@ -47,7 +47,7 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
   m_C = new int*[n];
   isums = new GroundSetIntersectSums*[n];
 
-  int i = 0;
+  bm64 i = 0;
   int j = 0;
 
   cout << "Number of candidate parent sets after pruning (unpruned 2^K = " << (1L << K) << "):" << endl << endl;;
