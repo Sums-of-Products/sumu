@@ -14,7 +14,7 @@ def test_Gadget_empirical_edge_prob_error_decreases():
         "mcmc": {
             "n_indep": 1,
             "iters": 600000,
-            "mc3": 9,
+            "mc3": {"name": "linear", "M": 16},
             "burn_in": 0.5,
             "n_dags": 10000,
         },
@@ -63,7 +63,12 @@ def test_Gadget_runs_n_between_2_and_64():
     data = bn.sample(200)
     g = sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 10, "d": 2},
     )
@@ -79,7 +84,12 @@ def test_Gadget_runs_n_between_65_and_128():
     data = bn.sample(1000)
     g = sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 10, "d": 2},
     )
@@ -95,7 +105,12 @@ def test_Gadget_runs_n_between_129_and_192():
     data = bn.sample(200)
     g = sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 10, "d": 2},
     )
@@ -111,7 +126,12 @@ def test_Gadget_runs_n_between_193_and_256():
     data = bn.sample(200)
     g = sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 10, "d": 2},
     )
@@ -129,7 +149,12 @@ def test_Gadget_runs_n_greater_than_256_continuous():
     data = np.random.rand(600, 300)
     sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 8, "d": 1},
     ).sample()
@@ -143,7 +168,12 @@ def test_Gadget_runs_n_greater_than_256_discrete():
     data = bn.sample(1000)
     sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 8, "d": 1},
     ).sample()
@@ -154,7 +184,12 @@ def test_Gadget_runs_empty_data_continuous():
     data = np.array([], dtype=np.float64).reshape(0, 14)
     sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 8, "d": 1},
     ).sample()
@@ -165,7 +200,12 @@ def test_Gadget_runs_empty_data_discrete():
     data = np.array([], dtype=np.int32).reshape(0, 14)
     sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 8, "d": 1},
     ).sample()
@@ -190,7 +230,7 @@ def test_gadget_runs_with_anytime_mode():
         g = sumu.Gadget(
             data=data,
             run_mode={"name": "anytime"},
-            mcmc={"mc3": 2, "n_dags": 50},
+            mcmc={"mc3": {"name": "linear", "M": 2}, "n_dags": 50},
             candp={"name": "rnd"},
             cons={"K": 6, "d": 2},
         )

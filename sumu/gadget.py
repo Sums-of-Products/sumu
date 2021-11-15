@@ -38,7 +38,7 @@ class Defaults:
             "mcmc": {
                 "n_indep": 1,
                 "iters": 320000,
-                "mc3": 16,
+                "mc3": {"name": "linear", "M": 16},
                 "burn_in": 0.5,
                 "n_dags": 10000,
                 "move_weights": [1, 1, 2],
@@ -135,7 +135,7 @@ class GadgetParameters:
 
     def _adjust_inconsistent_parameters(self):
         iters = self.p["mcmc"]["iters"]
-        mc3 = self.p["mcmc"]["mc3"]
+        mc3 = self.p["mcmc"]["mc3"]["M"]
         burn_in = self.p["mcmc"]["burn_in"]
         n_dags = self.p["mcmc"]["n_dags"]
         self.p["mcmc"]["iters"] = iters // mc3 * mc3
@@ -393,7 +393,7 @@ class GadgetLogger(Logger):
             overwrite=gadget.p["logging"]["overwrite"],
         )
         self._running_sec_num = 0
-        self._linewidth = max(80, 12 + 6 * gadget.p["mcmc"]["mc3"] - 1)
+        self._linewidth = max(80, 12 + 6 * gadget.p["mcmc"]["mc3"]["M"] - 1)
         self.g = gadget
 
     def h(self, title):
@@ -405,7 +405,7 @@ class GadgetLogger(Logger):
         self._logfile.flush()
 
     def periodic_stats(self, header=False):
-        msg_tmpl = "{:<12.12}" + " {:<5.5}" * self.g.p["mcmc"]["mc3"]
+        msg_tmpl = "{:<12.12}" + " {:<5.5}" * self.g.p["mcmc"]["mc3"]["M"]
         temps = sorted(list(stats["mcmc"].keys()), reverse=True)
         temps_labels = [round(t, 2) for t in temps]
         moves = stats["mcmc"][1.0].keys()
@@ -441,7 +441,7 @@ class GadgetLogger(Logger):
             ar = [round(r, 2) if type(r) == float else "" for r in ar]
             msg = msg_tmpl.format(m, *ar)
             print(msg, file=self._logfile)
-        if self.g.p["mcmc"]["mc3"] > 1:
+        if self.g.p["mcmc"]["mc3"]["M"] > 1:
             ar = stats["mc3"]["accept_ratio"]
             ar = [round(r, 2) if not np.isnan(r) else "" for r in ar] + [""]
             msg = msg_tmpl.format("MC^3", *ar)
@@ -498,12 +498,12 @@ class GadgetLogger(Logger):
             progress = round(
                 100
                 * t
-                / (self.g.p["mcmc"]["iters"] // self.g.p["mcmc"]["mc3"])
+                / (self.g.p["mcmc"]["iters"] // self.g.p["mcmc"]["mc3"]["M"])
             )
             progress = str(progress)
             print(
                 f"Progress: {progress}% "
-                f"({t*self.g.p['mcmc']['mc3']} iterations)",
+                f"({t*self.g.p['mcmc']['mc3']['M']} iterations)",
                 file=self._logfile,
             )
             self._logfile.flush()
@@ -512,12 +512,12 @@ class GadgetLogger(Logger):
             progress = str(progress)
             print(
                 f"Progress: {progress}% "
-                f"({t*self.g.p['mcmc']['mc3']} iterations)",
+                f"({t*self.g.p['mcmc']['mc3']['M']} iterations)",
                 file=self._logfile,
             )
         elif self.g.p["run_mode"]["name"] == "anytime":
             print(
-                f"Progress: {t*self.g.p['mcmc']['mc3']} iterations",
+                f"Progress: {t*self.g.p['mcmc']['mc3']['M']} iterations",
                 file=self._logfile,
             )
 
@@ -977,9 +977,44 @@ class Gadget:
             C=self.C, c_r_score=self.c_r_score, c_c_score=self.c_c_score
         )
 
+        def get_temperatures():
+            if self.p["mcmc"]["mc3"]["name"] == "linear":
+                temperatures = [
+                    i / (self.p["mcmc"]["mc3"]["M"] - 1)
+                    for i in range(self.p["mcmc"]["mc3"]["M"])
+                ]
+            if self.p["mcmc"]["mc3"]["name"] == "quadratic":
+                temperatures = [
+                    1 - i ** 2 / (self.p["mcmc"]["mc3"]["M"] - 1) ** 2
+                    for i in range(self.p["mcmc"]["mc3"]["M"])
+                ][::-1]
+            if self.p["mcmc"]["mc3"]["name"] == "sigmoid":
+                temperatures = (
+                    [0.0]
+                    + [
+                        1
+                        - 1
+                        / (
+                            1
+                            + np.exp(
+                                (self.p["mcmc"]["mc3"]["M"] - 1)
+                                * (
+                                    0.5
+                                    - i ** 2
+                                    / (self.p["mcmc"]["mc3"]["M"] - 1) ** 2
+                                )
+                            )
+                        )
+                        for i in range(1, self.p["mcmc"]["mc3"]["M"] - 1)
+                    ][::-1]
+                    + [1.0]
+                )
+            return temperatures
+
         self.mcmc = list()
         for i in range(self.p["mcmc"]["n_indep"]):
-            if self.p["mcmc"]["mc3"] > 1:
+            if self.p["mcmc"]["mc3"]["M"] > 1:
+                temperatures = get_temperatures()
                 self.mcmc.append(
                     MC3(
                         [
@@ -987,10 +1022,10 @@ class Gadget:
                                 self.C,
                                 self.score,
                                 self.p["cons"]["d"],
-                                temperature=i / (self.p["mcmc"]["mc3"] - 1),
+                                temperature=temperatures[i],
                                 move_weights=self.p["mcmc"]["move_weights"],
                             )
-                            for i in range(self.p["mcmc"]["mc3"])
+                            for i in range(self.p["mcmc"]["mc3"]["M"])
                         ]
                     )
                 )
@@ -1020,12 +1055,12 @@ class Gadget:
         if self.p["run_mode"]["name"] == "normal":
             iters_burn_in = (
                 self.p["mcmc"]["iters"]
-                / self.p["mcmc"]["mc3"]
+                / self.p["mcmc"]["mc3"]["M"]
                 * self.p["mcmc"]["burn_in"]
             )
             iters_burn_in = int(iters_burn_in)
             iters_dag_sampling = (
-                self.p["mcmc"]["iters"] // self.p["mcmc"]["mc3"]
+                self.p["mcmc"]["iters"] // self.p["mcmc"]["mc3"]["M"]
                 - iters_burn_in
             )
             burn_in_cond = lambda: t in range(iters_burn_in)
