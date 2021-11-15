@@ -13,10 +13,11 @@ def test_Gadget_empirical_edge_prob_error_decreases():
         # generic MCMC parameters
         "mcmc": {
             "n_indep": 1,
-            "iters": 600000,
-            "mc3": {"name": "linear", "M": 16},
+            "iters": 300000,
+            "mc3": {"name": "linear", "M": 6},
             "burn_in": 0.5,
             "n_dags": 10000,
+            "move_weights": [1, 1, 16],
         },
         # score to use and its parameters
         "score": {"name": "bdeu", "params": {"ess": 10}},
@@ -37,7 +38,7 @@ def test_Gadget_empirical_edge_prob_error_decreases():
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "sachs.dsc"
     bn = sumu.DiscreteBNet.read_file(bn_path)
-    data = bn.sample(200)
+    data = bn.sample(100)
     ls = sumu.gadget.LocalScore(data=data, maxid=-1, score=params["score"])
     pset_probs = sumu.aps(ls.candidate_scores(), as_dict=True)
     edge_probs = sumu.utils.edge_probs_from_pset_probs(pset_probs)
