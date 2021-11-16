@@ -977,44 +977,12 @@ class Gadget:
             C=self.C, c_r_score=self.c_r_score, c_c_score=self.c_c_score
         )
 
-        def get_temperatures():
-            if self.p["mcmc"]["mc3"]["name"] == "linear":
-                temperatures = [
-                    i / (self.p["mcmc"]["mc3"]["M"] - 1)
-                    for i in range(self.p["mcmc"]["mc3"]["M"])
-                ]
-            if self.p["mcmc"]["mc3"]["name"] == "quadratic":
-                temperatures = [
-                    1 - i ** 2 / (self.p["mcmc"]["mc3"]["M"] - 1) ** 2
-                    for i in range(self.p["mcmc"]["mc3"]["M"])
-                ][::-1]
-            if self.p["mcmc"]["mc3"]["name"] == "sigmoid":
-                temperatures = (
-                    [0.0]
-                    + [
-                        1
-                        - 1
-                        / (
-                            1
-                            + np.exp(
-                                (self.p["mcmc"]["mc3"]["M"] - 1)
-                                * (
-                                    0.5
-                                    - i ** 2
-                                    / (self.p["mcmc"]["mc3"]["M"] - 1) ** 2
-                                )
-                            )
-                        )
-                        for i in range(1, self.p["mcmc"]["mc3"]["M"] - 1)
-                    ][::-1]
-                    + [1.0]
-                )
-            return temperatures
-
         self.mcmc = list()
         for i in range(self.p["mcmc"]["n_indep"]):
             if self.p["mcmc"]["mc3"]["M"] > 1:
-                temperatures = get_temperatures()
+                temperatures = MC3.get_inv_temperatures(
+                    self.p["mcmc"]["mc3"]["name"], self.p["mcmc"]["mc3"]["M"]
+                )
                 self.mcmc.append(
                     MC3(
                         [

@@ -232,6 +232,17 @@ class MC3:
         stats["mc3"]["accept_ratio"] = np.array([np.nan] * (len(chains) - 1))
         self.chains = chains
 
+    @staticmethod
+    def get_inv_temperatures(scheme, M):
+        linear = [i / (M - 1) for i in range(M)]
+        quadratic = [1 - ((M - 1 - i) / (M - 1)) ** 2 for i in range(M)]
+        sigmoid = [
+            1 / (1 + np.exp((M - 1) * (0.5 - (i / (M - 1))))) for i in range(M)
+        ]
+        sigmoid[0] = 0.0
+        sigmoid[-1] = 1.0
+        return locals()[scheme]
+
     def sample(self):
         for c in self.chains:
             c.sample()
