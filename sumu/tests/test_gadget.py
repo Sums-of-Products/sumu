@@ -1,4 +1,5 @@
 import pathlib
+import time
 
 import numpy as np
 
@@ -13,10 +14,11 @@ def test_Gadget_empirical_edge_prob_error_decreases():
         # generic MCMC parameters
         "mcmc": {
             "n_indep": 1,
-            "iters": 600000,
-            "mc3": 9,
+            "iters": 300000,
+            "mc3": {"name": "linear", "M": 6},
             "burn_in": 0.5,
             "n_dags": 10000,
+            "move_weights": [1, 1, 16],
         },
         # score to use and its parameters
         "score": {"name": "bdeu", "params": {"ess": 10}},
@@ -37,20 +39,20 @@ def test_Gadget_empirical_edge_prob_error_decreases():
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "sachs.dsc"
     bn = sumu.DiscreteBNet.read_file(bn_path)
-    data = bn.sample(200)
+    data = bn.sample(100)
     ls = sumu.gadget.LocalScore(data=data, maxid=-1, score=params["score"])
     pset_probs = sumu.aps(ls.candidate_scores(), as_dict=True)
     edge_probs = sumu.utils.edge_probs_from_pset_probs(pset_probs)
 
     g = sumu.Gadget(data=data, **params)
-    dags, scores = g.sample()
+    dags, meta = g.sample()
     max_errors = sumu.utils.utils.edge_empirical_prob_max_error(
         dags, edge_probs
     )
     print(max_errors[-1])
 
     # TODO: Some better test for the validity of returned DAG scores
-    assert -float("inf") not in scores
+    assert -float("inf") not in meta["scores"]
 
     assert max_errors[-1] < 0.10
 
@@ -63,7 +65,12 @@ def test_Gadget_runs_n_between_2_and_64():
     data = bn.sample(200)
     g = sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 10, "d": 2},
     )
@@ -79,7 +86,12 @@ def test_Gadget_runs_n_between_65_and_128():
     data = bn.sample(1000)
     g = sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 10, "d": 2},
     )
@@ -95,7 +107,12 @@ def test_Gadget_runs_n_between_129_and_192():
     data = bn.sample(200)
     g = sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 10, "d": 2},
     )
@@ -111,7 +128,12 @@ def test_Gadget_runs_n_between_193_and_256():
     data = bn.sample(200)
     g = sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 10, "d": 2},
     )
@@ -129,7 +151,12 @@ def test_Gadget_runs_n_greater_than_256_continuous():
     data = np.random.rand(600, 300)
     sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 8, "d": 1},
     ).sample()
@@ -143,7 +170,12 @@ def test_Gadget_runs_n_greater_than_256_discrete():
     data = bn.sample(1000)
     sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 8, "d": 1},
     ).sample()
@@ -154,7 +186,12 @@ def test_Gadget_runs_empty_data_continuous():
     data = np.array([], dtype=np.float64).reshape(0, 14)
     sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 8, "d": 1},
     ).sample()
@@ -165,14 +202,19 @@ def test_Gadget_runs_empty_data_discrete():
     data = np.array([], dtype=np.int32).reshape(0, 14)
     sumu.Gadget(
         data=data,
-        mcmc={"iters": 200, "mc3": 2, "burn_in": 0.5, "n_dags": 50},
+        mcmc={
+            "iters": 200,
+            "mc3": {"name": "linear", "M": 2},
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
         candp={"name": "rnd"},
         cons={"K": 8, "d": 1},
     ).sample()
     assert True
 
 
-def test_gadget_runs_with_anytime_mode():
+def test_Gadget_runs_with_anytime_mode():
 
     import os
     import signal
@@ -190,7 +232,7 @@ def test_gadget_runs_with_anytime_mode():
         g = sumu.Gadget(
             data=data,
             run_mode={"name": "anytime"},
-            mcmc={"mc3": 2, "n_dags": 50},
+            mcmc={"mc3": {"name": "linear", "M": 2}, "n_dags": 50},
             candp={"name": "rnd"},
             cons={"K": 6, "d": 2},
         )
@@ -208,6 +250,25 @@ def test_gadget_runs_with_anytime_mode():
     assert True
 
 
+def test_Gadget_stays_in_budget():
+    budget = 30
+    t = time.time()
+    params = {
+        "run_mode": {"name": "budget", "params": {"t": budget}},
+        # BUG: Crashes without setting "criterion"
+        "candp": {"name": "greedy", "params": {"criterion": "score"}},
+    }
+
+    data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
+    bn_path = data_path / "sachs.dsc"
+    bn = sumu.DiscreteBNet.read_file(bn_path)
+    data = bn.sample(100)
+    sumu.Gadget(data=data, **params).sample()
+    t = time.time() - t
+    print(t)
+    assert abs(t - budget) < 1
+
+
 if __name__ == "__main__":
     # test_Gadget_runs_n_between_2_and_64()
     # test_Gadget_runs_n_between_65_and_128()
@@ -215,4 +276,5 @@ if __name__ == "__main__":
     # test_Gadget_runs_n_between_193_and_256()
     # test_Gadget_empirical_edge_prob_error_decreases()
     # test_Gadget_runs_n_greater_than_256_discrete()
-    test_gadget_runs_with_anytime_mode()
+    # test_Gadget_runs_with_anytime_mode()
+    test_Gadget_stays_in_budget()
