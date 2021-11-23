@@ -1,15 +1,25 @@
+import copy
+
 import numpy as np
 
 from .bnet import partition
 from .mcmc_moves import DAG_edgerev, R_basic_move, R_swap_any
-from .stats import stats
 
 
 class PartitionMCMC:
     """Partition-MCMC sampler :footcite:`kuipers:2017` with efficient
     scoring."""
 
-    def __init__(self, C, score, d, temperature=1.0, move_weights=[1, 1, 2]):
+    def __init__(
+        self,
+        C,
+        score,
+        d,
+        temperature=1.0,
+        move_weights=[1, 1, 2],
+        stats=None,
+        R=None,
+    ):
 
         self.n = len(C)
         self.C = C
@@ -17,24 +27,51 @@ class PartitionMCMC:
         self.score = score
         self.d = d
         self.stay_prob = 0.01
-        self._moves = [self.R_basic_move, self.R_swap_any, self.DAG_edgerev]
+        self._all_moves = [
+            self.R_basic_move,
+            self.R_swap_any,
+            self.DAG_edgerev,
+        ]
+        self._move_weights = list(move_weights)
+        self.stats = stats
 
-        for move in self._moves:
-            stats["mcmc"][self.temp][move.__name__]["proposed"] = 0
-            stats["mcmc"][self.temp][move.__name__]["accepted"] = 0
-            stats["mcmc"][self.temp][move.__name__]["accept_ratio"] = 0
+        if self.stats is not None:
+            for move in self._all_moves:
+                self.stats["mcmc"][self.temp][move.__name__]["proposed"] = 0
+                self.stats["mcmc"][self.temp][move.__name__]["accepted"] = 0
+                self.stats["mcmc"][self.temp][move.__name__][
+                    "accept_ratio"
+                ] = 0
 
+        self._init_moves()
+
+        self.R = R
+        if self.R is None:
+            self.R = self._random_partition()
+        self.R_node_scores = self._pi(self.R)
+        self.R_score = self.temp * sum(self.R_node_scores)
+
+    def _init_moves(self):
+        # This needs to be called if self.temp changes from/to 1.0
+        move_weights = self._move_weights
         if self.temp != 1:
-            move_weights = move_weights[:-1]
+            move_weights = self._move_weights[:-1]
         # Each move is repeated weights[move] times to allow uniform sampling
         # from the list (np.random.choice can be very slow).
         self._moves = [
-            m for m, w in zip(self._moves, move_weights) for _ in range(w)
+            m for m, w in zip(self._all_moves, move_weights) for _ in range(w)
         ]
 
-        self.R = self._random_partition()
-        self.R_node_scores = self._pi(self.R)
-        self.R_score = self.temp * sum(self.R_node_scores)
+    def __copy__(self):
+        return PartitionMCMC(
+            self.C,
+            self.score,
+            self.d,
+            temperature=self.temp,
+            move_weights=self._move_weights,
+            stats=self.stats,
+            R=self.R,
+        )
 
     def R_basic_move(self, **kwargs):
         # NOTE: Is there value in having these as methods?
@@ -168,10 +205,22 @@ class PartitionMCMC:
         return rescore
 
     def sample(self):
+        def update_stats(accepted):
+            self.stats["mcmc"][self.temp][move.__name__]["proposed"] += 1
+            if accepted:
+                self.stats["mcmc"][self.temp][move.__name__]["accepted"] += 1
+            a = self.stats["mcmc"][self.temp][move.__name__]["accepted"]
+            if type(a) != int:
+                a = 0
+            p = self.stats["mcmc"][self.temp][move.__name__]["proposed"]
+            try:
+                ap = a / p
+            except ZeroDivisionError:
+                ap = 0.0
+            self.stats["mcmc"][self.temp][move.__name__]["accept_ratio"] = ap
 
         if np.random.rand() > self.stay_prob:
             move = self._moves[np.random.randint(len(self._moves))]
-            stats["mcmc"][self.temp][move.__name__]["proposed"] += 1
             if move.__name__ == "DAG_edgerev":
                 DAG, _ = self.score.sample_DAG(self.R)
                 # NOTE: DAG equals DAG_prime after this, since no copy
@@ -212,24 +261,29 @@ class PartitionMCMC:
             # make this happen in log space?
             # if -np.random.exponential() < self.temp*sum(R_prime_node_scores)
             # - self.R_score + np.log(q_rev) - np.log(q):
+            accepted = False
             if np.random.rand() < ap:
-                stats["mcmc"][self.temp][move.__name__]["accepted"] += 1
-                a = stats["mcmc"][self.temp][move.__name__]["accepted"]
-                p = stats["mcmc"][self.temp][move.__name__]["proposed"]
-                stats["mcmc"][self.temp][move.__name__]["accept_ratio"] = a / p
+                accepted = True
                 self.R = R_prime
                 self.R_node_scores = R_prime_node_scores
                 self.R_score = self.temp * sum(self.R_node_scores)
+
+            if self.stats is not None:
+                update_stats(accepted)
 
         return self.R, self.R_score
 
 
 class MC3:
-    def __init__(self, chains):
+    def __init__(self, chains, stats=None):
 
-        stats["mc3"]["proposed"] = np.zeros(len(chains) - 1)
-        stats["mc3"]["accepted"] = np.zeros(len(chains) - 1)
-        stats["mc3"]["accept_ratio"] = np.array([np.nan] * (len(chains) - 1))
+        self.stats = stats
+        if self.stats is not None:
+            self.stats["mc3"]["proposed"] = np.zeros(len(chains) - 1)
+            self.stats["mc3"]["accepted"] = np.zeros(len(chains) - 1)
+            self.stats["mc3"]["accept_ratio"] = np.array(
+                [np.nan] * (len(chains) - 1)
+            )
         self.chains = chains
 
     @staticmethod
@@ -243,17 +297,91 @@ class MC3:
         sigmoid[-1] = 1.0
         return locals()[scheme]
 
+    @classmethod
+    def adaptive(cls, mcmc, stats=None, target=0.25):
+        mcmc0 = copy.copy(mcmc)
+        mcmc0.temp = 0.0
+        mcmc0._init_moves()
+        chains = [mcmc0, mcmc]
+
+        def acceptance_prob(temp):
+            chains[-1].temp = temp
+            chains[-1]._init_moves()
+            proposed = 0
+            accepted = 0
+            while proposed < 1000:
+                i = np.random.randint(len(chains) - 1)
+                # i = -2
+                if i == len(chains) - 2:
+                    proposed += 1
+                for c in chains[-2:]:
+                    c.sample()
+                ap = sum(chains[i + 1].R_node_scores) * chains[i].temp
+                ap += sum(chains[i].R_node_scores) * chains[i + 1].temp
+                ap -= sum(chains[i].R_node_scores) * chains[i].temp
+                ap -= sum(chains[i + 1].R_node_scores) * chains[i + 1].temp
+                if -np.random.exponential() < ap:
+                    if i == len(chains) - 2:
+                        accepted += 1
+                    R_tmp = chains[i].R
+                    R_node_scores_tmp = chains[i].R_node_scores
+                    chains[i].R = chains[i + 1].R
+                    chains[i].R_node_scores = chains[i + 1].R_node_scores
+                    chains[i].R_score = chains[i].temp * sum(
+                        chains[i].R_node_scores
+                    )
+                    chains[i + 1].R = R_tmp
+                    chains[i + 1].R_node_scores = R_node_scores_tmp
+                    chains[i + 1].R_score = chains[i + 1].temp * sum(
+                        chains[i + 1].R_node_scores
+                    )
+            return accepted / proposed
+
+        done = False
+        while not done:
+            print("add chain")
+            ub = 1.0
+            lb = chains[-2].temp
+            temp = 1.0
+            acc_prob = acceptance_prob(temp)
+            # print(temp, acc_prob)
+            heat = acc_prob < target
+            while abs(target - acc_prob) > 0.05:
+                if heat:
+                    ub = temp
+                    temp = temp - (temp - lb) / 2
+                else:
+                    if temp == 1.0:
+                        break
+                    lb = temp
+                    temp = temp + (ub - temp) / 2
+                acc_prob = acceptance_prob(temp)
+                print(temp, acc_prob)
+                heat = acc_prob < target
+            if temp == 1.0:
+                done = True
+            else:
+                chains.append(copy.copy(chains[-1]))
+        chains[-1].temp = 1.0
+        for c in chains:
+            c.stats = stats
+        chains = [copy.copy(c) for c in chains]
+
+        return cls(chains, stats=stats)
+
     def sample(self):
         for c in self.chains:
             c.sample()
         i = np.random.randint(len(self.chains) - 1)
-        stats["mc3"]["proposed"][i] += 1
+        if self.stats is not None:
+            self.stats["mc3"]["proposed"][i] += 1
         ap = sum(self.chains[i + 1].R_node_scores) * self.chains[i].temp
         ap += sum(self.chains[i].R_node_scores) * self.chains[i + 1].temp
         ap -= sum(self.chains[i].R_node_scores) * self.chains[i].temp
         ap -= sum(self.chains[i + 1].R_node_scores) * self.chains[i + 1].temp
         if -np.random.exponential() < ap:
-            stats["mc3"]["accepted"][i] += 1
+            if self.stats is not None:
+                self.stats["mc3"]["accepted"][i] += 1
             R_tmp = self.chains[i].R
             R_node_scores_tmp = self.chains[i].R_node_scores
             self.chains[i].R = self.chains[i + 1].R
@@ -266,7 +394,9 @@ class MC3:
             self.chains[i + 1].R_score = self.chains[i + 1].temp * sum(
                 self.chains[i + 1].R_node_scores
             )
-        stats["mc3"]["accept_ratio"][i] = (
-            stats["mc3"]["accepted"][i] / stats["mc3"]["proposed"][i]
-        )
+        if self.stats is not None:
+            self.stats["mc3"]["accept_ratio"][i] = (
+                self.stats["mc3"]["accepted"][i]
+                / self.stats["mc3"]["proposed"][i]
+            )
         return self.chains[-1].R, self.chains[-1].R_score

@@ -38,11 +38,11 @@ class Defaults:
             "mcmc": {
                 "n_indep": 1,
                 "iters": 320000,
-                "mc3": {"name": "linear", "M": 16},
                 "burn_in": 0.5,
                 "n_dags": 10000,
                 "move_weights": [1, 1, 2],
             },
+            "mc3": {"name": "linear", "M": 16},
             "score": lambda discrete: {"name": "bdeu", "params": {"ess": 10}}
             if discrete
             else {"name": "bge"},
@@ -81,6 +81,7 @@ class GadgetParameters:
         data,
         run_mode=dict(),
         mcmc=dict(),
+        mc3=dict(),
         score=dict(),
         prior=dict(),
         cons=dict(),
@@ -135,12 +136,12 @@ class GadgetParameters:
 
     def _adjust_inconsistent_parameters(self):
         iters = self.p["mcmc"]["iters"]
-        mc3 = self.p["mcmc"]["mc3"]["M"]
+        M = self.p["mc3"].get("M", 1)
         burn_in = self.p["mcmc"]["burn_in"]
         n_dags = self.p["mcmc"]["n_dags"]
-        self.p["mcmc"]["iters"] = iters // mc3 * mc3
+        self.p["mcmc"]["iters"] = iters // M * M
         self.p["mcmc"]["n_dags"] = min(
-            (iters - int(iters * burn_in)) // mc3, n_dags
+            (iters - int(iters * burn_in)) // M, n_dags
         )
         self.adjusted = (
             self.p["mcmc"]["iters"] != iters,
@@ -393,7 +394,7 @@ class GadgetLogger(Logger):
             overwrite=gadget.p["logging"]["overwrite"],
         )
         self._running_sec_num = 0
-        self._linewidth = max(80, 12 + 6 * gadget.p["mcmc"]["mc3"]["M"] - 1)
+        self._linewidth = 80  # max(80, 12 + 6 * gadget.p["mc3"]["M"] - 1)
         self.g = gadget
 
     def h(self, title):
@@ -405,7 +406,7 @@ class GadgetLogger(Logger):
         self._logfile.flush()
 
     def periodic_stats(self, header=False):
-        msg_tmpl = "{:<12.12}" + " {:<5.5}" * self.g.p["mcmc"]["mc3"]["M"]
+        msg_tmpl = "{:<12.12}" + " {:<5.5}" * self.g.p["mc3"]["M"]
         temps = sorted(list(stats["mcmc"].keys()), reverse=True)
         temps_labels = [round(t, 2) for t in temps]
         moves = stats["mcmc"][1.0].keys()
@@ -441,7 +442,7 @@ class GadgetLogger(Logger):
             ar = [round(r, 2) if type(r) == float else "" for r in ar]
             msg = msg_tmpl.format(m, *ar)
             print(msg, file=self._logfile)
-        if self.g.p["mcmc"]["mc3"]["M"] > 1:
+        if self.g.p["mc3"]["M"] > 1:
             ar = stats["mc3"]["accept_ratio"]
             ar = [round(r, 2) if not np.isnan(r) else "" for r in ar] + [""]
             msg = msg_tmpl.format("MC^3", *ar)
@@ -496,14 +497,11 @@ class GadgetLogger(Logger):
     def progress(self, t, t_elapsed):
         if self.g.p["run_mode"]["name"] == "normal":
             progress = round(
-                100
-                * t
-                / (self.g.p["mcmc"]["iters"] // self.g.p["mcmc"]["mc3"]["M"])
+                100 * t / (self.g.p["mcmc"]["iters"] // self.g.p["mc3"]["M"])
             )
             progress = str(progress)
             print(
-                f"Progress: {progress}% "
-                f"({t*self.g.p['mcmc']['mc3']['M']} iterations)",
+                f"Progress: {progress}% ({t*self.g.p['mc3']['M']} iterations)",
                 file=self._logfile,
             )
             self._logfile.flush()
@@ -511,13 +509,12 @@ class GadgetLogger(Logger):
             progress = round(100 * t_elapsed / self.g.p.gb.budget["mcmc"])
             progress = str(progress)
             print(
-                f"Progress: {progress}% "
-                f"({t*self.g.p['mcmc']['mc3']['M']} iterations)",
+                f"Progress: {progress}% ({t*self.g.p['mc3']['M']} iterations)",
                 file=self._logfile,
             )
         elif self.g.p["run_mode"]["name"] == "anytime":
             print(
-                f"Progress: {t*self.g.p['mcmc']['mc3']['M']} iterations",
+                f"Progress: {t*self.g.p['mc3']['M']} iterations",
                 file=self._logfile,
             )
 
@@ -807,6 +804,7 @@ class Gadget:
         data,
         run_mode=dict(),
         mcmc=dict(),
+        mc3=dict(),
         score=dict(),
         prior=dict(),
         cons=dict(),
@@ -978,10 +976,41 @@ class Gadget:
         )
 
         self.mcmc = list()
+
+        # # NOTE: QUICK HACK
+        # if self.p["mc3"]["name"] == "adaptive":
+        #     self.p["mc3"]["M"] = 0
+
         for i in range(self.p["mcmc"]["n_indep"]):
-            if self.p["mcmc"]["mc3"]["M"] > 1:
+
+            if self.p["mc3"]["name"] == "adaptive":
+                self.mcmc.append(
+                    MC3.adaptive(
+                        PartitionMCMC(
+                            self.C,
+                            self.score,
+                            self.p["cons"]["d"],
+                            move_weights=self.p["mcmc"]["move_weights"],
+                        ),
+                        stats=stats,
+                    )
+                )
+                self.p["mc3"]["M"] = len(self.mcmc[0].chains)
+                # print("adaptive done")
+
+            elif self.p["mc3"]["M"] == 1:
+                self.mcmc.append(
+                    PartitionMCMC(
+                        self.C,
+                        self.score,
+                        self.p["cons"]["d"],
+                        move_weights=self.p["mcmc"]["move_weights"],
+                    )
+                )
+
+            elif self.p["mc3"]["M"] > 1:
                 temperatures = MC3.get_inv_temperatures(
-                    self.p["mcmc"]["mc3"]["name"], self.p["mcmc"]["mc3"]["M"]
+                    self.p["mc3"]["name"], self.p["mc3"]["M"]
                 )
                 self.mcmc.append(
                     MC3(
@@ -992,19 +1021,11 @@ class Gadget:
                                 self.p["cons"]["d"],
                                 temperature=temperatures[i],
                                 move_weights=self.p["mcmc"]["move_weights"],
+                                stats=stats,
                             )
-                            for i in range(self.p["mcmc"]["mc3"]["M"])
-                        ]
-                    )
-                )
-
-            else:
-                self.mcmc.append(
-                    PartitionMCMC(
-                        self.C,
-                        self.score,
-                        self.p["cons"]["d"],
-                        move_weights=self.p["mcmc"]["move_weights"],
+                            for i in range(self.p["mc3"]["M"])
+                        ],
+                        stats=stats,
                     )
                 )
 
@@ -1023,13 +1044,12 @@ class Gadget:
         if self.p["run_mode"]["name"] == "normal":
             iters_burn_in = (
                 self.p["mcmc"]["iters"]
-                / self.p["mcmc"]["mc3"]["M"]
+                / self.p["mc3"]["M"]
                 * self.p["mcmc"]["burn_in"]
             )
             iters_burn_in = int(iters_burn_in)
             iters_dag_sampling = (
-                self.p["mcmc"]["iters"] // self.p["mcmc"]["mc3"]["M"]
-                - iters_burn_in
+                self.p["mcmc"]["iters"] // self.p["mc3"]["M"] - iters_burn_in
             )
             burn_in_cond = lambda: t in range(iters_burn_in)
             mcmc_cond = lambda: t in range(iters_dag_sampling)

@@ -15,11 +15,13 @@ def test_Gadget_empirical_edge_prob_error_decreases():
         "mcmc": {
             "n_indep": 1,
             "iters": 300000,
-            "mc3": {"name": "linear", "M": 6},
             "burn_in": 0.5,
             "n_dags": 10000,
             "move_weights": [1, 1, 16],
         },
+        # Metropolis coupling
+        # BUG: Fails with M=1
+        "mc3": {"name": "linear", "M": 6},
         # score to use and its parameters
         "score": {"name": "bdeu", "params": {"ess": 10}},
         # modular structure prior and its parameters
@@ -67,10 +69,10 @@ def test_Gadget_runs_n_between_2_and_64():
         data=data,
         mcmc={
             "iters": 200,
-            "mc3": {"name": "linear", "M": 2},
             "burn_in": 0.5,
             "n_dags": 50,
         },
+        mc3={"name": "linear", "M": 2},
         candp={"name": "rnd"},
         cons={"K": 10, "d": 2},
     )
@@ -92,6 +94,7 @@ def test_Gadget_runs_n_between_65_and_128():
             "burn_in": 0.5,
             "n_dags": 50,
         },
+        mc3={"name": "linear", "M": 2},
         candp={"name": "rnd"},
         cons={"K": 10, "d": 2},
     )
@@ -113,6 +116,7 @@ def test_Gadget_runs_n_between_129_and_192():
             "burn_in": 0.5,
             "n_dags": 50,
         },
+        mc3={"name": "linear", "M": 2},
         candp={"name": "rnd"},
         cons={"K": 10, "d": 2},
     )
@@ -134,6 +138,7 @@ def test_Gadget_runs_n_between_193_and_256():
             "burn_in": 0.5,
             "n_dags": 50,
         },
+        mc3={"name": "linear", "M": 2},
         candp={"name": "rnd"},
         cons={"K": 10, "d": 2},
     )
@@ -157,6 +162,7 @@ def test_Gadget_runs_n_greater_than_256_continuous():
             "burn_in": 0.5,
             "n_dags": 50,
         },
+        mc3={"name": "linear", "M": 2},
         candp={"name": "rnd"},
         cons={"K": 8, "d": 1},
     ).sample()
@@ -176,6 +182,7 @@ def test_Gadget_runs_n_greater_than_256_discrete():
             "burn_in": 0.5,
             "n_dags": 50,
         },
+        mc3={"name": "linear", "M": 2},
         candp={"name": "rnd"},
         cons={"K": 8, "d": 1},
     ).sample()
@@ -192,6 +199,7 @@ def test_Gadget_runs_empty_data_continuous():
             "burn_in": 0.5,
             "n_dags": 50,
         },
+        mc3={"name": "linear", "M": 2},
         candp={"name": "rnd"},
         cons={"K": 8, "d": 1},
     ).sample()
@@ -208,6 +216,7 @@ def test_Gadget_runs_empty_data_discrete():
             "burn_in": 0.5,
             "n_dags": 50,
         },
+        mc3={"name": "linear", "M": 2},
         candp={"name": "rnd"},
         cons={"K": 8, "d": 1},
     ).sample()
@@ -232,7 +241,8 @@ def test_Gadget_runs_with_anytime_mode():
         g = sumu.Gadget(
             data=data,
             run_mode={"name": "anytime"},
-            mcmc={"mc3": {"name": "linear", "M": 2}, "n_dags": 50},
+            mcmc={"n_dags": 50},
+            mc3={"name": "linear", "M": 2},
             candp={"name": "rnd"},
             cons={"K": 6, "d": 2},
         )
@@ -269,12 +279,50 @@ def test_Gadget_stays_in_budget():
     assert abs(t - budget) < 1
 
 
+def test_adaptive_tempering():
+
+    params = {
+        # generic MCMC parameters
+        "mcmc": {
+            "n_indep": 1,
+            "iters": 300000,
+            "burn_in": 0.5,
+            "n_dags": 10000,
+            "move_weights": [1, 1, 2],
+        },
+        "mc3": {"name": "adaptive"},
+        # score to use and its parameters
+        "score": {"name": "bdeu", "params": {"ess": 10}},
+        # modular structure prior and its parameters
+        "prior": {"name": "fair"},
+        # constraints on the DAG space
+        "cons": {"max_id": -1, "K": 8, "d": 3, "pruning_eps": 0.001},
+        # algorithm to use for finding candidate parents
+        "candp": {"name": "greedy", "params": {"k": 6}},
+        # preparing for catastrofic cancellations
+        "catc": {"tolerance": 2 ** -32, "cache_size": 10 ** 7},
+        # Logging
+        "logging": {
+            "stats_period": 15,
+        },
+    }
+
+    data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
+    bn_path = data_path / "sachs.dsc"
+    bn = sumu.DiscreteBNet.read_file(bn_path)
+    data = bn.sample(100)
+    g = sumu.Gadget(data=data, **params)
+    dags, meta = g.sample()
+    assert True
+
+
 if __name__ == "__main__":
     # test_Gadget_runs_n_between_2_and_64()
     # test_Gadget_runs_n_between_65_and_128()
     # test_Gadget_runs_n_between_129_and_192()
     # test_Gadget_runs_n_between_193_and_256()
-    # test_Gadget_empirical_edge_prob_error_decreases()
+    test_Gadget_empirical_edge_prob_error_decreases()
     # test_Gadget_runs_n_greater_than_256_discrete()
     # test_Gadget_runs_with_anytime_mode()
-    test_Gadget_stays_in_budget()
+    # test_Gadget_stays_in_budget()
+    # test_adaptive_tempering()
