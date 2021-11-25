@@ -20,7 +20,6 @@ def test_Gadget_empirical_edge_prob_error_decreases():
             "move_weights": [1, 1, 16],
         },
         # Metropolis coupling
-        # BUG: Fails with M=1
         "mc3": {"name": "linear", "M": 6},
         # score to use and its parameters
         "score": {"name": "bdeu", "params": {"ess": 10}},
@@ -145,7 +144,7 @@ def test_Gadget_runs_n_between_193_and_256():
 
 def test_Gadget_runs_continuous_data():
     data = np.random.rand(200, 10)
-    sumu.Gadget(data=data, cons={"K": 8}).sample()
+    sumu.Gadget(data=data, mcmc={"iters": 200}, cons={"K": 8}).sample()
     assert True
 
 
@@ -286,6 +285,17 @@ def test_adaptive_tempering():
     assert inv_temps[0] == 0.0 and inv_temps[-1] == 1.0
     assert len([i for i in inv_temps if i == 0.0]) == 1
     assert len([i for i in inv_temps if i == 1.0]) == 1
+
+
+def test_Gadget_runs_without_Metropolis():
+    data = np.random.rand(200, 10)
+    sumu.Gadget(
+        data=data,
+        cons={"K": 8},
+        mcmc={"iters": 1000},
+        mc3={"name": "linear", "M": 1},
+    ).sample()
+    assert True
 
 
 if __name__ == "__main__":

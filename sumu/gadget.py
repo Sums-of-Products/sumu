@@ -407,8 +407,11 @@ class GadgetLogger(Logger):
 
     def periodic_stats(self, header=False):
         msg_tmpl = "{:<12.12}" + " {:<5.5}" * self.g.p["mc3"]["M"]
-        temps = sorted(list(stats["mcmc"].keys()), reverse=True)
-        temps_labels = [round(t, 2) for t in temps]
+        temps = [1.0]
+        temps_labels = [1.0]
+        if self.g.p["mc3"]["M"] > 1:
+            temps = sorted(list(stats["mcmc"].keys()), reverse=True)
+            temps_labels = [round(t, 2) for t in temps]
         moves = stats["mcmc"][1.0].keys()
 
         def print_stats_title():
@@ -1013,6 +1016,7 @@ class Gadget:
                         self.score,
                         self.p["cons"]["d"],
                         move_weights=self.p["mcmc"]["move_weights"],
+                        stats=stats,
                     )
                 )
 
