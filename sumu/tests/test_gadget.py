@@ -274,39 +274,18 @@ def test_Gadget_stays_in_budget():
 
 def test_adaptive_tempering():
 
-    params = {
-        # generic MCMC parameters
-        "mcmc": {
-            "n_indep": 1,
-            "iters": 300000,
-            "burn_in": 0.5,
-            "n_dags": 10000,
-            "move_weights": [1, 1, 2],
-        },
-        "mc3": {"name": "adaptive"},
-        # score to use and its parameters
-        "score": {"name": "bdeu", "params": {"ess": 10}},
-        # modular structure prior and its parameters
-        "prior": {"name": "fair"},
-        # constraints on the DAG space
-        "cons": {"max_id": -1, "K": 8, "d": 3, "pruning_eps": 0.001},
-        # algorithm to use for finding candidate parents
-        "candp": {"name": "greedy", "params": {"k": 6}},
-        # preparing for catastrofic cancellations
-        "catc": {"tolerance": 2 ** -32, "cache_size": 10 ** 7},
-        # Logging
-        "logging": {
-            "stats_period": 15,
-        },
-    }
-
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "sachs.dsc"
     bn = sumu.DiscreteBNet.read_file(bn_path)
     data = bn.sample(100)
-    g = sumu.Gadget(data=data, **params)
+    g = sumu.Gadget(data=data, mcmc={"iters": 10000}, mc3={"name": "adaptive"})
     dags, meta = g.sample()
-    assert True
+    inv_temps = meta["chains"][0]["inv_temperatures"]
+    print(inv_temps)
+    assert inv_temps == sorted(inv_temps)
+    assert inv_temps[0] == 0.0 and inv_temps[-1] == 1.0
+    assert len([i for i in inv_temps if i == 0.0]) == 1
+    assert len([i for i in inv_temps if i == 1.0]) == 1
 
 
 if __name__ == "__main__":

@@ -904,8 +904,18 @@ class Gadget:
         log.run_stats()
         log(f"no. dags sampled: {len(self.dags)}")
 
+        chain_info = dict()
+        for i, c_i in enumerate(self.mcmc):
+            if self.p["mc3"]["M"] > 1:
+                chain_info[i] = {
+                    "inv_temperatures": [c.temp for c in c_i.chains]
+                }
+
         return self.dags, dict(
-            parameters=self.p.p, scores=self.dag_scores, candidates=self.C
+            parameters=self.p.p,
+            scores=self.dag_scores,
+            candidates=self.C,
+            chains=chain_info,
         )
 
     def _find_candidate_parents(self):
@@ -977,16 +987,10 @@ class Gadget:
 
         self.mcmc = list()
 
-        # # NOTE: QUICK HACK
-        # if self.p["mc3"]["name"] == "adaptive":
-        #     self.p["mc3"]["M"] = 0
-
         for i in range(self.p["mcmc"]["n_indep"]):
 
             if self.p["mc3"]["name"] == "adaptive":
-
                 self.log("Adaptive tempering")
-
                 self.mcmc.append(
                     MC3.adaptive(
                         PartitionMCMC(
