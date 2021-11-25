@@ -1,4 +1,5 @@
 import copy
+import warnings
 
 import numpy as np
 
@@ -247,11 +248,15 @@ class PartitionMCMC:
                 R_prime_node_scores = self._pi(
                     R_prime, R_node_scores=self.R_node_scores, rescore=rescore
                 )
-                ap = (
-                    np.exp(self.temp * sum(R_prime_node_scores) - self.R_score)
-                    * q_rev
-                    / q
-                )
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore")
+                    ap = (
+                        np.exp(
+                            self.temp * sum(R_prime_node_scores) - self.R_score
+                        )
+                        * q_rev
+                        / q
+                    )
 
             R_prime_valid = self._valid(R_prime)
 
@@ -298,11 +303,16 @@ class MC3:
         return locals()[scheme]
 
     @classmethod
-    def adaptive(cls, mcmc, stats=None, target=0.25):
+    def adaptive(cls, mcmc, stats=None, target=0.25, log=None):
         mcmc0 = copy.copy(mcmc)
         mcmc0.temp = 0.0
         mcmc0._init_moves()
         chains = [mcmc0, mcmc]
+
+        msg_tmpl = "{:<8}" + "{:<9}" * 2
+        if log is not None:
+            log(msg_tmpl.format("chain", "temp^-1", "swap_prob"))
+            log(msg_tmpl.format("1", "0.0", "-"))
 
         def acceptance_prob(temp):
             chains[-1].temp = temp
@@ -311,7 +321,6 @@ class MC3:
             accepted = 0
             while proposed < 1000:
                 i = np.random.randint(len(chains) - 1)
-                # i = -2
                 if i == len(chains) - 2:
                     proposed += 1
                 for c in chains[-2:]:
@@ -338,13 +347,15 @@ class MC3:
             return accepted / proposed
 
         done = False
+        i = 1
         while not done:
-            print("add chain")
+            i += 1
             ub = 1.0
             lb = chains[-2].temp
             temp = 1.0
             acc_prob = acceptance_prob(temp)
-            # print(temp, acc_prob)
+            if log is not None:
+                log(msg_tmpl.format(i, round(temp, 3), round(acc_prob, 3)))
             heat = acc_prob < target
             while abs(target - acc_prob) > 0.05:
                 if heat:
@@ -356,7 +367,10 @@ class MC3:
                     lb = temp
                     temp = temp + (ub - temp) / 2
                 acc_prob = acceptance_prob(temp)
-                print(temp, acc_prob)
+                if log is not None:
+                    log(
+                        msg_tmpl.format("", round(temp, 3), round(acc_prob, 3))
+                    )
                 heat = acc_prob < target
             if temp == 1.0:
                 done = True

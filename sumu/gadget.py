@@ -984,6 +984,9 @@ class Gadget:
         for i in range(self.p["mcmc"]["n_indep"]):
 
             if self.p["mc3"]["name"] == "adaptive":
+
+                self.log("Adaptive tempering")
+
                 self.mcmc.append(
                     MC3.adaptive(
                         PartitionMCMC(
@@ -993,10 +996,11 @@ class Gadget:
                             move_weights=self.p["mcmc"]["move_weights"],
                         ),
                         stats=stats,
+                        log=self.log,
                     )
                 )
                 self.p["mc3"]["M"] = len(self.mcmc[0].chains)
-                # print("adaptive done")
+                self.log.br()
 
             elif self.p["mc3"]["M"] == 1:
                 self.mcmc.append(
