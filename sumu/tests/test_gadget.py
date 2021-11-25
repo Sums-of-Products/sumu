@@ -257,8 +257,7 @@ def test_Gadget_stays_in_budget():
     t = time.time()
     params = {
         "run_mode": {"name": "budget", "params": {"t": budget}},
-        # BUG: Crashes without setting "criterion"
-        "candp": {"name": "greedy", "params": {"criterion": "score"}},
+        "candp": {"name": "greedy"},
     }
 
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"

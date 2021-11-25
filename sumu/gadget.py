@@ -183,7 +183,7 @@ class GadgetParameters:
             self.gb.preset.add("candp")
         else:
             if not candp_params_is_given:
-                self.p["candp"]["params"] = dict()
+                self.p["candp"]["params"] = self.default["candp"]["params"]
             self.p["candp"]["params"]["t_budget"] = int(
                 self.gb.budget["candp"]
             )
