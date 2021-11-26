@@ -66,12 +66,15 @@ class Beeps:
                 if len(pa) == 0:
                     continue
                 l = len(pa) + 1
-                R11 = R[node, node]
+
+                R11 = R[pa[:, None], pa]
                 R12 = R[pa, node]
-                R11inv = np.linalg.inv(R[pa[:, None], pa])
+                R21 = R[node, pa]
+                R22 = R[node, node]
+                R11inv = np.linalg.inv(R11)
                 df = awN - n + l
                 mb = R11inv @ R12
-                divisor = R11 - R11inv @ R12
+                divisor = R22 - R21 @ R11inv @ R12
                 covb = divisor / df * R11inv
                 b = mvt.rvs(loc=mb, shape=covb, df=df)
                 Bs[i, node, pa] = b
