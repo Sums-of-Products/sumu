@@ -311,8 +311,30 @@ class MC3:
         sigmoid[-1] = 1.0
         return locals()[scheme]
 
+    @staticmethod
+    def get_swap_acceptance_prob(chains, i, j):
+        """Compute the swap acceptance probability between chains in indices i
+        and j."""
+        ap = sum(chains[i].R_node_scores) * chains[j].inv_temp
+        ap += sum(chains[j].R_node_scores) * chains[i].inv_temp
+        ap -= sum(chains[j].R_node_scores) * chains[j].inv_temp
+        ap -= sum(chains[i].R_node_scores) * chains[i].inv_temp
+        return ap
+
+    @staticmethod
+    def make_swap(chains, i, j):
+        R_tmp = chains[i].R
+        R_node_scores_tmp = chains[i].R_node_scores
+        chains[i].R = chains[j].R
+        chains[i].R_node_scores = chains[j].R_node_scores
+        chains[i].R_score = chains[i].inv_temp * sum(chains[i].R_node_scores)
+        chains[j].R = R_tmp
+        chains[j].R_node_scores = R_node_scores_tmp
+        chains[j].R_score = chains[j].inv_temp * sum(chains[j].R_node_scores)
+
     @classmethod
     def adaptive(cls, mcmc, stats=None, target=0.25, log=None):
+
         mcmc0 = copy.copy(mcmc)
         mcmc0.inv_temp = 0.0
         mcmc0._init_moves()
@@ -323,69 +345,101 @@ class MC3:
             log(msg_tmpl.format("chain", "temp^-1", "swap_prob"))
             log(msg_tmpl.format("1", "0.0", "-"))
 
-        def acceptance_prob(temp):
-            chains[-1].temp = temp
-            chains[-1]._init_moves()
+        def acceptance_prob(i_target, inv_temp):
+            chains[i_target].inv_temp = inv_temp
+            chains[i_target].R = chains[i_target - 1].R
+            chains[i_target].R_node_scores = chains[i_target - 1].R_node_scores
+            chains[i_target]._init_moves()
             proposed = 0
             accepted = 0
             while proposed < 1000:
-                i = np.random.randint(len(chains) - 1)
-                if i == len(chains) - 2:
-                    proposed += 1
-                for c in chains[-2:]:
+                # Only the target chain and one hotter than it are sampled
+                for c in chains[i_target - 1 : i_target + 1]:
                     c.sample()
-                ap = sum(chains[i + 1].R_node_scores) * chains[i].temp
-                ap += sum(chains[i].R_node_scores) * chains[i + 1].temp
-                ap -= sum(chains[i].R_node_scores) * chains[i].temp
-                ap -= sum(chains[i + 1].R_node_scores) * chains[i + 1].temp
+                # j = np.random.randint(len(chains) - 1)
+                j = i_target - 1
+                if j == i_target - 1:
+                    proposed += 1
+                ap = MC3.get_swap_acceptance_prob(chains, j, j + 1)
                 if -np.random.exponential() < ap:
-                    if i == len(chains) - 2:
+                    if j == i_target - 1:
                         accepted += 1
-                    R_tmp = chains[i].R
-                    R_node_scores_tmp = chains[i].R_node_scores
-                    chains[i].R = chains[i + 1].R
-                    chains[i].R_node_scores = chains[i + 1].R_node_scores
-                    chains[i].R_score = chains[i].temp * sum(
-                        chains[i].R_node_scores
-                    )
-                    chains[i + 1].R = R_tmp
-                    chains[i + 1].R_node_scores = R_node_scores_tmp
-                    chains[i + 1].R_score = chains[i + 1].temp * sum(
-                        chains[i + 1].R_node_scores
-                    )
+                    MC3.make_swap(chains, j, j + 1)
             return accepted / proposed
 
-        done = False
-        i = 1
-        while not done:
-            i += 1
-            ub = 1.0
-            lb = chains[-2].temp
-            temp = 1.0
-            acc_prob = acceptance_prob(temp)
-            if log is not None:
-                log(msg_tmpl.format(i, round(temp, 3), round(acc_prob, 3)))
-            heat = acc_prob < target
-            while abs(target - acc_prob) > 0.05:
-                if heat:
-                    ub = temp
-                    temp = temp - (temp - lb) / 2
-                else:
-                    if temp == 1.0:
-                        break
-                    lb = temp
-                    temp = temp + (ub - temp) / 2
-                acc_prob = acceptance_prob(temp)
+        # Commented out option to rerun the temperature estimations
+        # until the number of chains equals the previous run +/- 1.
+
+        # all_done = False
+        # while not all_done:
+        for l in range(1):
+            # start_len = len(chains)
+            done = False
+            i = 0
+            while not done:
+                i += 1
+                ub = 1.0
+                lb = chains[i - 1].inv_temp
+                chains[i].inv_temp = max(lb, chains[i].inv_temp)
+                acc_prob = acceptance_prob(i, chains[i].inv_temp)
                 if log is not None:
                     log(
-                        msg_tmpl.format("", round(temp, 3), round(acc_prob, 3))
+                        msg_tmpl.format(
+                            i + 1,
+                            round(chains[i].inv_temp, 3),
+                            round(acc_prob, 3),
+                        )
                     )
                 heat = acc_prob < target
-            if temp == 1.0:
-                done = True
-            else:
-                chains.append(copy.copy(chains[-1]))
-        chains[-1].temp = 1.0
+                search_steps = 0
+                while abs(target - acc_prob) > 0.05:
+                    search_steps += 1
+                    if search_steps > 20:
+                        break
+
+                    # the ub/lb is set half way between the previous ub/lb and
+                    # current temperature, to avoid getting trapped in wrong
+                    # region.
+
+                    if heat:
+                        ub = chains[i].inv_temp + 0.5 * (
+                            ub - chains[i].inv_temp
+                        )
+                        chains[i].inv_temp = (
+                            chains[i].inv_temp - (chains[i].inv_temp - lb) / 2
+                        )
+                    else:
+                        if abs(chains[i].inv_temp - 1.0) < 1e-4:
+                            break
+                        lb = chains[i].inv_temp - 0.5 * (
+                            chains[i].inv_temp - lb
+                        )
+                        chains[i].inv_temp = (
+                            chains[i].inv_temp + (ub - chains[i].inv_temp) / 2
+                        )
+                    acc_prob = acceptance_prob(i, chains[i].inv_temp)
+                    if log is not None:
+                        log(
+                            msg_tmpl.format(
+                                "",
+                                round(chains[i].inv_temp, 3),
+                                round(acc_prob, 3),
+                            )
+                        )
+                    heat = acc_prob < target
+                if abs(chains[i].inv_temp - 1.0) < 1e-4:
+                    chains = chains[: i + 1]
+                    done = True
+                else:
+                    chain = copy.copy(chains[i])
+                    chain.inv_temp = 1.0
+                    chain._init_moves()
+                    chains.append(chain)
+            chains[-1].inv_temp = 1.0
+            chains[-1] = copy.copy(chains[-1])
+
+            # all_done = len(chains) in range(start_len - 1, start_len + 2)
+
         for c in chains:
             c.stats = stats
         chains = [copy.copy(c) for c in chains]
@@ -398,25 +452,11 @@ class MC3:
         i = np.random.randint(len(self.chains) - 1)
         if self.stats is not None:
             self.stats["mc3"]["proposed"][i] += 1
-        ap = sum(self.chains[i + 1].R_node_scores) * self.chains[i].temp
-        ap += sum(self.chains[i].R_node_scores) * self.chains[i + 1].temp
-        ap -= sum(self.chains[i].R_node_scores) * self.chains[i].temp
-        ap -= sum(self.chains[i + 1].R_node_scores) * self.chains[i + 1].temp
+        ap = MC3.get_swap_acceptance_prob(self.chains, i, i + 1)
         if -np.random.exponential() < ap:
             if self.stats is not None:
                 self.stats["mc3"]["accepted"][i] += 1
-            R_tmp = self.chains[i].R
-            R_node_scores_tmp = self.chains[i].R_node_scores
-            self.chains[i].R = self.chains[i + 1].R
-            self.chains[i].R_node_scores = self.chains[i + 1].R_node_scores
-            self.chains[i].R_score = self.chains[i].temp * sum(
-                self.chains[i].R_node_scores
-            )
-            self.chains[i + 1].R = R_tmp
-            self.chains[i + 1].R_node_scores = R_node_scores_tmp
-            self.chains[i + 1].R_score = self.chains[i + 1].temp * sum(
-                self.chains[i + 1].R_node_scores
-            )
+            MC3.make_swap(self.chains, i, i + 1)
         if self.stats is not None:
             self.stats["mc3"]["accept_ratio"][i] = (
                 self.stats["mc3"]["accepted"][i]

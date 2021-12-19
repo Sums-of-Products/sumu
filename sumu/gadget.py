@@ -919,6 +919,7 @@ class Gadget:
             scores=self.dag_scores,
             candidates=self.C,
             chains=chain_info,
+            stats=stats,
         )
 
     def _find_candidate_parents(self):
