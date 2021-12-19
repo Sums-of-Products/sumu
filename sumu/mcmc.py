@@ -273,8 +273,10 @@ class PartitionMCMC:
                 return self.R, self.R_score
 
             # make this happen in log space?
-            # if -np.random.exponential() < self.inv_temp*sum(R_prime_node_scores)
-            # - self.R_score + np.log(q_rev) - np.log(q):
+            # if -np.random.exponential() < self.inv_temp * sum(
+            #     R_prime_node_scores
+            # ) - self.R_score + np.log(q_rev) - np.log(q):
+            #     pass
             accepted = False
             if np.random.rand() < ap:
                 accepted = True
