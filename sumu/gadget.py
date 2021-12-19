@@ -1159,7 +1159,6 @@ class Gadget:
             "after burn-in": t,
             "total": iters_burn_in + t,
         }
-        return self.dags, self.dag_scores
 
     def _mcmc_run_anytime(self):
 
@@ -1249,8 +1248,6 @@ class Gadget:
 
         if first:
             self.log.periodic_stats(first)
-
-        return self.dags, self.dag_scores
 
 
 class LocalScore:
