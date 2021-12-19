@@ -279,6 +279,13 @@ def test_adaptive_tempering():
     g = sumu.Gadget(data=data, mcmc={"iters": 10000}, mc3={"name": "adaptive"})
     dags, meta = g.sample()
     inv_temps = meta["chains"][0]["inv_temperatures"]
+    acc_probs = meta["stats"]["mc3"]["accept_ratio"]
+    in_range_ratio = sum([p > 0.2 and p < 0.3 for p in acc_probs]) / len(
+        acc_probs
+    )
+    mae = np.mean([abs(0.25 - p) for p in acc_probs])
+    print(f"Ratio of swap probs in range: {in_range_ratio}")
+    print(f"Swap prob Mean Absolute Error: {mae}")
     print(inv_temps)
     assert inv_temps == sorted(inv_temps)
     assert inv_temps[0] == 0.0 and inv_temps[-1] == 1.0
