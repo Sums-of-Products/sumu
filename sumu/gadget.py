@@ -911,7 +911,7 @@ class Gadget:
         for i, c_i in enumerate(self.mcmc):
             if self.p["mc3"]["M"] > 1:
                 chain_info[i] = {
-                    "inv_temperatures": [c.temp for c in c_i.chains]
+                    "inv_temperatures": [c.inv_temp for c in c_i.chains]
                 }
 
         return self.dags, dict(
@@ -1021,7 +1021,7 @@ class Gadget:
                 )
 
             elif self.p["mc3"]["M"] > 1:
-                temperatures = MC3.get_inv_temperatures(
+                inv_temps = MC3.get_inv_temperatures(
                     self.p["mc3"]["name"], self.p["mc3"]["M"]
                 )
                 self.mcmc.append(
@@ -1031,7 +1031,7 @@ class Gadget:
                                 self.C,
                                 self.score,
                                 self.p["cons"]["d"],
-                                temperature=temperatures[i],
+                                inv_temp=inv_temps[i],
                                 move_weights=self.p["mcmc"]["move_weights"],
                                 stats=stats,
                             )

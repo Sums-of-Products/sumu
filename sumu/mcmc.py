@@ -16,7 +16,7 @@ class PartitionMCMC:
         C,
         score,
         d,
-        temperature=1.0,
+        inv_temp=1.0,
         move_weights=[1, 1, 2],
         stats=None,
         R=None,
@@ -24,7 +24,7 @@ class PartitionMCMC:
 
         self.n = len(C)
         self.C = C
-        self.temp = temperature
+        self.inv_temp = inv_temp
         self.score = score
         self.d = d
         self.stay_prob = 0.01
@@ -38,9 +38,13 @@ class PartitionMCMC:
 
         if self.stats is not None:
             for move in self._all_moves:
-                self.stats["mcmc"][self.temp][move.__name__]["proposed"] = 0
-                self.stats["mcmc"][self.temp][move.__name__]["accepted"] = 0
-                self.stats["mcmc"][self.temp][move.__name__][
+                self.stats["mcmc"][self.inv_temp][move.__name__][
+                    "proposed"
+                ] = 0
+                self.stats["mcmc"][self.inv_temp][move.__name__][
+                    "accepted"
+                ] = 0
+                self.stats["mcmc"][self.inv_temp][move.__name__][
                     "accept_ratio"
                 ] = 0
 
@@ -50,12 +54,12 @@ class PartitionMCMC:
         if self.R is None:
             self.R = self._random_partition()
         self.R_node_scores = self._pi(self.R)
-        self.R_score = self.temp * sum(self.R_node_scores)
+        self.R_score = self.inv_temp * sum(self.R_node_scores)
 
     def _init_moves(self):
-        # This needs to be called if self.temp changes from/to 1.0
+        # This needs to be called if self.inv_temp changes from/to 1.0
         move_weights = self._move_weights
-        if self.temp != 1:
+        if self.inv_temp != 1:
             move_weights = self._move_weights[:-1]
         # Each move is repeated weights[move] times to allow uniform sampling
         # from the list (np.random.choice can be very slow).
@@ -68,7 +72,7 @@ class PartitionMCMC:
             self.C,
             self.score,
             self.d,
-            temperature=self.temp,
+            inv_temp=self.inv_temp,
             move_weights=self._move_weights,
             stats=self.stats,
             R=self.R,
@@ -207,18 +211,22 @@ class PartitionMCMC:
 
     def sample(self):
         def update_stats(accepted):
-            self.stats["mcmc"][self.temp][move.__name__]["proposed"] += 1
+            self.stats["mcmc"][self.inv_temp][move.__name__]["proposed"] += 1
             if accepted:
-                self.stats["mcmc"][self.temp][move.__name__]["accepted"] += 1
-            a = self.stats["mcmc"][self.temp][move.__name__]["accepted"]
+                self.stats["mcmc"][self.inv_temp][move.__name__][
+                    "accepted"
+                ] += 1
+            a = self.stats["mcmc"][self.inv_temp][move.__name__]["accepted"]
             if type(a) != int:
                 a = 0
-            p = self.stats["mcmc"][self.temp][move.__name__]["proposed"]
+            p = self.stats["mcmc"][self.inv_temp][move.__name__]["proposed"]
             try:
                 ap = a / p
             except ZeroDivisionError:
                 ap = 0.0
-            self.stats["mcmc"][self.temp][move.__name__]["accept_ratio"] = ap
+            self.stats["mcmc"][self.inv_temp][move.__name__][
+                "accept_ratio"
+            ] = ap
 
         if np.random.rand() > self.stay_prob:
             move = self._moves[np.random.randint(len(self._moves))]
@@ -252,7 +260,8 @@ class PartitionMCMC:
                     warnings.filterwarnings("ignore")
                     ap = (
                         np.exp(
-                            self.temp * sum(R_prime_node_scores) - self.R_score
+                            self.inv_temp * sum(R_prime_node_scores)
+                            - self.R_score
                         )
                         * q_rev
                         / q
@@ -264,14 +273,14 @@ class PartitionMCMC:
                 return self.R, self.R_score
 
             # make this happen in log space?
-            # if -np.random.exponential() < self.temp*sum(R_prime_node_scores)
+            # if -np.random.exponential() < self.inv_temp*sum(R_prime_node_scores)
             # - self.R_score + np.log(q_rev) - np.log(q):
             accepted = False
             if np.random.rand() < ap:
                 accepted = True
                 self.R = R_prime
                 self.R_node_scores = R_prime_node_scores
-                self.R_score = self.temp * sum(self.R_node_scores)
+                self.R_score = self.inv_temp * sum(self.R_node_scores)
 
             if self.stats is not None:
                 update_stats(accepted)
@@ -305,7 +314,7 @@ class MC3:
     @classmethod
     def adaptive(cls, mcmc, stats=None, target=0.25, log=None):
         mcmc0 = copy.copy(mcmc)
-        mcmc0.temp = 0.0
+        mcmc0.inv_temp = 0.0
         mcmc0._init_moves()
         chains = [mcmc0, mcmc]
 
