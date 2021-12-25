@@ -189,6 +189,7 @@ setup(
     license="BSD",
     packages=["sumu", "sumu.utils", "sumu.scores"],
     install_requires=["numpy", "scipy>=1.6"],
+    extras_require={"plotext": ["plotext==4.1.3"]},
     cmdclass=cmdclass,
     ext_modules=cythonize(
         exts, language_level="3", compiler_directives=COMPILER_DIRECTIVES

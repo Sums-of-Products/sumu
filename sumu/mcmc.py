@@ -342,6 +342,9 @@ class MC3:
         mcmc0._init_moves()
         chains = [mcmc0, mcmc]
 
+        if stats is not None:
+            stats["iters"]["adaptive tempering"] = 0
+
         msg_tmpl = "{:<8}" + "{:<9}" * 2
         if log is not None:
             log(msg_tmpl.format("chain", "temp^-1", "swap_prob"))
@@ -357,6 +360,8 @@ class MC3:
             while proposed < 1000:
                 # Only the target chain and one hotter than it are sampled
                 for c in chains[i_target - 1 : i_target + 1]:
+                    if stats is not None:
+                        stats["iters"]["adaptive tempering"] += 1
                     c.sample()
                 # j = np.random.randint(len(chains) - 1)
                 j = i_target - 1
