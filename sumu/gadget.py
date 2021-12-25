@@ -12,7 +12,7 @@ import numpy as np
 try:
     import plotext as plt
 
-    plot_trace = True
+    plot_trace = plt.__version__ == "4.1.3"
 except ImportError:
     plot_trace = False
 
@@ -38,11 +38,11 @@ class Defaults:
             "mcmc": {
                 "n_indep": 1,
                 "iters": 320000,
-                "mc3": {"name": "linear", "M": 16},
                 "burn_in": 0.5,
                 "n_dags": 10000,
                 "move_weights": [1, 1, 2],
             },
+            "mc3": {"name": "linear", "M": 16},
             "score": lambda discrete: {"name": "bdeu", "params": {"ess": 10}}
             if discrete
             else {"name": "bge"},
@@ -81,6 +81,7 @@ class GadgetParameters:
         data,
         run_mode=dict(),
         mcmc=dict(),
+        mc3=dict(),
         score=dict(),
         prior=dict(),
         cons=dict(),
@@ -88,7 +89,6 @@ class GadgetParameters:
         catc=dict(),
         logging=dict(),
     ):
-
         # Save parameters initially given by user.
         # locals() has to be the first thing called in __init__.
         self.init = dict(**locals())
@@ -135,12 +135,12 @@ class GadgetParameters:
 
     def _adjust_inconsistent_parameters(self):
         iters = self.p["mcmc"]["iters"]
-        mc3 = self.p["mcmc"]["mc3"]["M"]
+        M = self.p["mc3"].get("M", 1)
         burn_in = self.p["mcmc"]["burn_in"]
         n_dags = self.p["mcmc"]["n_dags"]
-        self.p["mcmc"]["iters"] = iters // mc3 * mc3
+        self.p["mcmc"]["iters"] = iters // M * M
         self.p["mcmc"]["n_dags"] = min(
-            (iters - int(iters * burn_in)) // mc3, n_dags
+            (iters - int(iters * burn_in)) // M, n_dags
         )
         self.adjusted = (
             self.p["mcmc"]["iters"] != iters,
@@ -182,7 +182,7 @@ class GadgetParameters:
             self.gb.preset.add("candp")
         else:
             if not candp_params_is_given:
-                self.p["candp"]["params"] = dict()
+                self.p["candp"]["params"] = self.default["candp"]["params"]
             self.p["candp"]["params"]["t_budget"] = int(
                 self.gb.budget["candp"]
             )
@@ -393,7 +393,7 @@ class GadgetLogger(Logger):
             overwrite=gadget.p["logging"]["overwrite"],
         )
         self._running_sec_num = 0
-        self._linewidth = max(80, 12 + 6 * gadget.p["mcmc"]["mc3"]["M"] - 1)
+        self._linewidth = 80  # max(80, 12 + 6 * gadget.p["mc3"]["M"] - 1)
         self.g = gadget
 
     def h(self, title):
@@ -405,9 +405,12 @@ class GadgetLogger(Logger):
         self._logfile.flush()
 
     def periodic_stats(self, header=False):
-        msg_tmpl = "{:<12.12}" + " {:<5.5}" * self.g.p["mcmc"]["mc3"]["M"]
-        temps = sorted(list(stats["mcmc"].keys()), reverse=True)
-        temps_labels = [round(t, 2) for t in temps]
+        msg_tmpl = "{:<12.12}" + " {:<5.5}" * self.g.p["mc3"]["M"]
+        temps = [1.0]
+        temps_labels = [1.0]
+        if self.g.p["mc3"]["M"] > 1:
+            temps = sorted(list(stats["mcmc"].keys()), reverse=True)
+            temps_labels = [round(t, 2) for t in temps]
         moves = stats["mcmc"][1.0].keys()
 
         def print_stats_title():
@@ -441,7 +444,7 @@ class GadgetLogger(Logger):
             ar = [round(r, 2) if type(r) == float else "" for r in ar]
             msg = msg_tmpl.format(m, *ar)
             print(msg, file=self._logfile)
-        if self.g.p["mcmc"]["mc3"]["M"] > 1:
+        if self.g.p["mc3"]["M"] > 1:
             ar = stats["mc3"]["accept_ratio"]
             ar = [round(r, 2) if not np.isnan(r) else "" for r in ar] + [""]
             msg = msg_tmpl.format("MC^3", *ar)
@@ -453,10 +456,10 @@ class GadgetLogger(Logger):
         w_iters = str(max(len("iters"), len(str(stats["iters"]["total"]))) + 2)
         w_seconds = str(len(str(int(stats["t"]["mcmc"]))) + 2)
         msg_title_tmpl = (
-            "{:<15}{:<" + w_iters + "}{:<13}{:<" + w_seconds + "}{:<9}{:<13}"
+            "{:<20}{:<" + w_iters + "}{:<13}{:<" + w_seconds + "}{:<9}{:<13}"
         )
         msg_tmpl = (
-            "{:<15}{:<"
+            "{:<20}{:<"
             + w_iters
             + "}{:<13.3}{:<"
             + w_seconds
@@ -469,15 +472,24 @@ class GadgetLogger(Logger):
             + "\n"
         )
         msg += "-" * self._linewidth + "\n"
-        for phase in ["burn-in", "after burn-in"]:
+
+        phases = ["burn-in", "after burn-in"]
+        if self.g.p["mc3"]["name"] == "adaptive":
+            phases = ["adaptive tempering"] + phases
+
+        for phase in phases:
             msg += (
                 msg_tmpl.format(
                     phase,
                     stats["iters"][phase],
                     stats["iters"][phase] / stats["iters"]["total"],
-                    int(stats["t"][phase]),
+                    round(stats["t"][phase]),
                     stats["t"][phase] / stats["t"]["mcmc"],
-                    stats["t"][phase] / stats["iters"][phase],
+                    (
+                        stats["t"][phase] / stats["iters"][phase]
+                        if stats["iters"][phase] > 0
+                        else "-"
+                    ),
                 )
                 + "\n"
             )
@@ -485,7 +497,7 @@ class GadgetLogger(Logger):
             "mcmc total",
             stats["iters"]["total"],
             1.0,
-            int(stats["t"]["mcmc"]),
+            round(stats["t"]["mcmc"]),
             1.0,
             stats["t"]["mcmc"] / stats["iters"]["total"],
         )
@@ -496,14 +508,11 @@ class GadgetLogger(Logger):
     def progress(self, t, t_elapsed):
         if self.g.p["run_mode"]["name"] == "normal":
             progress = round(
-                100
-                * t
-                / (self.g.p["mcmc"]["iters"] // self.g.p["mcmc"]["mc3"]["M"])
+                100 * t / (self.g.p["mcmc"]["iters"] // self.g.p["mc3"]["M"])
             )
             progress = str(progress)
             print(
-                f"Progress: {progress}% "
-                f"({t*self.g.p['mcmc']['mc3']['M']} iterations)",
+                f"Progress: {progress}% ({t*self.g.p['mc3']['M']} iterations)",
                 file=self._logfile,
             )
             self._logfile.flush()
@@ -511,13 +520,12 @@ class GadgetLogger(Logger):
             progress = round(100 * t_elapsed / self.g.p.gb.budget["mcmc"])
             progress = str(progress)
             print(
-                f"Progress: {progress}% "
-                f"({t*self.g.p['mcmc']['mc3']['M']} iterations)",
+                f"Progress: {progress}% ({t*self.g.p['mc3']['M']} iterations)",
                 file=self._logfile,
             )
         elif self.g.p["run_mode"]["name"] == "anytime":
             print(
-                f"Progress: {t*self.g.p['mcmc']['mc3']['M']} iterations",
+                f"Progress: {t*self.g.p['mc3']['M']} iterations",
                 file=self._logfile,
             )
 
@@ -529,32 +537,38 @@ class GadgetLogger(Logger):
         self.br()
         self._logfile.flush()
 
-    def plot_score_trace(self, t, R_scores):
-        r = R_scores.shape[0]
+    def plot_score_trace(self, t, M, R_scores):
+
+        r = R_scores.shape[0]  # 1000
         plt.clear_plot()
-        plt.set_output_file(self._logfile)
         for i in range(self.g.p["mcmc"]["n_indep"]):
             if t < r:
-                plt.scatter(R_scores[:t, i], label=str(i), line_color="red")
+                plt.scatter(
+                    R_scores[:t, i], label=str(i), color=i + 1, marker="•"
+                )
             else:
                 plt.scatter(
                     R_scores[np.r_[(t % r) : r, 0 : (t % r)], i],
                     label=str(i),
-                    line_color="red",
+                    color=i + 1,
+                    marker="dot",
                 )
-        plt.figsize(80, 20)
-        plt.ticks(4, 4)
+        plt.plotsize(80, 20)
+        plt.yfrequency(4)
         if t < 1000:
             xticks = [int(w * t) for w in np.arange(0, 1 + 1 / 3, 1 / 3)]
-            xlabels = [str(round(x / 1000, 1)) + "k" for x in xticks]
+            xlabels = [str(round(x * M / 1000, 1)) + "k" for x in xticks]
         else:
-            xticks = [0, 333, 666, 999]
-            xlabels = [str(round((x + t) / 1000, 1)) + "k" for x in xticks]
+            xticks = np.array([0, 333, 666, 999])
+            xlabels = [
+                str(round((x + t) * M / 1000, 1)) + "k"
+                for x in -1 * xticks[::-1]
+            ]
         plt.xticks(xticks, xlabels)
-        plt.canvas_color("none")
-        plt.axes_color("none")
-        plt.ticks_color("none")
-        plt.show()
+        plt.canvas_color("default")
+        plt.axes_color("default")
+        plt.ticks_color("default")
+        print(plt.build(), file=self._logfile)
         print(file=self._logfile)
         self._logfile.flush()
 
@@ -593,8 +607,9 @@ class Gadget:
 
     >>> Gadget(data=data, cons={"K": k}).
 
-    In this documentation nested parameters are referenced as **outer:inner**,
-    e.g., the ``ess`` parameter can be referenced as **score:params:ess**.
+    In this documentation nested parameters are referenced as
+    **outer:inner**, e.g., the ``ess`` parameter can be referenced as
+    **score:params:ess**.
 
     - **run_mode**: Which mode to run Gadget in.
 
@@ -606,39 +621,41 @@ class Gadget:
 
         ``budget``: Gadget is run until a given time budget is used
         up. **cons:K**, **cons:d**, **mcmc:iters** and **candp** are set
-        automatically, so that approximately one third of the budget is used on
-        precomputations and the rest on MCMC sampling. The precomputation
-        budget is split between
+        automatically, so that approximately one third of the budget is
+        used on precomputations and the rest on MCMC sampling. The
+        precomputation budget is split between
 
         - (1) finding candidate parents;
         - (2) precomputing candidate restricted scoring structures;
         - (3) precomputing complementary scoring structures.
 
-        The time required by the third phase is factorial in **cons:d** (there
-        are approximately :math:`\\binom{n}{d}` scores complementary to those
-        restricted to candidate parents), so the amount of additional time
-        required going from :math:`d` to :math:`d+1` can be very
-        large. Therefore, as a first step :math:`d` is set to a value with
-        which phase (3) is predicted to use at most :math:`1/3` of the
+        The time required by the third phase is factorial in **cons:d**
+        (there are approximately :math:`\\binom{n}{d}` scores complementary
+        to those restricted to candidate parents), so the amount of
+        additional time required going from :math:`d` to :math:`d+1` can be
+        very large. Therefore, as a first step :math:`d` is set to a value
+        with which phase (3) is predicted to use at most :math:`1/3` of the
         precomputation budget (i.e., :math:`1/9` of the total). Then the
         remaining precomputation budget is adjusted to be the original
         subtracted by the predicted time use for phase (3) and the (small)
         amount of time required for the prediction itself.
 
-        As a second step **cons:K** is set to a value with which phase (2) is
-        predicted to use at most :math:`1/2` of the remaining precomputation
-        budget. Again, the predicted time use and the amount of time required
-        for the prediction of this phase is subtracted from the remaining
-        precomputation budget.
+        As a second step **cons:K** is set to a value with which phase (2)
+        is predicted to use at most :math:`1/2` of the remaining
+        precomputation budget. Again, the predicted time use and the amount
+        of time required for the prediction of this phase is subtracted
+        from the remaining precomputation budget.
 
-        Then, the candidate parent selection algorithm (**candp**) is set to
-        ``greedy-lite``, and its parameter :math:`k` is dynamically set during
-        the running of the algorithm to a value for which :math:`k-1` is
-        predicted to overuse the remaining precomputation budget.
+        Then, the candidate parent selection algorithm (**candp**) is set
+        to ``greedy-lite``, and its parameter :math:`k` is dynamically set
+        during the running of the algorithm to a value for which
+        :math:`k-1` is predicted to overuse the remaining precomputation
+        budget.
 
         Finally, the MCMC phase uses the amount of budget that remains. The
-        **mcmc:burn_in** parameter in this mode sets fraction of *time* to be
-        used on the burn-in phase, rather than the fraction of iterations.
+        **mcmc:burn_in** parameter in this mode sets fraction of *time* to
+        be used on the burn-in phase, rather than the fraction of
+        iterations.
 
         Overrides **mcmc:iters**, **cons:K**, **cons:d** and **candp**.
 
@@ -663,9 +680,9 @@ class Gadget:
         **Default**: 4.
 
       - **iters**: The total number of iterations across all the Metropolis
-        coupled chains, i.e., if the number of coupled chains is :math:`k` then
-        each runs for **iters/k** iterations. If the given **iters** is not a
-        multiple of the number of chains it is adjusted downwards.
+        coupled chains, i.e., if the number of coupled chains is :math:`k`
+        then each runs for **iters/k** iterations. If the given **iters**
+        is not a multiple of the number of chains it is adjusted downwards.
 
         **Default**: 320000.
 
@@ -701,7 +718,8 @@ class Gadget:
 
     - **prior**: Modular structure prior to use.
 
-      - **name**: Structure prior: *fair* or *unif* :footcite:`eggeling:2019`.
+      - **name**: Structure prior: *fair* or *unif*
+        :footcite:`eggeling:2019`.
 
         **Default**: fair.
 
@@ -709,8 +727,8 @@ class Gadget:
 
       - **K**: Number of candidate parents per node.
 
-        **Default**: :math:`\min(n-1, 16)`, where :math:`n` is the number of
-        nodes.
+        **Default**: :math:`\min(n-1, 16)`, where :math:`n` is the number
+        of nodes.
 
       - **d**: Maximum size of parent sets that are not subsets of the
         candidate parents.
@@ -789,8 +807,8 @@ class Gadget:
 
         **Default**: ``sys.stdout``.
 
-      - **tracefile**: File path to write the root-partition scores to, of each
-        independent chain, for analyzing mixing and convergence.
+      - **tracefile**: File path to write the root-partition scores to, of
+        each independent chain, for analyzing mixing and convergence.
 
         **Default**: ``None``.
 
@@ -807,6 +825,7 @@ class Gadget:
         data,
         run_mode=dict(),
         mcmc=dict(),
+        mc3=dict(),
         score=dict(),
         prior=dict(),
         cons=dict(),
@@ -894,10 +913,14 @@ class Gadget:
         log.h("RUNNING MCMC")
         stats["t"]["mcmc"] = time.time()
         self._mcmc_init()
+        stats["t"]["adaptive tempering"] = time.time() - stats["t"]["mcmc"]
         if self.p["run_mode"]["name"] == "anytime":
             self._mcmc_run_anytime()
         else:
-            self._mcmc_run()
+            if self.p["mc3"]["name"] == "adaptive":
+                self._mcmc_run(t_elapsed_init=stats["t"]["adaptive tempering"])
+            else:
+                self._mcmc_run()
         stats["t"]["mcmc"] = time.time() - stats["t"]["mcmc"]
         log(f"time used: {round(stats['t']['mcmc'])}s")
         log.br(2)
@@ -906,8 +929,19 @@ class Gadget:
         log.run_stats()
         log(f"no. dags sampled: {len(self.dags)}")
 
+        chain_info = dict()
+        for i, c_i in enumerate(self.mcmc):
+            if self.p["mc3"]["M"] > 1:
+                chain_info[i] = {
+                    "inv_temperatures": [c.inv_temp for c in c_i.chains]
+                }
+
         return self.dags, dict(
-            parameters=self.p.p, scores=self.dag_scores, candidates=self.C
+            parameters=self.p.p,
+            scores=self.dag_scores,
+            candidates=self.C,
+            chains=chain_info,
+            stats=stats,
         )
 
     def _find_candidate_parents(self):
@@ -978,10 +1012,40 @@ class Gadget:
         )
 
         self.mcmc = list()
+
         for i in range(self.p["mcmc"]["n_indep"]):
-            if self.p["mcmc"]["mc3"]["M"] > 1:
-                temperatures = MC3.get_inv_temperatures(
-                    self.p["mcmc"]["mc3"]["name"], self.p["mcmc"]["mc3"]["M"]
+
+            if self.p["mc3"]["name"] == "adaptive":
+                self.log("Adaptive tempering")
+                self.mcmc.append(
+                    MC3.adaptive(
+                        PartitionMCMC(
+                            self.C,
+                            self.score,
+                            self.p["cons"]["d"],
+                            move_weights=self.p["mcmc"]["move_weights"],
+                        ),
+                        stats=stats,
+                        log=self.log,
+                    )
+                )
+                self.p["mc3"]["M"] = len(self.mcmc[0].chains)
+                self.log.br()
+
+            elif self.p["mc3"]["M"] == 1:
+                self.mcmc.append(
+                    PartitionMCMC(
+                        self.C,
+                        self.score,
+                        self.p["cons"]["d"],
+                        move_weights=self.p["mcmc"]["move_weights"],
+                        stats=stats,
+                    )
+                )
+
+            elif self.p["mc3"]["M"] > 1:
+                inv_temps = MC3.get_inv_temperatures(
+                    self.p["mc3"]["name"], self.p["mc3"]["M"]
                 )
                 self.mcmc.append(
                     MC3(
@@ -990,25 +1054,17 @@ class Gadget:
                                 self.C,
                                 self.score,
                                 self.p["cons"]["d"],
-                                temperature=temperatures[i],
+                                inv_temp=inv_temps[i],
                                 move_weights=self.p["mcmc"]["move_weights"],
+                                stats=stats,
                             )
-                            for i in range(self.p["mcmc"]["mc3"]["M"])
-                        ]
+                            for i in range(self.p["mc3"]["M"])
+                        ],
+                        stats=stats,
                     )
                 )
 
-            else:
-                self.mcmc.append(
-                    PartitionMCMC(
-                        self.C,
-                        self.score,
-                        self.p["cons"]["d"],
-                        move_weights=self.p["mcmc"]["move_weights"],
-                    )
-                )
-
-    def _mcmc_run(self):
+    def _mcmc_run(self, t_elapsed_init=0):
 
         r = 1000  # max number of iterations to plot in score trace
 
@@ -1021,18 +1077,21 @@ class Gadget:
         first = True
 
         if self.p["run_mode"]["name"] == "normal":
-            iters_burn_in = (
+            iters_burn_in = int(
                 self.p["mcmc"]["iters"]
-                / self.p["mcmc"]["mc3"]["M"]
+                / self.p["mc3"]["M"]
                 * self.p["mcmc"]["burn_in"]
             )
             iters_burn_in = int(iters_burn_in)
             iters_dag_sampling = (
-                self.p["mcmc"]["iters"] // self.p["mcmc"]["mc3"]["M"]
-                - iters_burn_in
+                self.p["mcmc"]["iters"] // self.p["mc3"]["M"] - iters_burn_in
             )
-            burn_in_cond = lambda: t in range(iters_burn_in)
-            mcmc_cond = lambda: t in range(iters_dag_sampling)
+            if self.p["mc3"]["name"] == "adaptive":
+                iters_burn_in -= int(
+                    stats["iters"]["adaptive tempering"] / self.p["mc3"]["M"]
+                )
+            burn_in_cond = lambda: t < iters_burn_in
+            mcmc_cond = lambda: t < iters_dag_sampling
             dag_sample_cond = (
                 lambda: t
                 >= iters_dag_sampling / self.p["mcmc"]["n_dags"] * dag_count
@@ -1049,7 +1108,7 @@ class Gadget:
             dag_sample_cond = lambda: dag_count < t_elapsed / t_per_dag
 
         t = 0
-        t_elapsed = 0
+        t_elapsed = t_elapsed_init
         t0 = time.time()
         while burn_in_cond():
             for i in range(self.p["mcmc"]["n_indep"]):
@@ -1063,16 +1122,15 @@ class Gadget:
                 self.log.progress(t, time.time() - t0)
                 if plot_trace:
                     self.log.br()
-                    self.log.plot_score_trace(t, R_scores)
+                    self.log.plot_score_trace(t, self.p["mc3"]["M"], R_scores)
                 else:
                     self.log.r_scores(t, R_scores)
                 first = False
 
             t += 1
-            t_elapsed = time.time() - t0
+            t_elapsed = t_elapsed_init + time.time() - t0
 
-        t_used_burnin = time.time() - t0
-        stats["t"]["burn-in"] = t_used_burnin
+        stats["t"]["burn-in"] = time.time() - t0
         if self.p["run_mode"]["name"] == "budget":
             t_b_mcmc = self.p["run_mode"]["params"]["t"] - (
                 time.time() - self.p.gb.t0
@@ -1092,11 +1150,14 @@ class Gadget:
                 timer = time.time()
                 self.log.periodic_stats(first)
                 self.log.progress(
-                    t + iters_burn_in, time.time() - t0 + t_used_burnin
+                    t + iters_burn_in,
+                    time.time() - t0 + stats["t"]["burn-in"],
                 )
                 if plot_trace:
                     self.log.br()
-                    self.log.plot_score_trace(t, R_scores)
+                    self.log.plot_score_trace(
+                        t + iters_burn_in, self.p["mc3"]["M"], R_scores
+                    )
                 else:
                     self.log.r_scores(t + iters_burn_in, R_scores)
                 first = False
@@ -1121,12 +1182,11 @@ class Gadget:
 
         self.log.periodic_stats(first)
 
-        stats["iters"] = {
-            "burn-in": iters_burn_in,
-            "after burn-in": t,
-            "total": iters_burn_in + t,
-        }
-        return self.dags, self.dag_scores
+        stats["iters"]["burn-in"] = iters_burn_in * self.p["mc3"]["M"]
+        stats["iters"]["after burn-in"] = t * self.p["mc3"]["M"]
+        stats["iters"]["total"] = (iters_burn_in + t) * self.p["mc3"]["M"]
+        if "adaptive tempering" in stats["iters"]:
+            stats["iters"]["total"] += stats["iters"]["adaptive tempering"]
 
     def _mcmc_run_anytime(self):
 
@@ -1216,8 +1276,6 @@ class Gadget:
 
         if first:
             self.log.periodic_stats(first)
-
-        return self.dags, self.dag_scores
 
 
 class LocalScore:
