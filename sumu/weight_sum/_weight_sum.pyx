@@ -2,15 +2,16 @@
 
 from libc.stdint cimport uint32_t as bm32
 from libc.stdint cimport uint64_t as bm64
-from libcpp.vector cimport vector
-from libcpp.pair cimport pair
 from libcpp cimport bool
+from libcpp.pair cimport pair
 from libcpp.string cimport string
+from libcpp.vector cimport vector
 
 import numpy as np
+
 cimport numpy as np
 
-from .utils.bitmap import bm, bm_to_np64, np64_to_bm, bm_to_ints
+from .utils.bitmap import bm, bm_to_ints, bm_to_np64, np64_to_bm
 from .utils.math_utils import comb
 
 ctypedef IntersectSums* isum_ptr
@@ -64,13 +65,11 @@ cdef extern from "IntersectSums.hpp":
         double scan_sum_192(double w, bm192 U, bm192 T, bm64 t_ub)
         double scan_sum_256(double w, bm256 U, bm256 T, bm64 t_ub)
         double scan_sum(double w, vector[bm64] U, vector[bm64] T, bm64 t_ub)
-        double scan_sum_x(double w, vector[bm64] U, vector[bm64] T, bm64 t_ub)
         pair[bm64, double] scan_rnd_64(bm64 U, bm64 T, double wcum)
         pair[bm128, double] scan_rnd_128(bm128 U, bm128 T, double wcum)
         pair[bm192, double] scan_rnd_192(bm192 U, bm192 T, double wcum)
         pair[bm256, double] scan_rnd_256(bm256 U, bm256 T, double wcum)
         pair[vector[bm64], double] scan_rnd(vector[bm64] U, vector[bm64] T, double wcum)
-        pair[vector[bm64], double] scan_rnd_x(vector[bm64] U, vector[bm64] T, double wcum)
 
 
 cdef class CandidateRestrictedScore:
@@ -128,10 +127,7 @@ cdef class CandidateComplementScore:
         n = len(C)
         self.d = d
         self.k = (n-1)//64+1
-        if self.k > 6:
-            # Due to the way IntersectSums is implemented at the moment
-            self.k = -self.k
-        self.localscore = localscore
+        self.localscore = localscore  # 2
 
         self.t_ub = np.zeros(shape=(n, n), dtype=np.int32)
         for u in range(1, n+1):
@@ -198,10 +194,6 @@ cdef class CandidateComplementScore:
             return self.isums[0][v].scan_sum(w, U, T,
                                              self.t_ub[len(U)-1][len(T)-1])
 
-        if self.k < 0:
-            return self.isums[0][v].scan_sum_x(w, U, T,
-                                               self.t_ub[len(U)-1][len(T)-1])
-
 
 
     def sample_pset(self, v, U, T, wcum):
@@ -247,10 +239,6 @@ cdef class CandidateComplementScore:
 
         if self.k > 4:
             pset, score = self.isums[0][v].scan_rnd(U, T, wcum)
-            pset = bm_to_ints(np64_to_bm(pset))
-
-        if self.k < 0:
-            pset, score = self.isums[0][v].scan_rnd_x(U, T, wcum)
             pset = bm_to_ints(np64_to_bm(pset))
 
         return pset, score
