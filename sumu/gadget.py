@@ -106,6 +106,8 @@ class GadgetParameters:
             self._adjust_inconsistent_parameters()
         if self.p["run_mode"]["name"] == "budget":
             self._set_budget_based_parameters()
+            if "mem" in self.p["run_mode"]["params"]:
+                self._adjust_to_mem_budget()
 
     def _validate_parameters(self):
         # only validating possible user given candidate parents for now
@@ -148,7 +150,9 @@ class GadgetParameters:
         )
 
     def _set_budget_based_parameters(self):
-        self.gb = GadgetBudget(self.data, self.p["run_mode"]["params"]["t"])
+        self.gb = GadgetTimeBudget(
+            self.data, self.p["run_mode"]["params"]["t"]
+        )
         params_to_predict = ["d", "K"]
         # dict of preset values for params if any
         preset_params = dict(
@@ -187,11 +191,43 @@ class GadgetParameters:
                 self.gb.budget["candp"]
             )
 
+    def _adjust_to_mem_budget(self):
+        def mem_estimate(n, K, d):
+            def n_psets(n, K, d):
+                return sum(
+                    comb(n - 1, i) - comb(K, i) for i in range(1, d + 1)
+                )
+
+            return n * 3.75e-5 * (n_psets(n, K, d) + 2 ** K) + 71
+
+        mem_budget = self.p["run_mode"]["params"]["mem"]
+        n = self.data.n
+        K = self.p["cons"]["K"]
+        d = self.p["cons"]["d"]
+        # Decrement d until we're in budget.
+        while mem_estimate(n, K, d) > mem_budget and d > 0:
+            d -= 1
+        # We might be way below budget.
+        # Return if incrementing K by one brings us over the budget.
+        if (
+            mem_estimate(n, K, d) < mem_budget
+            and mem_estimate(n, K + 1, d) > mem_budget
+        ):
+            self.p["cons"]["d"] = d
+            return
+        # If not, increment d by one
+        # and decrement K until budget constraint met.
+        d += 1
+        while mem_estimate(n, K, d) > mem_budget and K > 1:
+            K -= 1
+        self.p["cons"]["K"] = K
+        self.p["cons"]["d"] = d
+
     def __getitem__(self, key):
         return self.p[key]
 
 
-class GadgetBudget:
+class GadgetTimeBudget:
     """Class for predicting run times."""
 
     def __init__(
