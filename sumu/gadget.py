@@ -191,34 +191,35 @@ class GadgetParameters:
                 self.gb.budget["candp"]
             )
 
+    def _mem_estimate(self, n, K, d):
+        def n_psets(n, K, d):
+            return sum(comb(n - 1, i) - comb(K, i) for i in range(1, d + 1))
+
+        return n * 3.75e-5 * (n_psets(n, K, d) + 2 ** K) + 71
+
     def _adjust_to_mem_budget(self):
-        def mem_estimate(n, K, d):
-            def n_psets(n, K, d):
-                return sum(
-                    comb(n - 1, i) - comb(K, i) for i in range(1, d + 1)
-                )
-
-            return n * 3.75e-5 * (n_psets(n, K, d) + 2 ** K) + 71
-
         mem_budget = self.p["run_mode"]["params"]["mem"]
         n = self.data.n
         K = self.p["cons"]["K"]
         d = self.p["cons"]["d"]
         # Decrement d until we're in budget.
-        while mem_estimate(n, K, d) > mem_budget and d > 0:
+        d_changed = False
+        while self._mem_estimate(n, K, d) > mem_budget and d > 0:
             d -= 1
+            d_changed = True
         # We might be way below budget.
         # Return if incrementing K by one brings us over the budget.
         if (
-            mem_estimate(n, K, d) < mem_budget
-            and mem_estimate(n, K + 1, d) > mem_budget
+            self._mem_estimate(n, K, d) < mem_budget
+            and self._mem_estimate(n, K + 1, d) > mem_budget
         ):
             self.p["cons"]["d"] = d
             return
-        # If not, increment d by one
+        # If not, increment d by one, if it was changed,
         # and decrement K until budget constraint met.
-        d += 1
-        while mem_estimate(n, K, d) > mem_budget and K > 1:
+        if d_changed:
+            d += 1
+        while self._mem_estimate(n, K, d) > mem_budget and K > 1:
             K -= 1
         self.p["cons"]["K"] = K
         self.p["cons"]["d"] = d
@@ -901,6 +902,12 @@ class Gadget:
                 )
             if any(self.p.adjusted):
                 log.br()
+        mem_use_estimate = round(
+            self.p._mem_estimate(
+                self.data.n, self.p["cons"]["K"], self.p["cons"]["d"]
+            )
+        )
+        log(f"Estimated memory use: {mem_use_estimate}MB")
         log.br()
 
     def sample(self):
