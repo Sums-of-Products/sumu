@@ -1060,6 +1060,7 @@ class Gadget:
 
             if self.p["mc3"]["name"] == "adaptive":
                 self.log("Adaptive tempering")
+                self.log.br()
                 self.mcmc.append(
                     MC3.adaptive(
                         PartitionMCMC(
@@ -1068,6 +1069,9 @@ class Gadget:
                             self.p["cons"]["d"],
                             move_weights=self.p["mcmc"]["move_weights"],
                         ),
+                        t_budget=self.p.gb.left()
+                        if self.p["run_mode"]["name"] == "budget"
+                        else None,
                         stats=stats,
                         log=self.log,
                     )

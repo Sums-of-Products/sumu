@@ -1,4 +1,5 @@
 import copy
+import time
 import warnings
 
 import numpy as np
@@ -335,7 +336,10 @@ class MC3:
         chains[j].R_score = chains[j].inv_temp * sum(chains[j].R_node_scores)
 
     @classmethod
-    def adaptive(cls, mcmc, stats=None, target=0.25, log=None):
+    def adaptive(cls, mcmc, t_budget=None, stats=None, target=0.25, log=None):
+
+        if t_budget is not None:
+            t0 = time.time()
 
         mcmc0 = copy.copy(mcmc)
         mcmc0.inv_temp = 0.0
@@ -358,6 +362,11 @@ class MC3:
             proposed = 0
             accepted = 0
             while proposed < 1000:
+                if t_budget is not None:
+                    if time.time() - t0 > t_budget:
+                        log.br()
+                        log("Time budget exceeded, terminating.")
+                        exit(1)
                 # Only the target chain and one hotter than it are sampled
                 for c in chains[i_target - 1 : i_target + 1]:
                     if stats is not None:
