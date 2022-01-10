@@ -1074,6 +1074,14 @@ class Gadget:
                         else None,
                         stats=stats,
                         log=self.log,
+                        **dict(
+                            dict(),
+                            **(
+                                self.p["mc3"]["params"]
+                                if "params" in self.p["mc3"]
+                                else dict()
+                            ),
+                        ),
                     )
                 )
                 self.p["mc3"]["M"] = len(self.mcmc[0].chains)

@@ -336,7 +336,19 @@ class MC3:
         chains[j].R_score = chains[j].inv_temp * sum(chains[j].R_node_scores)
 
     @classmethod
-    def adaptive(cls, mcmc, t_budget=None, stats=None, target=0.25, log=None):
+    def adaptive(
+        cls,
+        mcmc,
+        t_budget=None,
+        stats=None,
+        target=0.25,
+        tolerance=0.05,
+        n_proposals=1000,
+        max_search_steps=20,
+        sample_all=False,
+        strict_binary=False,
+        log=None,
+    ):
 
         if t_budget is not None:
             t0 = time.time()
@@ -361,19 +373,25 @@ class MC3:
             chains[i_target]._init_moves()
             proposed = 0
             accepted = 0
-            while proposed < 1000:
+            while proposed < n_proposals:
                 if t_budget is not None:
                     if time.time() - t0 > t_budget:
                         log.br()
                         log("Time budget exceeded, terminating.")
                         exit(1)
-                # Only the target chain and one hotter than it are sampled
-                for c in chains[i_target - 1 : i_target + 1]:
+                if sample_all:
+                    start, end = 0, len(chains)
+                else:
+                    # Only the target chain and one hotter than it are sampled
+                    start, end = i_target - 1, i_target + 1
+                for c in chains[start:end]:
                     if stats is not None:
                         stats["iters"]["adaptive tempering"] += 1
                     c.sample()
-                # j = np.random.randint(len(chains) - 1)
-                j = i_target - 1
+                if sample_all:
+                    j = np.random.randint(len(chains) - 1)
+                else:
+                    j = i_target - 1
                 if j == i_target - 1:
                     proposed += 1
                 ap = MC3.get_swap_acceptance_prob(chains, j, j + 1)
@@ -408,28 +426,28 @@ class MC3:
                     )
                 heat = acc_prob < target
                 search_steps = 0
-                while abs(target - acc_prob) > 0.05:
+                while abs(target - acc_prob) > tolerance:
                     search_steps += 1
-                    if search_steps > 20:
+                    if search_steps > max_search_steps:
                         break
 
-                    # the ub/lb is set half way between the previous ub/lb and
-                    # current temperature, to avoid getting trapped in wrong
-                    # region.
+                    # If strict_binary == False, the ub/lb is set half way
+                    # between the previous ub/lb and current temperature, to
+                    # avoid getting trapped in wrong region.
 
                     if heat:
-                        ub = chains[i].inv_temp + 0.5 * (
-                            ub - chains[i].inv_temp
-                        )
+                        ub = chains[i].inv_temp
+                        if strict_binary is False:
+                            ub += 0.5 * (ub - chains[i].inv_temp)
                         chains[i].inv_temp = (
                             chains[i].inv_temp - (chains[i].inv_temp - lb) / 2
                         )
                     else:
                         if abs(chains[i].inv_temp - 1.0) < 1e-4:
                             break
-                        lb = chains[i].inv_temp - 0.5 * (
-                            chains[i].inv_temp - lb
-                        )
+                        lb = chains[i].inv_temp
+                        if strict_binary is False:
+                            lb -= 0.5 * (chains[i].inv_temp - lb)
                         chains[i].inv_temp = (
                             chains[i].inv_temp + (ub - chains[i].inv_temp) / 2
                         )
