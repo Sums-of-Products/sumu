@@ -6,6 +6,8 @@ import logging
 import numpy as np
 from scipy.stats import dirichlet
 from scipy.stats import multivariate_t as mvt
+from scipy.stats import wishart
+from scipy.stats import multivariate_normal
 
 from . import validate
 from .data import Data
@@ -126,14 +128,15 @@ class GaussianBNet:
         self.dag = family_sequence_to_adj_mat(dag)
         self.sample_params(data=data)
 
-    def sample_params(self, data=None, lb_e=0.1, ub_e=2, lb_ce=0.5, ub_ce=1.5):
+    def sample_params(self, data=None):
+        #this parameters define the prior used
         nu = np.zeros(self.n)
         am = 1
         aw = self.n + am + 1
         Tmat = np.identity(self.n) * (aw - self.n - 1) / (am + 1)
 
         N = 0
-        if data is not None:
+        if data is not None:  #posterior, need to update params
             data = Data(data)
             N = data.N
 
@@ -141,41 +144,77 @@ class GaussianBNet:
             xN = np.mean(data.data, axis=0)
             SN = (data.data - xN).T @ (data.data - xN)
 
-            # Parameters for the posterior
-            R = (
-                Tmat
-                + SN
-                + ((am * N) / (am + N)) * np.outer((nu - xN), (nu - xN))
-            )
-        else:
-            R = Tmat
-
-        if True:  # params == "random":
-            self.Ce = np.diag(np.random.uniform(lb_ce, ub_ce, self.n))
-            self.B = np.zeros((self.n, self.n))
-            for node in range(self.n):
-                pa = np.where(self.dag[node])[0]
-                if len(pa) == 0:
-                    continue
-                l = len(pa) + 1
-                R11 = R[node, node]
-                R12 = R[pa, node]
-                R11inv = np.linalg.inv(R[pa[:, None], pa])
-                df = aw + N - self.n + l
-                mb = R11inv @ R12
-                divisor = R11 - R11inv @ R12
-                covb = divisor / df * R11inv
-                b = mvt.rvs(loc=mb, shape=covb, df=df)
-                self.B[node, pa] = b
+            #Updates
+            nu = ( am*nu + N*xN )/ (am+N) #nu'
+            Tmat = ( Tmat + SN
+                + ((am * N) / (am + N)) * np.outer((nu - xN), (nu - xN)) ) #Rmat
+            am = am + N  #am'
+            aw = aw + N  #aw'
+            #rest is the same
+			
+        #this is sampling parameters from the prior/posterior
+        #according to the formulas in the Gadget papers.
+            
+        self.Ce = np.zeros((self.n, self.n)) 
+        self.B = np.zeros((self.n, self.n))
+        self.mu = np.zeros(self.n)
+            
+        for node in range(self.n):
+            pa = np.where(self.dag[node])[0]
+            #print('node:',node,'pa:',pa)
+            l = len(pa) + 1 #here l is the number of parents for node i plus 1
+            T11 = Tmat[pa[:, None], pa]
+            T12 = Tmat[pa, node]
+            T21 = Tmat[node, pa]
+            T22 = Tmat[node, node]
+            T11inv = np.linalg.inv(T11)
+            scale = T22 - T21 @ T11inv @ T12
+            #q_i ~ W_1(T22-T21*inv(T11)*T12,aw-n+l)
+            #the first parameter is not inverted as numpy takes the scale matrix
+            q = wishart.rvs(aw-self.n+l, scale, size=1)
+            #print('q:',q)
+            self.Ce[node,node] = 1 / q
+             
+            if l == 1:
+                continue #no need to sample parameters if no parents
+                
+            #b_i | q_i ~ N( inv(T11)*T12, q_i*T11)
+            mb = T11inv @ T12
+            vb = np.linalg.inv(q*T11) #scipy takes variance not precision
+            #print('mb:',mb,'vb:',vb)
+            b= multivariate_normal.rvs(mb,vb, size=1)
+            #print('b:',b)
+            self.B[node, pa] = b
+                
+             
+        #now the overall covariance, Winv is:
+        #print('B:',self.B)
+        #print('Ce:',self.Ce)
+        A = np.linalg.inv(np.eye(self.n) - self.B)  
+        # mu_t ~ N( nu,am*W)  
+        Winv= (1/am)*(A @ self.Ce @ A.transpose())
+        #print('covariance:',am*Winv)
+        self.mu = multivariate_normal.rvs(nu,Winv,size=1)
+        #print('mu:',self.mu)
+        # note that this is added to a zero mean data,
+        # it is not multiplied by B or inv(I-B)! 
+        # the model is x = mu + B*e.
 
     def sample(self, N=1):
-        iA = np.linalg.inv(np.eye(self.n) - self.B)
-        data = np.random.normal(size=(N, self.n))
-        data = (iA @ np.sqrt(self.Ce) @ data.T).T
+        A = np.linalg.inv(np.eye(self.n) - self.B) #not iA but A
+        #old version
+        #data = np.random.normal(size=(N, self.n))
+        #data = (A @ np.sqrt(self.Ce) @ data.T).T   
+   
+        Winv= (A @ self.Ce @ A.transpose())
+        data = multivariate_normal.rvs(self.mu,Winv,size=N)
+        #print(data)
+        #here crucially need to add the means
         return Data(data)
 
     @classmethod
     def random(cls, n, *, enb=4):
+         #warning: this is not the prior that was mainly used in the paper
         return cls(random_dag_with_expected_neighbourhood_size(n, enb=enb))
 
 
