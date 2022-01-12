@@ -147,8 +147,8 @@ class GaussianBNet:
             # Updates
             nu = (am * nu + N * xN) / (am + N)  # nu'
             Tmat = (Tmat + SN
-                   + ((am * N) / (am + N) )
-                   * np.outer((nu - xN), (nu - xN)))  # Rmat
+                + ((am * N) / (am + N))
+                * np.outer((nu - xN), (nu - xN)))  # Rmat
             am = am + N  # am'
             aw = aw + N  # aw'
             # rest is the same
@@ -163,7 +163,8 @@ class GaussianBNet:
         for node in range(self.n):
             pa = np.where(self.dag[node])[0]
             # print('node:',node,'pa:',pa)
-            l = len(pa) + 1  # here l is the number of parents for node i plus 1
+            l = len(pa) + 1
+            # here l is the number of parents for node i plus 1
             T11 = Tmat[pa[:, None], pa]
             T12 = Tmat[pa, node]
             T21 = Tmat[node, pa]
@@ -206,7 +207,7 @@ class GaussianBNet:
         # old version
         # data = np.random.normal(size=(N, self.n))
         # data = (A @ np.sqrt(self.Ce) @ data.T).T
-   
+
         Winv = (A @ self.Ce @ A.transpose())
         data = multivariate_normal.rvs(self.mu, Winv, size=N)
         # print(data)
