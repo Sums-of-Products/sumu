@@ -147,8 +147,8 @@ class GaussianBNet:
             # Updates
             nu = (am * nu + N * xN) / (am + N)  # nu'
             Tmat = (Tmat + SN
-                + ((am * N) / (am + N))
-                * np.outer((nu - xN), (nu - xN)))  # Rmat
+                    + ((am * N) / (am + N))
+                    * np.outer((nu - xN), (nu - xN)))  # Rmat
             am = am + N  # am'
             aw = aw + N  # aw'
             # rest is the same
