@@ -147,8 +147,8 @@ class GaussianBNet:
             # Updates
             nu = (am * nu + N * xN) / (am + N)  # nu'
             Tmat = (Tmat + SN
-                + ((am * N) / (am + N) )
-                * np.outer((nu - xN), (nu - xN)))  # Rmat
+                   + ((am * N) / (am + N) )
+                   * np.outer((nu - xN), (nu - xN)))  # Rmat
             am = am + N  # am'
             aw = aw + N  # aw'
             # rest is the same
@@ -163,7 +163,7 @@ class GaussianBNet:
         for node in range(self.n):
             pa = np.where(self.dag[node])[0]
             # print('node:',node,'pa:',pa)
-            l = len(pa) + 1 # here l is the number of parents for node i plus 1
+            l = len(pa) + 1  # here l is the number of parents for node i plus 1
             T11 = Tmat[pa[:, None], pa]
             T12 = Tmat[pa, node]
             T21 = Tmat[node, pa]
@@ -171,20 +171,20 @@ class GaussianBNet:
             T11inv = np.linalg.inv(T11)
             scale = T22 - T21 @ T11inv @ T12
             # q_i ~ W_1(T22-T21*inv(T11)*T12,aw-n+l)
-            # the first parameter is not inverted as 
+            # the first parameter is not inverted as
             # numpy takes the scale matrix
             q = wishart.rvs(aw - self.n + l, scale, size=1)
             # print('q:',q)
-            self.Ce[node,node] = 1 / q
+            self.Ce[node, node] = 1 / q
 
             if l == 1:
-                continue # no need to sample parameters if no parents
+                continue  # no need to sample parameters if no parents
 
             # b_i | q_i ~ N( inv(T11)*T12, q_i*T11)
             mb = T11inv @ T12
-            vb = np.linalg.inv( q * T11 )  # scipy takes variance not precision
+            vb = np.linalg.inv(q * T11)  # scipy takes variance not precision
             # print('mb:',mb,'vb:',vb)
-            b= multivariate_normal.rvs(mb,vb, size=1)
+            b = multivariate_normal.rvs(mb, vb, size=1)
             # print('b:',b)
             self.B[node, pa] = b
 
@@ -193,7 +193,7 @@ class GaussianBNet:
         # print('Ce:',self.Ce)
         A = np.linalg.inv(np.eye(self.n) - self.B)
         # mu_t ~ N( nu,am*W)
-        Winv= (1 / am) * (A @ self.Ce @ A.transpose())
+        Winv = (1 / am) * (A @ self.Ce @ A.transpose())
         # print('covariance:',am*Winv)
         self.mu = multivariate_normal.rvs(nu, Winv, size=1)
         # print('mu:',self.mu)
@@ -202,19 +202,19 @@ class GaussianBNet:
         # the model is x = mu + B*e.
 
     def sample(self, N=1):
-        A = np.linalg.inv(np.eye(self.n) - self.B) #not iA but A
+        A = np.linalg.inv(np.eye(self.n) - self.B)   # not iA but A
         # old version
         # data = np.random.normal(size=(N, self.n))
         # data = (A @ np.sqrt(self.Ce) @ data.T).T
    
-        Winv= ( A @ self.Ce @ A.transpose() )
+        Winv = (A @ self.Ce @ A.transpose())
         data = multivariate_normal.rvs(self.mu, Winv, size=N)
         # print(data)
         return Data(data)
 
     @classmethod
     def random(cls, n, *, enb=4):
-         # warning: this is not the prior that was mainly used in the paper
+        # warning: this is not the prior that was mainly used in the paper
         return cls(random_dag_with_expected_neighbourhood_size(n, enb=enb))
 
 
