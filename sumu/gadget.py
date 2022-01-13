@@ -196,7 +196,7 @@ class GadgetParameters:
         def n_psets(n, K, d):
             return sum(comb(n - 1, i) - comb(K, i) for i in range(1, d + 1))
 
-        return n * 3.75e-5 * (n_psets(n, K, d) + 2 ** K) + 71
+        return n * 6e-5 * (n_psets(n, K, d) + 2 ** K) + 71
 
     def _adjust_to_mem_budget(self):
         mem_budget = self.p["run_mode"]["params"]["mem"]
