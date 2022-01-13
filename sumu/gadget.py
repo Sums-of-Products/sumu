@@ -105,7 +105,8 @@ class GadgetParameters:
         if self.p["run_mode"]["name"] == "normal":
             self._adjust_inconsistent_parameters()
         if self.p["run_mode"]["name"] == "budget":
-            self._set_budget_based_parameters()
+            if "t" in self.p["run_mode"]["params"]:
+                self._adjust_to_time_budget()
             if "mem" in self.p["run_mode"]["params"]:
                 self._adjust_to_mem_budget()
 
@@ -149,7 +150,7 @@ class GadgetParameters:
             self.p["mcmc"]["n_dags"] != n_dags,
         )
 
-    def _set_budget_based_parameters(self):
+    def _adjust_to_time_budget(self):
         self.gb = GadgetTimeBudget(
             self.data, self.p["run_mode"]["params"]["t"]
         )
@@ -543,7 +544,10 @@ class GadgetLogger(Logger):
         self._logfile.flush()
 
     def progress(self, t, t_elapsed):
-        if self.g.p["run_mode"]["name"] == "normal":
+        if self.g.p["run_mode"]["name"] == "normal" or (
+            self.g.p["run_mode"]["name"] == "budget"
+            and "t" not in self.g.p["run_mode"]["params"]
+        ):
             progress = round(
                 100 * t / (self.g.p["mcmc"]["iters"] // self.g.p["mc3"]["M"])
             )
@@ -921,6 +925,7 @@ class Gadget:
         log.numpy(self.C_array, "%i")
         if (
             self.p["run_mode"]["name"] == "budget"
+            and "t" in self.p["run_mode"]["params"]
             and "candp" not in self.p.gb.preset
             and self.p["candp"]["name"] == Defaults()["candp"]["name"]
         ):
@@ -939,7 +944,10 @@ class Gadget:
         self._precompute_scores_for_all_candidate_psets()
         self._precompute_candidate_restricted_scoring()
         stats["t"]["crscore"] = time.time() - stats["t"]["crscore"]
-        if self.p["run_mode"]["name"] == "budget":
+        if (
+            self.p["run_mode"]["name"] == "budget"
+            and "t" in self.p["run_mode"]["params"]
+        ):
             log(f"time predicted: {round(self.p.gb.predicted['crs'])}s")
         log(f"time used: {round(stats['t']['crscore'])}s")
         log.br(2)
@@ -948,7 +956,10 @@ class Gadget:
         stats["t"]["ccscore"] = time.time()
         self._precompute_candidate_complement_scoring()
         stats["t"]["ccscore"] = time.time() - stats["t"]["ccscore"]
-        if self.p["run_mode"]["name"] == "budget":
+        if (
+            self.p["run_mode"]["name"] == "budget"
+            and "t" in self.p["run_mode"]["params"]
+        ):
             log(f"time predicted: {round(self.p.gb.predicted['ccs'])}s")
         log(f"time used: {round(stats['t']['ccscore'])}s")
         log.br(2)
@@ -1131,7 +1142,10 @@ class Gadget:
         timer = time.time()
         first = True
 
-        if self.p["run_mode"]["name"] == "normal":
+        if self.p["run_mode"]["name"] == "normal" or (
+            self.p["run_mode"]["name"] == "budget"
+            and "t" not in self.p["run_mode"]["params"]
+        ):
             iters_burn_in = int(
                 self.p["mcmc"]["iters"]
                 / self.p["mc3"]["M"]
@@ -1152,7 +1166,10 @@ class Gadget:
                 >= iters_dag_sampling / self.p["mcmc"]["n_dags"] * dag_count
             )
 
-        elif self.p["run_mode"]["name"] == "budget":
+        elif (
+            self.p["run_mode"]["name"] == "budget"
+            and "t" in self.p["run_mode"]["params"]
+        ):
             self.p.gb.budget["mcmc"] = self.p.gb.left()
             t_b_burnin = self.p.gb.budget["mcmc"] * self.p["mcmc"]["burn_in"]
             burn_in_cond = lambda: t_elapsed < t_b_burnin
@@ -1186,7 +1203,10 @@ class Gadget:
             t_elapsed = t_elapsed_init + time.time() - t0
 
         stats["t"]["burn-in"] = time.time() - t0
-        if self.p["run_mode"]["name"] == "budget":
+        if (
+            self.p["run_mode"]["name"] == "budget"
+            and "t" in self.p["run_mode"]["params"]
+        ):
             t_b_mcmc = self.p["run_mode"]["params"]["t"] - (
                 time.time() - self.p.gb.t0
             )
