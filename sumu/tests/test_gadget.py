@@ -1,7 +1,9 @@
 import pathlib
+import subprocess
 import time
 
 import numpy as np
+import psutil
 
 import sumu
 
@@ -268,6 +270,32 @@ def test_Gadget_stays_in_budget():
     t = time.time() - t
     print(t)
     assert abs(t - budget) < 1
+
+
+def test_Gadget_stays_in_mem_budget():
+
+    mem_budget = 1000
+
+    cmd = """import numpy as np; import sumu
+data = np.random.randint(4, size=(200, 40), dtype=np.int32)
+sumu.Gadget(
+data=data,
+run_mode={"name": "budget", "params": {"mem": 1000}},
+cons={"K": 20, "d": 2},
+mcmc={"iters": 1},
+mc3={"name": "linear", "M": 1},
+candp={"name": "rnd"},
+).sample()"""
+
+    process = subprocess.Popen(["python", "-c", cmd])
+    maxmem = 0
+    while process.poll() is None:
+        p = psutil.Process(process.pid)
+        memuse = p.memory_info().rss / 1024 ** 2
+        if memuse > maxmem:
+            maxmem = memuse
+        time.sleep(1)
+    assert maxmem < mem_budget
 
 
 def test_adaptive_tempering():

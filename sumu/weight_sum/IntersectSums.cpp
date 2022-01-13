@@ -30,15 +30,10 @@ IntersectSums::IntersectSums(double *w0, bm64 *pset0, bm64 m0, int k0, double ep
 	else if (k == 2) {s128.push_back( { {pset0[j++], pset0[j++]}, w} );}
 	else if (k == 3) {s192.push_back( { {pset0[j++], pset0[j++], pset0[j++]}, w} );}
 	else if (k == 4) {s256.push_back( { {pset0[j++], pset0[j++], pset0[j++], pset0[j++]}, w} );}
-	else if (k > 4) {
-	  vector<bm64> set;
-	  for (int l = 0; l < k; ++l) { set.push_back(pset0[j++]); }
-	  s.push_back( {set, w} );
-	}
-	else if (k < 0) {	// Read at most elements for the (-k) 64-bit vectors and represent them in a bmx.
+	else if (k > 4) {	// Read at most elements for the (-k) 64-bit vectors and represent them in a bmx.
 		bmx set = {};	
 		int p = 0;		// Number of elements (found).
-		for (int l = 0; l < (-k); ++l) {
+		for (int l = 0; l < k; ++l) {
 			bm64 block = pset0[j++]; bm16 v = l * 64;
 			while (block > 0){	// Somewhat slow scanning. On the other hand, not many blocks can be nonzero.
 				if (block & (bm64)1){	// New element v found; insert to the set.
@@ -54,82 +49,14 @@ IntersectSums::IntersectSums(double *w0, bm64 *pset0, bm64 m0, int k0, double ep
 				++v; block >>= 1;
 			}
 		}
-		sx.push_back( {set, w} );
+		s.push_back( {set, w} );
 	}
   }
-  if (k < 0) k = -k; 
-  sort_ws(s64); sort_ws(s128); sort_ws(s192); sort_ws(s256); sort_ws(s); sort_ws(sx);
+  sort_ws(s64); sort_ws(s128); sort_ws(s192); sort_ws(s256); sort_ws(s);
   eps = eps0;
 };
 
-// d=1 tapauksessa konstruktorille ei anneta pset, koska kaikki on valid?
-
 IntersectSums::~IntersectSums(){ };
-
-bool IntersectSums::intersects(vector<bm64> A, vector<bm64> B) {
-  for (int i = 0; i < k; ++i) {
-	if (A[i] & B[i]) return true;
-  }
-  return false;
-}
-
-bool IntersectSums::subseteq(vector<bm64> A, vector<bm64> B) {
-  bool sse = true;
-  for (int i = 0; i < k; ++i) {
-	sse = sse && A[i] == (A[i] & B[i]);
-  }
-  return sse;
-}
-
-double IntersectSums::scan_sum(double w0, vector<bm64> U, vector<bm64> T, bm64 t_ub) {
-  Treal sum; sum = 0.0;
-  if (w0 != -std::numeric_limits<double>::infinity()) {sum.set_log(w0);}
-  Treal slack; slack = eps/t_ub;
-  Treal factor; factor = 0.0;
-  bm64 i = 0;
-  for (; i < m; ++i) {
-    vector<bm64> P = s[i].set;
-    if ( subseteq(P, U) && intersects(P, T) ) {
-      sum += s[i].weight;
-	  factor = sum * slack;
-	  ++i; break;
-    }
-  }
-  for (; i < m; ++i){
-    vector<bm64> P = s[i].set;
-    if ( subseteq(P, U) && intersects(P, T) ) {
-      Treal score; score = s[i].weight;
-      if (score < factor) { break; }
-      sum += score;
-    }
-  }
-  return sum.get_log();
-}
-
-pair<vector<bm64>, double> IntersectSums::scan_rnd(vector<bm64> U, vector<bm64> T, double wcum) {
-  Treal sum; sum = 0.0;
-  Treal target; target.set_log(wcum);
-  bm64 i = 0; vector<bm64> P; bm64 P_i = 0;
-  for (; i < m; ++i) {
-    P = s[i].set;
-    if ( subseteq(P, U) && intersects(P, T) ) {
-	  P_i = i;
-      sum = s[i].weight;
-	  if (sum > target) i = m;
-	  ++i;
-	  break;
-    }
-  }
-  for (; i < m; ++i) {
-    P = s[i].set;
-    if ( subseteq(P, U) && intersects(P, T) ) {
-	  P_i = i;
-	  Treal score = s[i].weight; sum += score;
-	  if (sum > target) break;
-    }
-  }
-  return make_pair(s[P_i].set, s[P_i].weight.get_log());
-}
 
 double IntersectSums::scan_sum_64(double w0, bm64 U, bm64 T, bm64 t_ub) {
   Treal sum; sum = 0.0;
@@ -329,7 +256,7 @@ pair<bm256, double> IntersectSums::scan_rnd_256(bm256 U, bm256 T, double wcum) {
   return make_pair(s256[P_i].set, s256[P_i].weight.get_log());
 }
 
-double IntersectSums::scan_sum_x(double w0, vector<bm64> U, vector<bm64> T, bm64 t_ub) {
+double IntersectSums::scan_sum(double w0, vector<bm64> U, vector<bm64> T, bm64 t_ub) {
   Treal sum; sum = 0.0;
   if (w0 != -std::numeric_limits<double>::infinity()) {sum.set_log(w0);}
   Treal slack; slack = eps/t_ub;
@@ -342,17 +269,17 @@ double IntersectSums::scan_sum_x(double w0, vector<bm64> U, vector<bm64> T, bm64
   }
   bm64 i = 0;
   for (; i < m; ++i) {
-    bmx P = sx[i].set;
+    bmx P = s[i].set;
     if ((u[P.v1] & u[P.v2] & u[P.v3] & u[P.v4]) & (t[P.v1] | t[P.v2] | t[P.v3] | t[P.v4])) {
-      sum += sx[i].weight;
+      sum += s[i].weight;
 	  factor = sum * slack;
 	  ++i; break;
     }
   }
   for (; i < m; ++i){
-    bmx P = sx[i].set;
+    bmx P = s[i].set;
     if ((u[P.v1] & u[P.v2] & u[P.v3] & u[P.v4]) & (t[P.v1] | t[P.v2] | t[P.v3] | t[P.v4])) {
-      Treal score; score = sx[i].weight;
+      Treal score; score = s[i].weight;
       if (score < factor) { break; }
       sum += score;
     }
@@ -362,7 +289,7 @@ double IntersectSums::scan_sum_x(double w0, vector<bm64> U, vector<bm64> T, bm64
   return sum.get_log();
 }
 
-pair<vector<bm64>, double> IntersectSums::scan_rnd_x(vector<bm64> U, vector<bm64> T, double wcum) {
+pair<vector<bm64>, double> IntersectSums::scan_rnd(vector<bm64> U, vector<bm64> T, double wcum) {
   Treal sum; sum = 0.0;
   Treal target; target.set_log(wcum);
 
@@ -374,33 +301,33 @@ pair<vector<bm64>, double> IntersectSums::scan_rnd_x(vector<bm64> U, vector<bm64
 
   bm64 i = 0; bmx P; bm64 P_i = 0;
   for (; i < m; ++i) {
-    P = sx[i].set;
+    P = s[i].set;
     if ( (u[P.v1] & u[P.v2] & u[P.v3] & u[P.v4]) & (t[P.v1] | t[P.v2] | t[P.v3] | t[P.v4]) ) {
 	  P_i = i;
-      sum = sx[i].weight;
+      sum = s[i].weight;
 	  if (sum > target) i = m;
 	  ++i;
 	  break;
     }
   }
   for (; i < m; ++i) {
-    P = sx[i].set;
+    P = s[i].set;
     if ( (u[P.v1] & u[P.v2] & u[P.v3] & u[P.v4]) & (t[P.v1] | t[P.v2] | t[P.v3] | t[P.v4]) ) {
 	  P_i = i;
-	  Treal score = sx[i].weight; sum += score;
+	  Treal score = s[i].weight; sum += score;
 	  if (sum > target) break;
     }
   }
   delete[] u; delete[] t;
 
-  P = sx[P_i].set; bm16 v;
+  P = s[P_i].set; bm16 v;
   vector<bm64> Q; for (int l = 0; l < k; ++l){ Q.push_back(0); }
   v = P.v1; Q[v >> 6] |= ((bm64)1 << (v & 0x3F));
   v = P.v2; Q[v >> 6] |= ((bm64)1 << (v & 0x3F));
   v = P.v3; Q[v >> 6] |= ((bm64)1 << (v & 0x3F));
   v = P.v4; Q[v >> 6] |= ((bm64)1 << (v & 0x3F));
 
-  return make_pair(Q, sx[P_i].weight.get_log());
+  return make_pair(Q, s[P_i].weight.get_log());
 }
 
 

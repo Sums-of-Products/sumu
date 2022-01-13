@@ -105,7 +105,10 @@ class GadgetParameters:
         if self.p["run_mode"]["name"] == "normal":
             self._adjust_inconsistent_parameters()
         if self.p["run_mode"]["name"] == "budget":
-            self._set_budget_based_parameters()
+            if "t" in self.p["run_mode"]["params"]:
+                self._adjust_to_time_budget()
+            if "mem" in self.p["run_mode"]["params"]:
+                self._adjust_to_mem_budget()
 
     def _validate_parameters(self):
         # only validating possible user given candidate parents for now
@@ -147,8 +150,10 @@ class GadgetParameters:
             self.p["mcmc"]["n_dags"] != n_dags,
         )
 
-    def _set_budget_based_parameters(self):
-        self.gb = GadgetBudget(self.data, self.p["run_mode"]["params"]["t"])
+    def _adjust_to_time_budget(self):
+        self.gb = GadgetTimeBudget(
+            self.data, self.p["run_mode"]["params"]["t"]
+        )
         params_to_predict = ["d", "K"]
         # dict of preset values for params if any
         preset_params = dict(
@@ -187,11 +192,44 @@ class GadgetParameters:
                 self.gb.budget["candp"]
             )
 
+    def _mem_estimate(self, n, K, d):
+        def n_psets(n, K, d):
+            return sum(comb(n - 1, i) - comb(K, i) for i in range(1, d + 1))
+
+        return n * 6e-5 * (n_psets(n, K, d) + 2 ** K) + 71
+
+    def _adjust_to_mem_budget(self):
+        mem_budget = self.p["run_mode"]["params"]["mem"]
+        n = self.data.n
+        K = self.p["cons"]["K"]
+        d = self.p["cons"]["d"]
+        # Decrement d until we're in budget.
+        d_changed = False
+        while self._mem_estimate(n, K, d) > mem_budget and d > 0:
+            d -= 1
+            d_changed = True
+        # We might be way below budget.
+        # Return if incrementing K by one brings us over the budget.
+        if (
+            self._mem_estimate(n, K, d) < mem_budget
+            and self._mem_estimate(n, K + 1, d) > mem_budget
+        ):
+            self.p["cons"]["d"] = d
+            return
+        # If not, increment d by one, if it was changed,
+        # and decrement K until budget constraint met.
+        if d_changed:
+            d += 1
+        while self._mem_estimate(n, K, d) > mem_budget and K > 1:
+            K -= 1
+        self.p["cons"]["K"] = K
+        self.p["cons"]["d"] = d
+
     def __getitem__(self, key):
         return self.p[key]
 
 
-class GadgetBudget:
+class GadgetTimeBudget:
     """Class for predicting run times."""
 
     def __init__(
@@ -506,7 +544,10 @@ class GadgetLogger(Logger):
         self._logfile.flush()
 
     def progress(self, t, t_elapsed):
-        if self.g.p["run_mode"]["name"] == "normal":
+        if self.g.p["run_mode"]["name"] == "normal" or (
+            self.g.p["run_mode"]["name"] == "budget"
+            and "t" not in self.g.p["run_mode"]["params"]
+        ):
             progress = round(
                 100 * t / (self.g.p["mcmc"]["iters"] // self.g.p["mc3"]["M"])
             )
@@ -865,6 +906,12 @@ class Gadget:
                 )
             if any(self.p.adjusted):
                 log.br()
+        mem_use_estimate = round(
+            self.p._mem_estimate(
+                self.data.n, self.p["cons"]["K"], self.p["cons"]["d"]
+            )
+        )
+        log(f"Estimated memory use: {mem_use_estimate}MB")
         log.br()
 
     def sample(self):
@@ -878,6 +925,7 @@ class Gadget:
         log.numpy(self.C_array, "%i")
         if (
             self.p["run_mode"]["name"] == "budget"
+            and "t" in self.p["run_mode"]["params"]
             and "candp" not in self.p.gb.preset
             and self.p["candp"]["name"] == Defaults()["candp"]["name"]
         ):
@@ -896,7 +944,10 @@ class Gadget:
         self._precompute_scores_for_all_candidate_psets()
         self._precompute_candidate_restricted_scoring()
         stats["t"]["crscore"] = time.time() - stats["t"]["crscore"]
-        if self.p["run_mode"]["name"] == "budget":
+        if (
+            self.p["run_mode"]["name"] == "budget"
+            and "t" in self.p["run_mode"]["params"]
+        ):
             log(f"time predicted: {round(self.p.gb.predicted['crs'])}s")
         log(f"time used: {round(stats['t']['crscore'])}s")
         log.br(2)
@@ -905,7 +956,10 @@ class Gadget:
         stats["t"]["ccscore"] = time.time()
         self._precompute_candidate_complement_scoring()
         stats["t"]["ccscore"] = time.time() - stats["t"]["ccscore"]
-        if self.p["run_mode"]["name"] == "budget":
+        if (
+            self.p["run_mode"]["name"] == "budget"
+            and "t" in self.p["run_mode"]["params"]
+        ):
             log(f"time predicted: {round(self.p.gb.predicted['ccs'])}s")
         log(f"time used: {round(stats['t']['ccscore'])}s")
         log.br(2)
@@ -1017,6 +1071,7 @@ class Gadget:
 
             if self.p["mc3"]["name"] == "adaptive":
                 self.log("Adaptive tempering")
+                self.log.br()
                 self.mcmc.append(
                     MC3.adaptive(
                         PartitionMCMC(
@@ -1025,8 +1080,19 @@ class Gadget:
                             self.p["cons"]["d"],
                             move_weights=self.p["mcmc"]["move_weights"],
                         ),
+                        t_budget=self.p.gb.left()
+                        if self.p["run_mode"]["name"] == "budget"
+                        else None,
                         stats=stats,
                         log=self.log,
+                        **dict(
+                            dict(),
+                            **(
+                                self.p["mc3"]["params"]
+                                if "params" in self.p["mc3"]
+                                else dict()
+                            ),
+                        ),
                     )
                 )
                 self.p["mc3"]["M"] = len(self.mcmc[0].chains)
@@ -1076,7 +1142,10 @@ class Gadget:
         timer = time.time()
         first = True
 
-        if self.p["run_mode"]["name"] == "normal":
+        if self.p["run_mode"]["name"] == "normal" or (
+            self.p["run_mode"]["name"] == "budget"
+            and "t" not in self.p["run_mode"]["params"]
+        ):
             iters_burn_in = int(
                 self.p["mcmc"]["iters"]
                 / self.p["mc3"]["M"]
@@ -1097,7 +1166,10 @@ class Gadget:
                 >= iters_dag_sampling / self.p["mcmc"]["n_dags"] * dag_count
             )
 
-        elif self.p["run_mode"]["name"] == "budget":
+        elif (
+            self.p["run_mode"]["name"] == "budget"
+            and "t" in self.p["run_mode"]["params"]
+        ):
             self.p.gb.budget["mcmc"] = self.p.gb.left()
             t_b_burnin = self.p.gb.budget["mcmc"] * self.p["mcmc"]["burn_in"]
             burn_in_cond = lambda: t_elapsed < t_b_burnin
@@ -1131,7 +1203,10 @@ class Gadget:
             t_elapsed = t_elapsed_init + time.time() - t0
 
         stats["t"]["burn-in"] = time.time() - t0
-        if self.p["run_mode"]["name"] == "budget":
+        if (
+            self.p["run_mode"]["name"] == "budget"
+            and "t" in self.p["run_mode"]["params"]
+        ):
             t_b_mcmc = self.p["run_mode"]["params"]["t"] - (
                 time.time() - self.p.gb.t0
             )
