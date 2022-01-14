@@ -1130,6 +1130,17 @@ class Gadget:
                     )
                 )
 
+        if "tracefile" in self.p["logging"]:
+            tracefile_header = [
+                [
+                    f"{i}_{c.inv_temp}"
+                    for i in range(1, self.p["mcmc"]["n_indep"] + 1)
+                    for c in self.mcmc[0].chains
+                ]
+            ]
+            self.trace.numpy(tracefile_header, fmt="%s")
+            # exit()
+
     def _mcmc_run(self, t_elapsed_init=0):
 
         r = 1000  # max number of iterations to plot in score trace
@@ -1137,7 +1148,9 @@ class Gadget:
         self.dags = list()
         self.dag_scores = list()
 
-        R_scores = np.zeros((r, self.p["mcmc"]["n_indep"]))
+        R_scores = np.zeros(
+            (r, self.p["mcmc"]["n_indep"] * self.p["mc3"]["M"])
+        )
 
         timer = time.time()
         first = True
@@ -1185,7 +1198,10 @@ class Gadget:
         while burn_in_cond():
             for i in range(self.p["mcmc"]["n_indep"]):
                 R, R_score = self.mcmc[i].sample()
-                R_scores[t % r, i] = R_score
+                i_start = i * self.p["mc3"]["M"]
+                i_end = i_start + self.p["mc3"]["M"]
+                R_scores[t % r, i_start:i_end] = R_score
+                R, R_score = R[-1], R_score[-1]
             if t > 0 and t % (r - 1) == 0:
                 self.trace.numpy(R_scores)
             if time.time() - timer > self.p["logging"]["stats_period"]:
@@ -1240,14 +1256,20 @@ class Gadget:
                 for i in range(self.p["mcmc"]["n_indep"]):
                     dag_count += 1
                     R, R_score = self.mcmc[i].sample()
-                    R_scores[(t + iters_burn_in) % 1000, i] = R_score
+                    i_start = i * self.p["mc3"]["M"]
+                    i_end = i_start + self.p["mc3"]["M"]
+                    R_scores[(t + iters_burn_in) % r, i_start:i_end] = R_score
+                    R, R_score = R[-1], R_score[-1]
                     dag, score = self.score.sample_DAG(R)
                     self.dags.append(dag)
                     self.dag_scores.append(score)
             else:
                 for i in range(self.p["mcmc"]["n_indep"]):
                     R, R_score = self.mcmc[i].sample()
-                    R_scores[(t + iters_burn_in) % r, i] = R_score
+                    i_start = i * self.p["mc3"]["M"]
+                    i_end = i_start + self.p["mc3"]["M"]
+                    R_scores[(t + iters_burn_in) % r, i_start:i_end] = R_score
+                    R, R_score = R[-1], R_score[-1]
             if t > 0 and t % (r - 1) == 0:
                 self.trace.numpy(R_scores)
 

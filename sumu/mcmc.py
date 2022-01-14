@@ -288,7 +288,7 @@ class PartitionMCMC:
             if self.stats is not None:
                 update_stats(accepted)
 
-        return self.R, self.R_score
+        return [self.R], np.array([self.R_score])
 
 
 class MC3:
@@ -496,4 +496,7 @@ class MC3:
                 self.stats["mc3"]["accepted"][i]
                 / self.stats["mc3"]["proposed"][i]
             )
-        return self.chains[-1].R, self.chains[-1].R_score
+        # return self.chains[-1].R, self.chains[-1].R_score
+        return [c.R for c in self.chains], np.array(
+            [c.R_score for c in self.chains]
+        )
