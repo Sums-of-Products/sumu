@@ -1262,6 +1262,9 @@ class Gadget:
                     i_start = i * self.p["mc3"]["M"]
                     i_end = i_start + self.p["mc3"]["M"]
                     R_scores[(t + iters_burn_in) % r, i_start:i_end] = R_score
+                    print("DEBUG")
+                    print(R)
+                    print(R_score)
                     R, R_score = R[0], R_score[0]
                     dag, score = self.score.sample_DAG(R)
                     self.dags.append(dag)
