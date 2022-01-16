@@ -211,6 +211,7 @@ class PartitionMCMC:
         return rescore
 
     def sample(self):
+        # NOTE: Multiple points of return, consider refactoring.
         def update_stats(accepted):
             self.stats["mcmc"][self.inv_temp][move.__name__]["proposed"] += 1
             if accepted:
@@ -239,7 +240,7 @@ class PartitionMCMC:
                     DAG=DAG, score=self.score, R=self.R, C=self.C, d=self.d
                 )
                 if return_value is False:
-                    return self.R, self.R_score
+                    return [self.R], np.array([self.R_score])
                 DAG_prime, ap, edge = return_value
                 R_prime = partition(DAG_prime)
 
@@ -252,7 +253,7 @@ class PartitionMCMC:
             elif move.__name__[0] == "R":
                 return_value = move(R=self.R)
                 if return_value is False:
-                    return self.R, self.R_score
+                    return [self.R], np.array([self.R_score])
                 R_prime, q, q_rev, rescore = return_value
                 R_prime_node_scores = self._pi(
                     R_prime, R_node_scores=self.R_node_scores, rescore=rescore
@@ -271,7 +272,7 @@ class PartitionMCMC:
             R_prime_valid = self._valid(R_prime)
 
             if self.d == 0 and not R_prime_valid:
-                return self.R, self.R_score
+                return [self.R], np.array([self.R_score])
 
             # make this happen in log space?
             # if -np.random.exponential() < self.inv_temp * sum(

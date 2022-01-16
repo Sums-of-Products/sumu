@@ -1142,7 +1142,6 @@ class Gadget:
                 ]
             ]
             self.trace.numpy(tracefile_header, fmt="%s")
-            # exit()
 
     def _mcmc_run(self, t_elapsed_init=0):
 
@@ -1204,9 +1203,6 @@ class Gadget:
                 i_start = i * self.p["mc3"]["M"]
                 i_end = i_start + self.p["mc3"]["M"]
                 R_scores[t % r, i_start:i_end] = R_score
-                print("DEBUG")
-                print(R)
-                print(R_score)
                 R, R_score = R[0], R_score[0]
             if t > 0 and t % (r - 1) == 0:
                 self.trace.numpy(R_scores)
@@ -1265,9 +1261,6 @@ class Gadget:
                     i_start = i * self.p["mc3"]["M"]
                     i_end = i_start + self.p["mc3"]["M"]
                     R_scores[(t + iters_burn_in) % r, i_start:i_end] = R_score
-                    print("DEBUG")
-                    print(R)
-                    print(R_score)
                     R, R_score = R[0], R_score[0]
                     dag, score = self.score.sample_DAG(R)
                     self.dags.append(dag)
