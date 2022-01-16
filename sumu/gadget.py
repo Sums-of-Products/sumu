@@ -585,11 +585,11 @@ class GadgetLogger(Logger):
         for i in range(self.g.p["mcmc"]["n_indep"]):
             if t < r:
                 plt.scatter(
-                    R_scores[:t, i], label=str(i), color=i + 1, marker="•"
+                    R_scores[:t, i * M], label=str(i), color=i + 1, marker="•"
                 )
             else:
                 plt.scatter(
-                    R_scores[np.r_[(t % r) : r, 0 : (t % r)], i],
+                    R_scores[np.r_[(t % r) : r, 0 : (t % r)], i * M],
                     label=str(i),
                     color=i + 1,
                     marker="dot",
@@ -1130,6 +1130,19 @@ class Gadget:
                     )
                 )
 
+        if "tracefile" in self.p["logging"]:
+            inv_temps = [1.0]
+            if self.p["mc3"]["M"] > 1:
+                inv_temps = [c.inv_temp for c in self.mcmc[0].chains[::-1]]
+            tracefile_header = [
+                [
+                    f"{i}_{inv_temp}"
+                    for i in range(1, self.p["mcmc"]["n_indep"] + 1)
+                    for inv_temp in inv_temps
+                ]
+            ]
+            self.trace.numpy(tracefile_header, fmt="%s")
+
     def _mcmc_run(self, t_elapsed_init=0):
 
         r = 1000  # max number of iterations to plot in score trace
@@ -1137,7 +1150,9 @@ class Gadget:
         self.dags = list()
         self.dag_scores = list()
 
-        R_scores = np.zeros((r, self.p["mcmc"]["n_indep"]))
+        R_scores = np.zeros(
+            (r, self.p["mcmc"]["n_indep"] * self.p["mc3"]["M"])
+        )
 
         timer = time.time()
         first = True
@@ -1185,7 +1200,10 @@ class Gadget:
         while burn_in_cond():
             for i in range(self.p["mcmc"]["n_indep"]):
                 R, R_score = self.mcmc[i].sample()
-                R_scores[t % r, i] = R_score
+                i_start = i * self.p["mc3"]["M"]
+                i_end = i_start + self.p["mc3"]["M"]
+                R_scores[t % r, i_start:i_end] = R_score
+                R, R_score = R[0], R_score[0]
             if t > 0 and t % (r - 1) == 0:
                 self.trace.numpy(R_scores)
             if time.time() - timer > self.p["logging"]["stats_period"]:
@@ -1240,14 +1258,20 @@ class Gadget:
                 for i in range(self.p["mcmc"]["n_indep"]):
                     dag_count += 1
                     R, R_score = self.mcmc[i].sample()
-                    R_scores[(t + iters_burn_in) % 1000, i] = R_score
+                    i_start = i * self.p["mc3"]["M"]
+                    i_end = i_start + self.p["mc3"]["M"]
+                    R_scores[(t + iters_burn_in) % r, i_start:i_end] = R_score
+                    R, R_score = R[0], R_score[0]
                     dag, score = self.score.sample_DAG(R)
                     self.dags.append(dag)
                     self.dag_scores.append(score)
             else:
                 for i in range(self.p["mcmc"]["n_indep"]):
                     R, R_score = self.mcmc[i].sample()
-                    R_scores[(t + iters_burn_in) % r, i] = R_score
+                    i_start = i * self.p["mc3"]["M"]
+                    i_end = i_start + self.p["mc3"]["M"]
+                    R_scores[(t + iters_burn_in) % r, i_start:i_end] = R_score
+                    R, R_score = R[0], R_score[0]
             if t > 0 and t % (r - 1) == 0:
                 self.trace.numpy(R_scores)
 
@@ -1270,7 +1294,9 @@ class Gadget:
         self.dags = list()
         self.dag_scores = list()
 
-        R_scores = np.zeros((r, self.p["mcmc"]["n_indep"]))
+        R_scores = np.zeros(
+            (r, self.p["mcmc"]["n_indep"] * self.p["mc3"]["M"])
+        )
 
         timer = time.time()
         t0 = timer
@@ -1282,7 +1308,10 @@ class Gadget:
                 t_b += 1
                 for i in range(self.p["mcmc"]["n_indep"]):
                     R, R_score = self.mcmc[i].sample()
-                    R_scores[t_b % r, i] = R_score
+                    i_start = i * self.p["mc3"]["M"]
+                    i_end = i_start + self.p["mc3"]["M"]
+                    R_scores[t_b % r, i_start:i_end] = R_score
+                    R, R_score = R[0], R_score[0]
                 if t_b > 0 and t_b % (r - 1) == 0:
                     self.trace.numpy(R_scores)
                 if time.time() - timer > self.p["logging"]["stats_period"]:
@@ -1326,7 +1355,10 @@ class Gadget:
                     for i in range(self.p["mcmc"]["n_indep"]):
                         dag_count += 1
                         R, R_score = self.mcmc[i].sample()
-                        R_scores[(t + t_b) % 1000, i] = R_score
+                        i_start = i * self.p["mc3"]["M"]
+                        i_end = i_start + self.p["mc3"]["M"]
+                        R_scores[(t + t_b) % 1000, i_start:i_end] = R_score
+                        R, R_score = R[0], R_score[0]
                         dag, score = self.score.sample_DAG(R)
                         self.dags.append(dag)
                         self.dag_scores.append(score)
@@ -1337,8 +1369,10 @@ class Gadget:
                 else:
                     for i in range(self.p["mcmc"]["n_indep"]):
                         R, R_score = self.mcmc[i].sample()
-                        R_scores[(t + t_b) % r, i] = R_score
-
+                        i_start = i * self.p["mc3"]["M"]
+                        i_end = i_start + self.p["mc3"]["M"]
+                        R_scores[(t + t_b) % r, i_start:i_end] = R_score
+                        R, R_score = R[0], R_score[0]
                 if t % (r - 1) == 0:
                     self.trace.numpy(R_scores)
 
