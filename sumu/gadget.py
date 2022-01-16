@@ -1204,6 +1204,9 @@ class Gadget:
                 i_start = i * self.p["mc3"]["M"]
                 i_end = i_start + self.p["mc3"]["M"]
                 R_scores[t % r, i_start:i_end] = R_score
+                print("DEBUG")
+                print(R)
+                print(R_score)
                 R, R_score = R[0], R_score[0]
             if t > 0 and t % (r - 1) == 0:
                 self.trace.numpy(R_scores)
