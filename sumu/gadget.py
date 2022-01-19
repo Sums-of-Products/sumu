@@ -570,9 +570,9 @@ class GadgetLogger(Logger):
                 file=self._logfile,
             )
 
-    def r_scores(self, t, R_scores):
+    def r_scores(self, t, M, R_scores):
         msg = "Last root-partition scores: " + " ".join(
-            str(int(score)) for score in R_scores[t % 1000]
+            str(int(score)) for score in R_scores[t % 1000][0::M]
         )
         print(msg, file=self._logfile)
         self.br()
@@ -1214,7 +1214,7 @@ class Gadget:
                     self.log.br()
                     self.log.plot_score_trace(t, self.p["mc3"]["M"], R_scores)
                 else:
-                    self.log.r_scores(t, R_scores)
+                    self.log.r_scores(t, self.p["mc3"]["M"], R_scores)
                 first = False
 
             t += 1
@@ -1252,7 +1252,9 @@ class Gadget:
                         t + iters_burn_in, self.p["mc3"]["M"], R_scores
                     )
                 else:
-                    self.log.r_scores(t + iters_burn_in, R_scores)
+                    self.log.r_scores(
+                        t + iters_burn_in, self.p["mc3"]["M"], R_scores
+                    )
                 first = False
             if dag_sample_cond():
                 for i in range(self.p["mcmc"]["n_indep"]):
@@ -1322,7 +1324,7 @@ class Gadget:
                         self.log.br()
                         self.log.plot_score_trace(t_b, R_scores)
                     else:
-                        self.log.r_scores(t_b, R_scores)
+                        self.log.r_scores(t_b, self.p["mc3"]["M"], R_scores)
                     first = False
         except KeyboardInterrupt:
             stats["t"]["burn-in"] = time.time() - t0
@@ -1346,7 +1348,9 @@ class Gadget:
                         self.log.br()
                         self.log.plot_score_trace(t + t_b, R_scores)
                     else:
-                        self.log.r_scores(t + t_b, R_scores)
+                        self.log.r_scores(
+                            t + t_b, self.p["mc3"]["M"], R_scores
+                        )
                     first = False
                     msg = "{} DAGs with thinning {}."
                     self.log(msg.format(len(self.dags), thinning))
