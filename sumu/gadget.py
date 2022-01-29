@@ -1002,6 +1002,7 @@ class Gadget:
         self.l_score = LocalScore(
             data=self.data,
             score=self.p["score"],
+            prior=self.p["prior"],
             maxid=self.p["cons"]["max_id"],
         )
 
@@ -1049,6 +1050,7 @@ class Gadget:
             self.l_score = LocalScore(
                 data=self.data,
                 score=self.p["score"],
+                prior=self.p["prior"],
                 maxid=self.p["cons"]["d"],
             )
             self.c_c_score = CandidateComplementScore(
