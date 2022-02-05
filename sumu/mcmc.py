@@ -6,9 +6,10 @@ import numpy as np
 
 from .bnet import partition
 from .mcmc_moves import DAG_edgerev, R_basic_move, R_swap_any
+from .stats import Describable
 
 
-class PartitionMCMC:
+class PartitionMCMC(Describable):
     """Partition-MCMC sampler :footcite:`kuipers:2017` with efficient
     scoring."""
 
@@ -19,7 +20,6 @@ class PartitionMCMC:
         d,
         inv_temp=1.0,
         move_weights=[1, 1, 2],
-        stats=None,
         R=None,
     ):
 
@@ -35,19 +35,8 @@ class PartitionMCMC:
             self.DAG_edgerev,
         ]
         self._move_weights = list(move_weights)
-        self.stats = stats
-
-        if self.stats is not None:
-            for move in self._all_moves:
-                self.stats["mcmc"][self.inv_temp][move.__name__][
-                    "proposed"
-                ] = 0
-                self.stats["mcmc"][self.inv_temp][move.__name__][
-                    "accepted"
-                ] = 0
-                self.stats["mcmc"][self.inv_temp][move.__name__][
-                    "accept_ratio"
-                ] = 0
+        self.proposed = {move.__name__: 0 for move in self._all_moves}
+        self.accepted = {move.__name__: 0 for move in self._all_moves}
 
         self._init_moves()
 
@@ -56,6 +45,17 @@ class PartitionMCMC:
             self.R = self._random_partition()
         self.R_node_scores = self._pi(self.R)
         self.R_score = self.inv_temp * sum(self.R_node_scores)
+
+    def describe(self):
+        description = dict(accept_prob=dict())
+        for move in self._all_moves:
+            move = move.__name__
+            if self.proposed[move] == 0:
+                ap = np.nan
+            else:
+                ap = self.accepted[move] / self.proposed[move]
+            description["accept_prob"][move] = ap
+        return description
 
     def _init_moves(self):
         # This needs to be called if self.inv_temp changes from/to 1.0
@@ -75,7 +75,6 @@ class PartitionMCMC:
             self.d,
             inv_temp=self.inv_temp,
             move_weights=self._move_weights,
-            stats=self.stats,
             R=self.R,
         )
 
@@ -212,24 +211,6 @@ class PartitionMCMC:
 
     def sample(self):
         # NOTE: Multiple points of return, consider refactoring.
-        def update_stats(accepted):
-            self.stats["mcmc"][self.inv_temp][move.__name__]["proposed"] += 1
-            if accepted:
-                self.stats["mcmc"][self.inv_temp][move.__name__][
-                    "accepted"
-                ] += 1
-            a = self.stats["mcmc"][self.inv_temp][move.__name__]["accepted"]
-            if type(a) != int:
-                a = 0
-            p = self.stats["mcmc"][self.inv_temp][move.__name__]["proposed"]
-            try:
-                ap = a / p
-            except ZeroDivisionError:
-                ap = 0.0
-            self.stats["mcmc"][self.inv_temp][move.__name__][
-                "accept_ratio"
-            ] = ap
-
         if np.random.rand() > self.stay_prob:
             move = self._moves[np.random.randint(len(self._moves))]
             if move.__name__ == "DAG_edgerev":
@@ -286,34 +267,89 @@ class PartitionMCMC:
                 self.R_node_scores = R_prime_node_scores
                 self.R_score = self.inv_temp * sum(self.R_node_scores)
 
-            if self.stats is not None:
-                update_stats(accepted)
+            self.proposed[move.__name__] += 1
+            self.accepted[move.__name__] += 1 * accepted
 
         return [self.R], np.array([self.R_score])
 
 
-class MC3:
-    def __init__(self, chains, stats=None):
+class MC3(Describable):
+    def __init__(self, chains, scheme, **params):
 
-        self.stats = stats
-        if self.stats is not None:
-            self.stats["mc3"]["proposed"] = np.zeros(len(chains) - 1)
-            self.stats["mc3"]["accepted"] = np.zeros(len(chains) - 1)
-            self.stats["mc3"]["accept_ratio"] = np.array(
-                [np.nan] * (len(chains) - 1)
-            )
+        self._stats = {
+            "iters": 0,
+            "proposed": np.array([0 for c in chains[:-1]]),
+            "accepted": np.array([0 for c in chains[:-1]]),
+            "local_accept_history": [
+                np.zeros(params["local_accept_history_size"], dtype=np.int8)
+                for c in chains[:-1]
+            ],
+        }
+
         self.chains = chains
+        self.params = params
+        self.scheme = scheme
+        self.__dict__.update(params)
+
+    def describe(self):
+
+        # TODO: Enforce some schema for these.
+        # {"accept_prob": {"mc3": [0.2, ..., 0.3], "local_mc3": [...], "move1":
+        # [...]}, "inv_temp": [...]}
+
+        component_accept_probs = [
+            c.describe()["accept_prob"] for c in self.chains
+        ]
+        moves = set().union(
+            *list(map(lambda c: set(c.keys()), component_accept_probs))
+        )
+        component_merged_accept_probs = {
+            k: np.zeros(len(self.chains)) for k in moves
+        }
+
+        for i, c in enumerate(component_accept_probs):
+            for k in c:
+                component_merged_accept_probs[k][i] = c[k]
+
+        with np.errstate(divide="ignore", invalid="ignore"):  # dangerous?
+            accept_probs = dict(
+                mc3=np.concatenate(
+                    (
+                        self._stats["accepted"] / self._stats["proposed"],
+                        np.array([np.nan]),
+                    )
+                ),
+                local_mc3=np.array(
+                    list(map(np.sum, self._stats["local_accept_history"]))
+                    + [np.nan]
+                )
+                / self.params["local_accept_history_size"],
+            )
+
+        # This way to keep desired key order (for logging)
+        component_merged_accept_probs.update(accept_probs)
+
+        description = dict(
+            accept_prob=component_merged_accept_probs,
+            inv_temp=[c.inv_temp for c in self.chains],
+        )
+        return description
 
     @staticmethod
-    def get_inv_temperatures(scheme, M):
+    def get_inv_temperatures(scheme, M, step=1):
+        """Returns the inverse temperatures in descending order."""
         linear = [i / (M - 1) for i in range(M)]
         quadratic = [1 - ((M - 1 - i) / (M - 1)) ** 2 for i in range(M)]
-        sigmoid = [
-            1 / (1 + np.exp((M - 1) * (0.5 - (i / (M - 1))))) for i in range(M)
-        ]
-        sigmoid[0] = 0.0
-        sigmoid[-1] = 1.0
-        return locals()[scheme]
+        sigmoid = (
+            [0.0]
+            + [
+                1 / (1 + np.exp((M - 1) * (0.5 - (i / (M - 1)))))
+                for i in range(1, M - 1)
+            ]
+            + [1.0]
+        )
+        inv_linear = [1 / (1 + (M - 1 - i) * step) for i in range(M)]
+        return locals()[scheme][::-1]
 
     @staticmethod
     def get_swap_acceptance_prob(chains, i, j):
@@ -335,6 +371,61 @@ class MC3:
         chains[j].R = R_tmp
         chains[j].R_node_scores = R_node_scores_tmp
         chains[j].R_score = chains[j].inv_temp * sum(chains[j].R_node_scores)
+
+    def adapt_temperatures(self):
+        stats = self.describe()
+        acc_probs = stats["accept_prob"]["mc3"]
+        temps = 1 / np.array([c.inv_temp for c in self.chains])
+        delta_temps = np.array(
+            [temps[i] - temps[i - 1] for i in range(1, len(temps))]
+        )
+        diff = (acc_probs - self.p_target)[:-1]
+
+        # local_acc_probs = stats["accept_prob"]["local_mc3"]
+        # local_diff = (local_acc_probs - self.p_target)[:-1]
+        # adjust_delta = (diff < 0) & (local_diff < 0)
+
+        delta_new = np.maximum(
+            0, delta_temps + diff / self._stats["iters"] ** 0.2
+        )
+        # print(delta_new)
+
+        # delta_new = (
+        #     delta_new * adjust_delta * 1 + delta_temps * ~adjust_delta * 1
+        # )
+
+        temps_new = [
+            1 + delta_new[:i].sum() for i in range(len(delta_new) + 1)
+        ]
+        for i, c in enumerate(self.chains):
+            c.inv_temp = 1 / temps_new[i]
+
+    def sample(self):
+        local_history_index = (
+            self._stats["iters"] % self.local_accept_history_size
+        )
+        self._stats["iters"] += 1
+        for c in self.chains:
+            c.sample()
+        i = np.random.randint(len(self.chains) - 1)
+        self._stats["proposed"][i] += 1
+        ap = MC3.get_swap_acceptance_prob(self.chains, i, i + 1)
+        if -np.random.exponential() < ap:  # 3
+            MC3.make_swap(self.chains, i, i + 1)
+            self._stats["accepted"][i] += 1
+            self._stats["local_accept_history"][i][local_history_index] = 1
+        else:
+            self._stats["local_accept_history"][i][local_history_index] = 0
+
+        if (
+            self.scheme == "adaptive"
+            and self._stats["iters"] % self.update_freq == 0
+        ):
+            self.adapt_temperatures()
+
+        return [c.R for c in self.chains], np.array(
+            [sum(c.R_node_scores) for c in self.chains]
+        )
 
     @classmethod
     def adaptive_incremental(
@@ -479,24 +570,8 @@ class MC3:
             c.stats = stats
         chains = [copy.copy(c) for c in chains]
 
-        return cls(chains, stats=stats)
-
-    def sample(self):
-        for c in self.chains:
-            c.sample()
-        i = np.random.randint(len(self.chains) - 1)
-        if self.stats is not None:
-            self.stats["mc3"]["proposed"][i] += 1
-        ap = MC3.get_swap_acceptance_prob(self.chains, i, i + 1)
-        if -np.random.exponential() < ap:
-            if self.stats is not None:
-                self.stats["mc3"]["accepted"][i] += 1
-            MC3.make_swap(self.chains, i, i + 1)
-        if self.stats is not None:
-            self.stats["mc3"]["accept_ratio"][i] = (
-                self.stats["mc3"]["accepted"][i]
-                / self.stats["mc3"]["proposed"][i]
-            )
-        return [c.R for c in self.chains[::-1]], np.array(
-            [sum(c.R_node_scores) for c in self.chains[::-1]]
+        return cls(
+            chains[::-1],  # descending order by inverse temperature
+            scheme="adaptive-incremental",
+            local_accept_history_size=100,
         )

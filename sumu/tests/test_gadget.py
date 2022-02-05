@@ -22,7 +22,7 @@ def test_Gadget_empirical_edge_prob_error_decreases():
             "move_weights": [1, 1, 16],
         },
         # Metropolis coupling
-        "mc3": {"name": "linear", "M": 6},
+        "mc3": {"name": "linear", "params": {"M": 6}},
         # score to use and its parameters
         "score": {"name": "bdeu", "params": {"ess": 10}},
         # modular structure prior and its parameters
@@ -310,8 +310,8 @@ def test_adaptive_incremental_tempering():
         mc3={"name": "adaptive-incremental"},
     )
     dags, meta = g.sample()
-    inv_temps = meta["chains"][0]["inv_temperatures"]
-    acc_probs = meta["stats"]["mc3"]["accept_ratio"]
+    inv_temps = meta["mcmc"]["inv_temp"]
+    acc_probs = meta["mcmc"]["accept_prob"]["mc3"][:-1]
     in_range_ratio = sum([p > 0.2 and p < 0.3 for p in acc_probs]) / len(
         acc_probs
     )
@@ -319,10 +319,47 @@ def test_adaptive_incremental_tempering():
     print(f"Ratio of swap probs in range: {in_range_ratio}")
     print(f"Swap prob Mean Absolute Error: {mae}")
     print(inv_temps)
-    assert inv_temps == sorted(inv_temps)
-    assert inv_temps[0] == 0.0 and inv_temps[-1] == 1.0
+    assert inv_temps == sorted(inv_temps, reverse=True)
+    assert inv_temps[-1] == 0.0 and inv_temps[0] == 1.0
     assert len([i for i in inv_temps if i == 0.0]) == 1
     assert len([i for i in inv_temps if i == 1.0]) == 1
+
+
+def test_adaptive_tempering():
+
+    p_target = 0.234
+    slack = 0.06
+    data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
+    bn_path = data_path / "sachs.dsc"
+    bn = sumu.DiscreteBNet.read_file(bn_path)
+    data = bn.sample(100)
+    g = sumu.Gadget(
+        data=data,
+        mcmc={"iters": 300000},
+        mc3={
+            "name": "adaptive",
+            "params": {
+                "M": 4,
+                "p_target": p_target,
+                "delta_t_init": 0.5,
+                # to control max change in temp, not used atm
+                "delta_t_max_delta": 1,
+                "local_accept_history_size": 200,
+                "update_freq": 200,
+            },
+        },
+    )
+    dags, meta = g.sample()
+
+    acc_probs = meta["mcmc"]["accept_prob"]["mc3"][:-1]
+    in_range_ratio = sum(
+        [p > p_target - slack and p < p_target + slack for p in acc_probs]
+    ) / len(acc_probs)
+    mae = np.mean([abs(p_target - p) for p in acc_probs])
+    print(f"Ratio of swap probs in range: {in_range_ratio}")
+    print(f"Swap prob Mean Absolute Error: {mae}")
+    assert in_range_ratio == 1.0
+    assert mae < 0.05
 
 
 def test_Gadget_runs_without_Metropolis():
@@ -341,8 +378,9 @@ if __name__ == "__main__":
     # test_Gadget_runs_n_between_65_and_128()
     # test_Gadget_runs_n_between_129_and_192()
     # test_Gadget_runs_n_between_193_and_256()
-    test_Gadget_empirical_edge_prob_error_decreases()
+    # test_Gadget_empirical_edge_prob_error_decreases()
     # test_Gadget_runs_n_greater_than_256_discrete()
     # test_Gadget_runs_with_anytime_mode()
     # test_Gadget_stays_in_budget()
-    # test_adaptive_tempering()
+    test_adaptive_tempering()
+    # test_adaptive_incremental_tempering()
