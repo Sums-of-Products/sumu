@@ -512,7 +512,7 @@ class GadgetLogger(Logger):
         msg += "-" * self._linewidth + "\n"
 
         phases = ["burn-in", "after burn-in"]
-        if self.g.p["mc3"]["name"] == "adaptive":
+        if self.g.p["mc3"]["name"] == "adaptive-incremental":
             phases = ["adaptive tempering"] + phases
 
         for phase in phases:
@@ -971,7 +971,7 @@ class Gadget:
         if self.p["run_mode"]["name"] == "anytime":
             self._mcmc_run_anytime()
         else:
-            if self.p["mc3"]["name"] == "adaptive":
+            if self.p["mc3"]["name"] == "adaptive-incremental":
                 self._mcmc_run(t_elapsed_init=stats["t"]["adaptive tempering"])
             else:
                 self._mcmc_run()
@@ -1071,11 +1071,11 @@ class Gadget:
 
         for i in range(self.p["mcmc"]["n_indep"]):
 
-            if self.p["mc3"]["name"] == "adaptive":
-                self.log("Adaptive tempering")
+            if self.p["mc3"]["name"] == "adaptive-incremental":
+                self.log("Adaptive incremental tempering")
                 self.log.br()
                 self.mcmc.append(
-                    MC3.adaptive(
+                    MC3.adaptive_incremental(
                         PartitionMCMC(
                             self.C,
                             self.score,
@@ -1172,7 +1172,7 @@ class Gadget:
             iters_dag_sampling = (
                 self.p["mcmc"]["iters"] // self.p["mc3"]["M"] - iters_burn_in
             )
-            if self.p["mc3"]["name"] == "adaptive":
+            if self.p["mc3"]["name"] == "adaptive-incremental":
                 iters_burn_in -= int(
                     stats["iters"]["adaptive tempering"] / self.p["mc3"]["M"]
                 )

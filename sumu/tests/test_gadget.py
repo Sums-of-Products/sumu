@@ -298,13 +298,17 @@ candp={"name": "rnd"},
     assert maxmem < mem_budget
 
 
-def test_adaptive_tempering():
+def test_adaptive_incremental_tempering():
 
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
     bn_path = data_path / "sachs.dsc"
     bn = sumu.DiscreteBNet.read_file(bn_path)
     data = bn.sample(100)
-    g = sumu.Gadget(data=data, mcmc={"iters": 10000}, mc3={"name": "adaptive"})
+    g = sumu.Gadget(
+        data=data,
+        mcmc={"iters": 10000},
+        mc3={"name": "adaptive-incremental"},
+    )
     dags, meta = g.sample()
     inv_temps = meta["chains"][0]["inv_temperatures"]
     acc_probs = meta["stats"]["mc3"]["accept_ratio"]

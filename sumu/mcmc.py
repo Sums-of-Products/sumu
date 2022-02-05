@@ -337,7 +337,7 @@ class MC3:
         chains[j].R_score = chains[j].inv_temp * sum(chains[j].R_node_scores)
 
     @classmethod
-    def adaptive(
+    def adaptive_incremental(
         cls,
         mcmc,
         t_budget=None,
