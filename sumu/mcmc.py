@@ -331,7 +331,7 @@ class MC3(Describable):
 
         description = dict(
             accept_prob=component_merged_accept_probs,
-            inv_temp=[c.inv_temp for c in self.chains],
+            inv_temp=np.array([c.inv_temp for c in self.chains]),
         )
         return description
 
@@ -375,11 +375,16 @@ class MC3(Describable):
     def adapt_temperatures(self):
         stats = self.describe()
         acc_probs = stats["accept_prob"]["mc3"]
-        temps = 1 / np.array([c.inv_temp for c in self.chains])
+        temps = 1 / stats["inv_temp"]
         delta_temps = np.array(
             [temps[i] - temps[i - 1] for i in range(1, len(temps))]
         )
-        diff = (acc_probs - self.p_target)[:-1]
+        diff = (
+            np.nan_to_num(
+                acc_probs, copy=True, nan=0.0, posinf=None, neginf=None
+            )
+            - self.p_target
+        )[:-1]
 
         # local_acc_probs = stats["accept_prob"]["local_mc3"]
         # local_diff = (local_acc_probs - self.p_target)[:-1]
@@ -388,7 +393,6 @@ class MC3(Describable):
         delta_new = np.maximum(
             0, delta_temps + diff / self._stats["iters"] ** 0.2
         )
-        # print(delta_new)
 
         # delta_new = (
         #     delta_new * adjust_delta * 1 + delta_temps * ~adjust_delta * 1
