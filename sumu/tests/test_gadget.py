@@ -319,7 +319,7 @@ def test_adaptive_incremental_tempering():
     print(f"Ratio of swap probs in range: {in_range_ratio}")
     print(f"Swap prob Mean Absolute Error: {mae}")
     print(inv_temps)
-    assert inv_temps == sorted(inv_temps, reverse=True)
+    assert list(inv_temps) == sorted(inv_temps, reverse=True)
     assert inv_temps[-1] == 0.0 and inv_temps[0] == 1.0
     assert len([i for i in inv_temps if i == 0.0]) == 1
     assert len([i for i in inv_temps if i == 1.0]) == 1
