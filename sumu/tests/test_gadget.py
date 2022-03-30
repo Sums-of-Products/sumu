@@ -345,7 +345,7 @@ def test_adaptive_tempering():
                 # to control max change in temp, not used atm
                 "delta_t_max_delta": 1,
                 "local_accept_history_size": 200,
-                "update_freq": 200,
+                "update_freq": 100,
             },
         },
     )
