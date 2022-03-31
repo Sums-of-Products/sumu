@@ -323,7 +323,10 @@ class MC3(Describable):
                     list(map(np.sum, self._stats["local_accept_history"]))
                     + [np.nan]
                 )
-                / self.params["local_accept_history_size"],
+                / min(
+                    self._stats["iters"],
+                    self.params["local_accept_history_size"],
+                ),
             )
 
         # This way to keep desired key order (for logging)
