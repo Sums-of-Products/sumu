@@ -397,7 +397,7 @@ class Logger:
         if logfile is None:
             self._logfile = os.devnull
         # Output to file.
-        elif type(logfile) == pathlib.PosixPath:
+        elif type(logfile) in {pathlib.PosixPath, pathlib.WindowsPath}:
             if logfile.is_file():
                 if not overwrite:
                     raise FileExistsError(f"{logfile} exists.")
@@ -411,8 +411,8 @@ class Logger:
             self._logfile = logfile
         else:
             raise TypeError(
-                "logfile should be either None, PosixPath, "
-                f"or sys.stdout: {logfile} of type {type(logfile)} given."
+                "logfile should be either None, PosixPath, pathlib.WindowsPath"
+                f" or sys.stdout: {logfile} of type {type(logfile)} given."
             )
 
     def __call__(self, string):
