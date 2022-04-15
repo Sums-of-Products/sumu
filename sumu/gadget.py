@@ -655,7 +655,8 @@ class GadgetLogger(Logger):
 
     def r_scores(self, t, M, R_scores):
         msg = "Last root-partition scores: " + " ".join(
-            str(int(score)) for score in R_scores[t % 1000][0::M]
+            str(int(R_scores[i][t % 1000][0]))
+            for i in range(self.g.p["mcmc"]["n_indep"])
         )
         self(msg)
         self.br()
