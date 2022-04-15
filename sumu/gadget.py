@@ -4,8 +4,10 @@
 
 import copy
 import os
+import pathlib
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
 
@@ -83,9 +85,9 @@ class Defaults:
             },
             "catc": {"tolerance": 2 ** -32, "cache_size": 10 ** 7},
             "logging": {
-                "logfile": sys.stdout,
+                "silent": False,
+                "verbose_prefix": None,
                 "stats_period": 15,
-                "tracefile": None,
                 "overwrite": False,
             },
         }
@@ -348,7 +350,7 @@ class GadgetTimeBudget:
             params = {
                 "cons": {"K": K},
                 "candp": {"name": "rnd"},
-                "logging": {"logfile": None},
+                "logging": {"silent": True},
             }
             g = Gadget(data=self.data, **params)
             g._find_candidate_parents()
@@ -360,10 +362,6 @@ class GadgetTimeBudget:
             t = time.time() - t
             X[i] = np.array([1, K ** 2 * 2 ** K, t])
             i += 1
-            # NOTE: It really should not be necessary to call this: Apparently
-            #       some problem in how Cython calls (or does not call) the
-            #       destructor. See CandidateRestrictedScore.cpp.
-            g.c_r_score.reset_cout()
 
         t_score = t_score / 2 ** K_high
         a, b = np.linalg.lstsq(X[:, :-1], X[:, -1], rcond=None)[0]
@@ -394,34 +392,42 @@ class GadgetTimeBudget:
 
 class Logger:
     def __init__(self, *, logfile, mode="a", overwrite=False):
-
-        # NOTE: mode needs to be "a" as otherwise CandidateRestrictedScore
-        #       writing to same file breaks things. If overwrite is True
-        #       the file needs to be first deleted then.
-
-        self._silent = False
+        self._mode = mode
         # No output.
         if logfile is None:
-            self._silent = True
-            self._logfile = open(os.devnull, "w")
-            self._logfilename = ""
+            self._logfile = os.devnull
         # Output to file.
-        elif type(logfile) == str:
-            if os.path.isfile(logfile):
+        elif type(logfile) == pathlib.PosixPath:
+            if logfile.is_file():
                 if not overwrite:
                     raise FileExistsError(f"{logfile} exists.")
                 else:
-                    os.remove(logfile)
-            self._logfile = open(logfile, mode)
-            self._logfilename = self._logfile.name
-        # Output to stdout.
-        else:
+                    logfile.unlink()
+            else:
+                logfile.parent.mkdir(parents=True, exist_ok=True)
             self._logfile = logfile
-            self._logfilename = ""
+        # Output to stdout.
+        elif logfile == sys.stdout:
+            self._logfile = logfile
+        else:
+            raise TypeError(
+                "logfile should be either None, PosixPath, "
+                f"or sys.stdout: {logfile} of type {type(logfile)} given."
+            )
 
     def __call__(self, string):
-        print(string, file=self._logfile)
-        self._logfile.flush()
+        if self._logfile == sys.stdout:
+            print(string, file=self._logfile)
+        else:
+            with open(self._logfile, self._mode) as f:
+                print(string, file=f)
+
+    def unlink(self):
+        if type(self._logfile) == pathlib.PosixPath:
+            self._logfile.unlink()
+
+    def silent(self):
+        return self._logfile == os.devnull
 
     def dict(self, data):
         def pretty_dict(d, n=0, string=""):
@@ -434,40 +440,105 @@ class Logger:
                     string += pretty_dict(d[k], n=n + 2)
             return string
 
-        print(pretty_dict(data), file=self._logfile)
-        self._logfile.flush()
+        self(pretty_dict(data))
 
     def numpy(self, array, fmt="%.2f"):
-        np.savetxt(self._logfile, array, fmt=fmt)
-        self._logfile.flush()
+        if self._logfile == sys.stdout:
+            np.savetxt(self._logfile, array, fmt=fmt)
+        else:
+            with open(self._logfile, self._mode) as f:
+                np.savetxt(f, array, fmt=fmt)
 
     def br(self, n=1):
-        print("\n" * (n - 1), file=self._logfile)
-        self._logfile.flush()
+        self("\n" * (n - 1))
 
 
 class GadgetLogger(Logger):
     """Stuff for printing stuff."""
 
     def __init__(self, gadget):
+
         super().__init__(
-            logfile=gadget.p["logging"]["logfile"],
-            overwrite=gadget.p["logging"]["overwrite"],
+            logfile=None if gadget.p["logging"]["silent"] else sys.stdout,
         )
+
+        log_params = gadget.p["logging"]
+
+        self.score = dict()
+        self.inv_temp = dict()
+
+        for i in range(gadget.p["mcmc"]["n_indep"]):
+            score_log_path = None
+            inv_temp_log_path = None
+            if log_params["verbose_prefix"] is not None:
+                score_log_path = (
+                    Path(log_params["verbose_prefix"])
+                    .absolute()
+                    .with_suffix(f".{i}.score.tmp")
+                )
+                inv_temp_log_path = (
+                    Path(log_params["verbose_prefix"])
+                    .absolute()
+                    .with_suffix(f".{i}.inv_temp.tmp")
+                )
+
+                # Just to raise error if the final log files
+                # without .tmp suffix exist when overwrite=False
+                Logger(
+                    logfile=score_log_path.with_suffix(""),
+                    overwrite=log_params["overwrite"],
+                )
+                Logger(
+                    logfile=inv_temp_log_path.with_suffix(""),
+                    overwrite=log_params["overwrite"],
+                )
+
+            self.score[i] = Logger(
+                logfile=score_log_path,
+                overwrite=log_params["overwrite"],
+            )
+            self.inv_temp[i] = Logger(
+                logfile=inv_temp_log_path,
+                overwrite=log_params["overwrite"],
+            )
+
         self._running_sec_num = 0
-        self._linewidth = 80  # max(80, 12 + 6 * gadget.p["mc3"]["M"] - 1)
+        self._linewidth = 80
         self.g = gadget
+
+    def finalize(self):
+        if self.g.p["logging"]["verbose_prefix"] is None:
+            return
+        for i in range(self.g.p["mcmc"]["n_indep"]):
+            M_max = 0
+            with open(self.score[i]._logfile, "r") as f:
+                for line in f:
+                    M_max = max(M_max, line.count(" ") + 1)
+            with open(self.score[i]._logfile.with_suffix(""), "w") as f_output:
+                f_output.write(" ".join(map(str, range(M_max))) + "\n")
+                with open(self.score[i]._logfile, "r") as f_input:
+                    for line in f_input:
+                        f_output.write(line)
+                self.score[i].unlink()
+            with open(
+                self.inv_temp[i]._logfile.with_suffix(""), "w"
+            ) as f_output:
+                f_output.write(" ".join(map(str, range(M_max))) + "\n")
+                with open(self.inv_temp[i]._logfile, "r") as f_input:
+                    for line in f_input:
+                        f_output.write(line)
+                self.inv_temp[i].unlink()
 
     def h(self, title):
         self._running_sec_num += 1
         end = "." * (self._linewidth - len(title) - 4)
         title = f"{self._running_sec_num}. {title} {end}"
-        print(title, file=self._logfile)
+        self(title)
         self.br()
-        self._logfile.flush()
 
     def periodic_stats(self, stats, header=False):
-        msg_tmpl = "{:<12.12}" + " {:<5.5}" * self.g.p["mc3"]["params"]["M"]
+        M = len(self.g.mcmc[0].chains)
+        msg_tmpl = "{:<12.12}" + " {:<5.5}" * M
         temps = [1.0]
         temps_labels = [1.0]
         temps = sorted(stats["inv_temp"], reverse=True)
@@ -490,15 +561,14 @@ class GadgetLogger(Logger):
                     "2. Last root-partition score "
                     "for each independent chain.\n"
                 )
-            print(msg, file=self._logfile)
-            self._logfile.flush()
+            self(msg)
 
         if header:
             print_stats_title()
 
         msg = msg_tmpl.format("move", *temps_labels)
         msg += "\n" + "-" * self._linewidth
-        print(msg, file=self._logfile)
+        self(msg)
 
         for m in moves:
             ar = [
@@ -506,10 +576,9 @@ class GadgetLogger(Logger):
                 for r in stats["accept_prob"][m]
             ]
             msg = msg_tmpl.format(m, *ar)
-            print(msg, file=self._logfile)
+            self(msg)
 
-        print(file=self._logfile)
-        self._logfile.flush()
+        self.br()
 
     def run_stats(self):
         w_iters = str(max(len("iters"), len(str(stats["iters"]["total"]))) + 2)
@@ -560,61 +629,54 @@ class GadgetLogger(Logger):
             1.0,
             stats["t"]["mcmc"] / stats["iters"]["total"],
         )
-        print(msg, file=self._logfile)
-        print(file=self._logfile)
-        self._logfile.flush()
+        self(msg)
+        self.br()
 
     def progress(self, t, t_elapsed):
+        percentage = None
+        # BUG: With variable M this is not correct!
+        iterations = t * self.g.p["mc3"]["params"]["M"]
         if self.g.p["run_mode"]["name"] == "normal" or (
             self.g.p["run_mode"]["name"] == "budget"
             and "t" not in self.g.p["run_mode"]["params"]
         ):
-            progress = round(
+            percentage = round(
                 100
                 * t
                 / (self.g.p["mcmc"]["iters"] // self.g.p["mc3"]["params"]["M"])
             )
-            progress = str(progress)
-            print(
-                f"Progress: {progress}%"
-                f" ({t*self.g.p['mc3']['params']['M']} iterations)",
-                file=self._logfile,
-            )
-            self._logfile.flush()
         elif self.g.p["run_mode"]["name"] == "budget":
-            progress = round(100 * t_elapsed / self.g.p.gb.budget["mcmc"])
-            progress = str(progress)
-            print(
-                f"Progress: {progress}%"
-                f" ({t*self.g.p['mc3']['params']['M']} iterations)",
-                file=self._logfile,
-            )
-        elif self.g.p["run_mode"]["name"] == "anytime":
-            print(
-                f"Progress: {t*self.g.p['mc3']['params']['M']} iterations",
-                file=self._logfile,
-            )
+            percentage = round(100 * t_elapsed / self.g.p.gb.budget["mcmc"])
+        if percentage is not None:
+            msg = f"Progress: {percentage}% ({iterations} iterations)"
+        else:  # run_mode == anytime
+            msg = f"Progress: {iterations} iterations"
+        self(msg)
 
     def r_scores(self, t, M, R_scores):
         msg = "Last root-partition scores: " + " ".join(
             str(int(score)) for score in R_scores[t % 1000][0::M]
         )
-        print(msg, file=self._logfile)
+        self(msg)
         self.br()
-        self._logfile.flush()
 
     def plot_score_trace(self, t, M, R_scores):
-
-        r = R_scores.shape[0]  # 1000
+        r = len(R_scores[0])
         plt.clear_plot()
         for i in range(self.g.p["mcmc"]["n_indep"]):
             if t < r:
+                to_plot = np.array([s[0] for s in R_scores[i][:t]])
                 plt.scatter(
-                    R_scores[:t, i * M], label=str(i), color=i + 1, marker="•"
+                    to_plot,
+                    label=str(i),
+                    color=i + 1,
+                    marker="•",
                 )
             else:
+                to_plot = np.array([s[0] for s in R_scores[i]])
+                to_plot = to_plot[np.r_[(t % r) : r, 0 : (t % r)]]
                 plt.scatter(
-                    R_scores[np.r_[(t % r) : r, 0 : (t % r)], i * M],
+                    to_plot,
                     label=str(i),
                     color=i + 1,
                     marker="dot",
@@ -634,9 +696,8 @@ class GadgetLogger(Logger):
         plt.canvas_color("default")
         plt.axes_color("default")
         plt.ticks_color("default")
-        print(plt.build(), file=self._logfile)
-        print(file=self._logfile)
-        self._logfile.flush()
+        self(plt.build())
+        self.br()
 
 
 class Gadget:
@@ -864,21 +925,21 @@ class Gadget:
     - **logging**: Parameters determining the logging output during
       running of the sampler.
 
+      - **silent**: Whether to print output to ``sys.stdout`` or not.
+
+        **Default**: ``False``.
+
       - **stats_period**: Interval in seconds for printing more statistics.
 
         **Default**: 15.
 
-      - **logfile**: File path to print the output to. To suppress all
-        output set this to ``None``.
-
-        **Default**: ``sys.stdout``.
-
-      - **tracefile**: File path to write the root-partition scores to, of
-        each independent chain, for analyzing mixing and convergence.
+      - **verbose_prefix**: If set, more verbose output is created in files at
+        <working directory>/prefix. For example prefix ``x/y`` would create
+        files whose name starts with ``y`` in directory ``x``.
 
         **Default**: ``None``.
 
-      - **overwrite**: If ``True`` both **logfile** and **tracefile** are
+      - **overwrite**: If ``True`` files in ``verbose_prefix`` are
         overwritten if they exist.
 
         **Default**: ``False``.
@@ -908,10 +969,6 @@ class Gadget:
 
         self.log = GadgetLogger(self)
         log = self.log
-        self.trace = Logger(
-            logfile=self.p["logging"]["tracefile"],
-            overwrite=self.p["logging"]["overwrite"],
-        )
 
         log.h("PROBLEM INSTANCE")
         log.dict(self.data.info)
@@ -1008,6 +1065,8 @@ class Gadget:
         log.run_stats()
         log(f"no. dags sampled: {len(self.dags)}")
 
+        log.finalize()
+
         return self.dags, dict(
             parameters=self.p.p,
             scores=self.dag_scores,
@@ -1054,8 +1113,7 @@ class Gadget:
             cc_tolerance=self.p["catc"]["tolerance"],
             cc_cache_size=self.p["catc"]["cache_size"],
             pruning_eps=self.p["cons"]["pruning_eps"],
-            logfile=self.log._logfilename,
-            silent=self.log._silent,
+            silent=self.log.silent(),
         )
         del self.score_array
 
@@ -1158,19 +1216,6 @@ class Gadget:
                     )
                 )
 
-        if "tracefile" in self.p["logging"]:
-            inv_temps = [1.0]
-            if self.p["mc3"]["params"]["M"] > 1:
-                inv_temps = [c.inv_temp for c in self.mcmc[0].chains[::-1]]
-            tracefile_header = [
-                [
-                    f"{i}_{inv_temp}"
-                    for i in range(1, self.p["mcmc"]["n_indep"] + 1)
-                    for inv_temp in inv_temps
-                ]
-            ]
-            self.trace.numpy(tracefile_header, fmt="%s")
-
     def _mcmc_run(self, t_elapsed_init=0):
 
         r = 1000  # max number of iterations to plot in score trace
@@ -1178,9 +1223,21 @@ class Gadget:
         self.dags = list()
         self.dag_scores = list()
 
-        R_scores = np.zeros(
-            (r, self.p["mcmc"]["n_indep"] * self.p["mc3"]["params"]["M"])
-        )
+        R_scores = {
+            c: [
+                None for i in range(r)
+            ]  # will contain up to r arrays of scores
+            # representing each mc3 chain
+            for c in range(self.p["mcmc"]["n_indep"])
+        }
+
+        inv_temps = {
+            c: [
+                None for i in range(r)
+            ]  # will contain up to r arrays of inv_temps
+            # representing each mc3 chain
+            for c in range(self.p["mcmc"]["n_indep"])
+        }
 
         timer = time.time()
         first = True
@@ -1230,12 +1287,14 @@ class Gadget:
         while burn_in_cond():
             for i in range(self.p["mcmc"]["n_indep"]):
                 R, R_score = self.mcmc[i].sample()
-                i_start = i * self.p["mc3"]["params"]["M"]
-                i_end = i_start + self.p["mc3"]["params"]["M"]
-                R_scores[t % r, i_start:i_end] = R_score
+                R_scores[i][t % r] = R_score
+                inv_temps[i][t % r] = self.mcmc[i].inverse_temperatures()
                 R, R_score = R[0], R_score[0]
-            if t > 0 and t % (r - 1) == 0:
-                self.trace.numpy(R_scores)
+                if t > 0 and t % (r - 1) == 0:
+                    for row in R_scores[i]:
+                        self.log.score[i].numpy(np.expand_dims(row, 0))
+                    for row in inv_temps[i]:
+                        self.log.inv_temp[i].numpy(np.expand_dims(row, 0))
             if time.time() - timer > self.p["logging"]["stats_period"]:
                 timer = time.time()
                 self.log.periodic_stats(self.mcmc[0].describe(), first)
@@ -1295,12 +1354,14 @@ class Gadget:
                     )
                 first = False
             if dag_sample_cond():
+                # TODO: Fix stupidities in loop structure
                 for i in range(self.p["mcmc"]["n_indep"]):
                     dag_count += 1
                     R, R_score = self.mcmc[i].sample()
-                    i_start = i * self.p["mc3"]["params"]["M"]
-                    i_end = i_start + self.p["mc3"]["params"]["M"]
-                    R_scores[(t + iters_burn_in) % r, i_start:i_end] = R_score
+                    R_scores[i][(t + iters_burn_in) % r] = R_score
+                    inv_temps[i][(t + iters_burn_in) % r] = self.mcmc[
+                        i
+                    ].inverse_temperatures()
                     R, R_score = R[0], R_score[0]
                     dag, score = self.score.sample_DAG(R)
                     self.dags.append(dag)
@@ -1308,12 +1369,17 @@ class Gadget:
             else:
                 for i in range(self.p["mcmc"]["n_indep"]):
                     R, R_score = self.mcmc[i].sample()
-                    i_start = i * self.p["mc3"]["params"]["M"]
-                    i_end = i_start + self.p["mc3"]["params"]["M"]
-                    R_scores[(t + iters_burn_in) % r, i_start:i_end] = R_score
+                    R_scores[i][(t + iters_burn_in) % r] = R_score
+                    inv_temps[i][(t + iters_burn_in) % r] = self.mcmc[
+                        i
+                    ].inverse_temperatures()
                     R, R_score = R[0], R_score[0]
             if t > 0 and t % (r - 1) == 0:
-                self.trace.numpy(R_scores)
+                for i in range(self.p["mcmc"]["n_indep"]):
+                    for row in R_scores[i]:
+                        self.log.score[i].numpy(np.expand_dims(row, 0))
+                    for row in inv_temps[i]:
+                        self.log.inv_temp[i].numpy(np.expand_dims(row, 0))
 
             t += 1
             t_elapsed = time.time() - t0
@@ -1338,9 +1404,21 @@ class Gadget:
         self.dags = list()
         self.dag_scores = list()
 
-        R_scores = np.zeros(
-            (r, self.p["mcmc"]["n_indep"] * self.p["mc3"]["params"]["M"])
-        )
+        R_scores = {
+            c: [
+                None for i in range(r)
+            ]  # will contain up to r arrays of scores
+            # representing each mc3 chain
+            for c in range(self.p["mcmc"]["n_indep"])
+        }
+
+        inv_temps = {
+            c: [
+                None for i in range(r)
+            ]  # will contain up to r arrays of inv_temps
+            # representing each mc3 chain
+            for c in range(self.p["mcmc"]["n_indep"])
+        }
 
         timer = time.time()
         t0 = timer
@@ -1352,12 +1430,14 @@ class Gadget:
                 t_b += 1
                 for i in range(self.p["mcmc"]["n_indep"]):
                     R, R_score = self.mcmc[i].sample()
-                    i_start = i * self.p["mc3"]["params"]["M"]
-                    i_end = i_start + self.p["mc3"]["params"]["M"]
-                    R_scores[t_b % r, i_start:i_end] = R_score
+                    R_scores[i][t_b % r] = R_score
+                    inv_temps[i][t_b % r] = self.mcmc[i].inverse_temperatures()
                     R, R_score = R[0], R_score[0]
                 if t_b > 0 and t_b % (r - 1) == 0:
-                    self.trace.numpy(R_scores)
+                    for row in R_scores[i]:
+                        self.log.score[i].numpy(np.expand_dims(row, 0))
+                    for row in inv_temps[i]:
+                        self.log.inv_temp[i].numpy(np.expand_dims(row, 0))
                 if time.time() - timer > self.p["logging"]["stats_period"]:
                     timer = time.time()
                     self.log.periodic_stats(self.mcmc[0].describe(), first)
@@ -1403,9 +1483,10 @@ class Gadget:
                     for i in range(self.p["mcmc"]["n_indep"]):
                         dag_count += 1
                         R, R_score = self.mcmc[i].sample()
-                        i_start = i * self.p["mc3"]["params"]["M"]
-                        i_end = i_start + self.p["mc3"]["params"]["M"]
-                        R_scores[(t + t_b) % 1000, i_start:i_end] = R_score
+                        R_scores[i][(t + t_b) % r] = R_score
+                        inv_temps[i][(t + t_b) % r] = self.mcmc[
+                            i
+                        ].inverse_temperatures()
                         R, R_score = R[0], R_score[0]
                         dag, score = self.score.sample_DAG(R)
                         self.dags.append(dag)
@@ -1417,12 +1498,16 @@ class Gadget:
                 else:
                     for i in range(self.p["mcmc"]["n_indep"]):
                         R, R_score = self.mcmc[i].sample()
-                        i_start = i * self.p["mc3"]["params"]["M"]
-                        i_end = i_start + self.p["mc3"]["params"]["M"]
-                        R_scores[(t + t_b) % r, i_start:i_end] = R_score
+                        R_scores[i][(t + t_b) % r] = R_score
+                        inv_temps[i][(t + t_b) % r] = self.mcmc[
+                            i
+                        ].inverse_temperatures()
                         R, R_score = R[0], R_score[0]
                 if t % (r - 1) == 0:
-                    self.trace.numpy(R_scores)
+                    for row in R_scores[i]:
+                        self.log.score[i].numpy(np.expand_dims(row, 0))
+                    for row in inv_temps[i]:
+                        self.log.inv_temp[i].numpy(np.expand_dims(row, 0))
 
         except KeyboardInterrupt:
             stats["t"]["after burn-in"] = time.time() - t0

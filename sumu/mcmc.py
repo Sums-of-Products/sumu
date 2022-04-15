@@ -334,9 +334,12 @@ class MC3(Describable):
 
         description = dict(
             accept_prob=component_merged_accept_probs,
-            inv_temp=np.array([c.inv_temp for c in self.chains]),
+            inv_temp=self.inverse_temperatures(),
         )
         return description
+
+    def inverse_temperatures(self):
+        return np.array([c.inv_temp for c in self.chains])
 
     @staticmethod
     def get_inv_temperatures(scheme, M, step=1):
@@ -375,37 +378,56 @@ class MC3(Describable):
         chains[j].R_node_scores = R_node_scores_tmp
         chains[j].R_score = chains[j].inv_temp * sum(chains[j].R_node_scores)
 
+    def _increment_chains(self):
+        self.chains.append(copy.copy(self.chains[-1]))
+        self.chains[-1].inv_temp = 1 / (
+            1 / self.chains[-1].inv_temp + 2 * len(self.chains)
+        )
+        self._stats["proposed"] = np.append(self._stats["proposed"], 0)
+        self._stats["accepted"] = np.append(self._stats["accepted"], 0)
+        self._stats["local_accept_history"].append(
+            np.zeros(self.local_accept_history_size, dtype=np.int8)
+        )
+        self.M += 1
+
+    def _decrement_chains(self):
+        self.chains.pop()
+        self._stats["proposed"] = self._stats["proposed"][:-1]
+        self._stats["accepted"] = self._stats["accepted"][:-1]
+        self._stats["local_accept_history"] = self._stats[
+            "local_accept_history"
+        ][:-1]
+
     def adapt_temperatures(self):
         stats = self.describe()
         acc_probs = stats["accept_prob"]["mc3"]
+        local_acc_probs = stats["accept_prob"]["local_mc3"]
         temps = 1 / stats["inv_temp"]
         delta_temps = np.array(
             [temps[i] - temps[i - 1] for i in range(1, len(temps))]
         )
         diff = (
             np.nan_to_num(
-                acc_probs, copy=True, nan=0.0, posinf=None, neginf=None
+                local_acc_probs, copy=True, nan=0.0, posinf=None, neginf=None
             )
             - self.p_target
         )[:-1]
 
-        # local_acc_probs = stats["accept_prob"]["local_mc3"]
-        # local_diff = (local_acc_probs - self.p_target)[:-1]
-        # adjust_delta = (diff < 0) & (local_diff < 0)
-
         delta_new = np.maximum(
-            0, delta_temps + diff / self._stats["iters"] ** 0.2
+            0, delta_temps + diff  # / self._stats["iters"] ** 0.2
         )
 
-        # delta_new = (
-        #     delta_new * adjust_delta * 1 + delta_temps * ~adjust_delta * 1
-        # )
+        temps_new = 1 / np.array(
+            [1 + delta_new[:i].sum() for i in range(len(delta_new) + 1)]
+        )
 
-        temps_new = [
-            1 + delta_new[:i].sum() for i in range(len(delta_new) + 1)
-        ]
         for i, c in enumerate(self.chains):
-            c.inv_temp = 1 / temps_new[i]
+            c.inv_temp = temps_new[i]
+
+        if len(self.chains) > 2 and (acc_probs > 0.9).sum() > 1:
+            self._decrement_chains()
+        if (acc_probs > 0.9).sum() == 0:
+            self._increment_chains()
 
     def sample(self):
         local_history_index = (
@@ -417,7 +439,7 @@ class MC3(Describable):
         i = np.random.randint(len(self.chains) - 1)
         self._stats["proposed"][i] += 1
         ap = MC3.get_swap_acceptance_prob(self.chains, i, i + 1)
-        if -np.random.exponential() < ap:  # 3
+        if -np.random.exponential() < ap:
             MC3.make_swap(self.chains, i, i + 1)
             self._stats["accepted"][i] += 1
             self._stats["local_accept_history"][i][local_history_index] = 1
