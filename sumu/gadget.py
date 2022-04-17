@@ -1226,7 +1226,7 @@ class Gadget:
 
         R_scores = {
             c: [
-                None for i in range(r)
+                np.array([]) for i in range(r)
             ]  # will contain up to r arrays of scores
             # representing each mc3 chain
             for c in range(self.p["mcmc"]["n_indep"])
@@ -1234,7 +1234,7 @@ class Gadget:
 
         inv_temps = {
             c: [
-                None for i in range(r)
+                np.array([]) for i in range(r)
             ]  # will contain up to r arrays of inv_temps
             # representing each mc3 chain
             for c in range(self.p["mcmc"]["n_indep"])
@@ -1407,7 +1407,7 @@ class Gadget:
 
         R_scores = {
             c: [
-                None for i in range(r)
+                np.array([]) for i in range(r)
             ]  # will contain up to r arrays of scores
             # representing each mc3 chain
             for c in range(self.p["mcmc"]["n_indep"])
@@ -1415,7 +1415,7 @@ class Gadget:
 
         inv_temps = {
             c: [
-                None for i in range(r)
+                np.array([]) for i in range(r)
             ]  # will contain up to r arrays of inv_temps
             # representing each mc3 chain
             for c in range(self.p["mcmc"]["n_indep"])
