@@ -1,5 +1,4 @@
 import copy
-import time
 import warnings
 
 import numpy as np
@@ -35,8 +34,11 @@ class PartitionMCMC(Describable):
             self.DAG_edgerev,
         ]
         self._move_weights = list(move_weights)
+
+        # These should be in self._stats
         self.proposed = {move.__name__: 0 for move in self._all_moves}
         self.accepted = {move.__name__: 0 for move in self._all_moves}
+        self.iter_count = 0
 
         self._init_moves()
 
@@ -47,14 +49,19 @@ class PartitionMCMC(Describable):
         self.R_score = self.inv_temp * sum(self.R_node_scores)
 
     def describe(self):
-        description = dict(accept_prob=dict())
+        description = dict(accept_prob=dict(), iter_count=self.iter_count)
         for move in self._all_moves:
             move = move.__name__
             if self.proposed[move] == 0:
                 ap = np.nan
             else:
                 ap = self.accepted[move] / self.proposed[move]
-            description["accept_prob"][move] = ap
+            # Lot of this just to conform to MC3.describe()
+            # unifying their handling in Gadget
+            description["accept_prob"][move] = np.array([ap])
+            description["inv_temp"] = np.array([self.inv_temp])
+            description["target_chain_iter_count"] = self.iter_count
+            description["M"] = 1
         return description
 
     def _init_moves(self):
@@ -210,6 +217,9 @@ class PartitionMCMC(Describable):
         return rescore
 
     def sample(self):
+
+        self.iter_count += 1
+
         # NOTE: Multiple points of return, consider refactoring.
         if np.random.rand() > self.stay_prob:
             move = self._moves[np.random.randint(len(self._moves))]
@@ -277,7 +287,8 @@ class MC3(Describable):
     def __init__(self, chains, scheme, **params):
 
         self._stats = {
-            "iters": 0,
+            "target_chain_iter_count": 0,
+            "iter_count": 0,
             "proposed": np.array([0 for c in chains[:-1]]),
             "accepted": np.array([0 for c in chains[:-1]]),
             "local_accept_history": [
@@ -297,8 +308,10 @@ class MC3(Describable):
         # {"accept_prob": {"mc3": [0.2, ..., 0.3], "local_mc3": [...], "move1":
         # [...]}, "inv_temp": [...]}
 
+        component_stats = [c.describe() for c in self.chains]
         component_accept_probs = [
-            c.describe()["accept_prob"] for c in self.chains
+            {k: v[0] for k, v in cs["accept_prob"].items()}
+            for cs in component_stats
         ]
         moves = set().union(
             *list(map(lambda c: set(c.keys()), component_accept_probs))
@@ -319,13 +332,24 @@ class MC3(Describable):
                         np.array([np.nan]),
                     )
                 ),
-                local_mc3=np.array(
-                    list(map(np.sum, self._stats["local_accept_history"]))
-                    + [np.nan]
-                )
-                / min(
-                    self._stats["iters"],
-                    self.params["local_accept_history_size"],
+                local_mc3=np.concatenate(
+                    (
+                        np.array(
+                            (
+                                list(
+                                    map(
+                                        np.sum,
+                                        self._stats["local_accept_history"],
+                                    )
+                                )
+                            )
+                            / np.minimum(
+                                self.params["local_accept_history_size"],
+                                self._stats["proposed"],
+                            )
+                        ),
+                        np.array([np.nan]),
+                    )
                 ),
             )
 
@@ -333,9 +357,13 @@ class MC3(Describable):
         component_merged_accept_probs.update(accept_probs)
 
         description = dict(
+            target_chain_iter_count=self._stats["target_chain_iter_count"],
+            iter_count=self._stats["iter_count"],
             accept_prob=component_merged_accept_probs,
+            # TODO: replace with output from PartitionMCMC.describe()
             inv_temp=self.inverse_temperatures(),
         )
+        description["M"] = len(description["inv_temp"])
         return description
 
     def inverse_temperatures(self):
@@ -388,7 +416,6 @@ class MC3(Describable):
         self._stats["local_accept_history"].append(
             np.zeros(self.local_accept_history_size, dtype=np.int8)
         )
-        self.M += 1
 
     def _decrement_chains(self):
         self.chains.pop()
@@ -413,16 +440,14 @@ class MC3(Describable):
             - self.p_target
         )[:-1]
 
-        delta_new = np.maximum(
-            0, delta_temps + diff  # / self._stats["iters"] ** 0.2
-        )
+        delta_new = delta_temps * (1 + diff / self.smoothing)
 
-        temps_new = 1 / np.array(
+        inv_temps_new = 1 / np.array(
             [1 + delta_new[:i].sum() for i in range(len(delta_new) + 1)]
         )
 
         for i, c in enumerate(self.chains):
-            c.inv_temp = temps_new[i]
+            c.inv_temp = inv_temps_new[i]
 
         if len(self.chains) > 2 and (acc_probs > 0.9).sum() > 1:
             self._decrement_chains()
@@ -431,10 +456,12 @@ class MC3(Describable):
 
     def sample(self):
         local_history_index = (
-            self._stats["iters"] % self.local_accept_history_size
+            self._stats["target_chain_iter_count"]
+            % self.local_accept_history_size
         )
-        self._stats["iters"] += 1
+        self._stats["target_chain_iter_count"] += 1
         for c in self.chains:
+            self._stats["iter_count"] += 1
             c.sample()
         i = np.random.randint(len(self.chains) - 1)
         self._stats["proposed"][i] += 1
@@ -448,159 +475,10 @@ class MC3(Describable):
 
         if (
             self.scheme == "adaptive"
-            and self._stats["iters"] % self.update_freq == 0
+            and self._stats["target_chain_iter_count"] % self.update_freq == 0
         ):
             self.adapt_temperatures()
 
         return [c.R for c in self.chains], np.array(
             [sum(c.R_node_scores) for c in self.chains]
-        )
-
-    @classmethod
-    def adaptive_incremental(
-        cls,
-        mcmc,
-        t_budget=None,
-        stats=None,
-        target=0.25,
-        tolerance=0.05,
-        n_proposals=1000,
-        max_search_steps=20,
-        sample_all=False,
-        strict_binary=False,
-        log=None,
-    ):
-
-        if t_budget is not None:
-            t0 = time.time()
-
-        mcmc0 = copy.copy(mcmc)
-        mcmc0.inv_temp = 0.0
-        mcmc0._init_moves()
-        chains = [mcmc0, mcmc]
-
-        if stats is not None:
-            stats["iters"]["adaptive tempering"] = 0
-
-        msg_tmpl = "{:<8}" + "{:<9}" * 2
-        if log is not None:
-            log(msg_tmpl.format("chain", "temp^-1", "swap_prob"))
-            log(msg_tmpl.format("1", "0.0", "-"))
-
-        def acceptance_prob(i_target, inv_temp):
-            chains[i_target].inv_temp = inv_temp
-            chains[i_target].R = chains[i_target - 1].R
-            chains[i_target].R_node_scores = chains[i_target - 1].R_node_scores
-            chains[i_target]._init_moves()
-            proposed = 0
-            accepted = 0
-            while proposed < n_proposals:
-                if t_budget is not None:
-                    if time.time() - t0 > t_budget:
-                        log.br()
-                        log("Time budget exceeded, terminating.")
-                        exit(1)
-                if sample_all:
-                    start, end = 0, len(chains)
-                else:
-                    # Only the target chain and one hotter than it are sampled
-                    start, end = i_target - 1, i_target + 1
-                for c in chains[start:end]:
-                    if stats is not None:
-                        stats["iters"]["adaptive tempering"] += 1
-                    c.sample()
-                if sample_all:
-                    j = np.random.randint(len(chains) - 1)
-                else:
-                    j = i_target - 1
-                if j == i_target - 1:
-                    proposed += 1
-                ap = MC3.get_swap_acceptance_prob(chains, j, j + 1)
-                if -np.random.exponential() < ap:
-                    if j == i_target - 1:
-                        accepted += 1
-                    MC3.make_swap(chains, j, j + 1)
-            return accepted / proposed
-
-        # Commented out option to rerun the temperature estimations
-        # until the number of chains equals the previous run +/- 1.
-
-        # all_done = False
-        # while not all_done:
-        for l in range(1):
-            # start_len = len(chains)
-            done = False
-            i = 0
-            while not done:
-                i += 1
-                ub = 1.0
-                lb = chains[i - 1].inv_temp
-                chains[i].inv_temp = max(lb, chains[i].inv_temp)
-                acc_prob = acceptance_prob(i, chains[i].inv_temp)
-                if log is not None:
-                    log(
-                        msg_tmpl.format(
-                            i + 1,
-                            round(chains[i].inv_temp, 3),
-                            round(acc_prob, 3),
-                        )
-                    )
-                heat = acc_prob < target
-                search_steps = 0
-                while abs(target - acc_prob) > tolerance:
-                    search_steps += 1
-                    if search_steps > max_search_steps:
-                        break
-
-                    # If strict_binary == False, the ub/lb is set half way
-                    # between the previous ub/lb and current temperature, to
-                    # avoid getting trapped in wrong region.
-
-                    if heat:
-                        ub = chains[i].inv_temp
-                        if strict_binary is False:
-                            ub += 0.5 * (ub - chains[i].inv_temp)
-                        chains[i].inv_temp = (
-                            chains[i].inv_temp - (chains[i].inv_temp - lb) / 2
-                        )
-                    else:
-                        if abs(chains[i].inv_temp - 1.0) < 1e-4:
-                            break
-                        lb = chains[i].inv_temp
-                        if strict_binary is False:
-                            lb -= 0.5 * (chains[i].inv_temp - lb)
-                        chains[i].inv_temp = (
-                            chains[i].inv_temp + (ub - chains[i].inv_temp) / 2
-                        )
-                    acc_prob = acceptance_prob(i, chains[i].inv_temp)
-                    if log is not None:
-                        log(
-                            msg_tmpl.format(
-                                "",
-                                round(chains[i].inv_temp, 3),
-                                round(acc_prob, 3),
-                            )
-                        )
-                    heat = acc_prob < target
-                if abs(chains[i].inv_temp - 1.0) < 1e-4:
-                    chains = chains[: i + 1]
-                    done = True
-                else:
-                    chain = copy.copy(chains[i])
-                    chain.inv_temp = 1.0
-                    chain._init_moves()
-                    chains.append(chain)
-            chains[-1].inv_temp = 1.0
-            chains[-1] = copy.copy(chains[-1])
-
-            # all_done = len(chains) in range(start_len - 1, start_len + 2)
-
-        for c in chains:
-            c.stats = stats
-        chains = [copy.copy(c) for c in chains]
-
-        return cls(
-            chains[::-1],  # descending order by inverse temperature
-            scheme="adaptive-incremental",
-            local_accept_history_size=100,
         )

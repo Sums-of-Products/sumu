@@ -39,7 +39,7 @@ class Defaults:
             "run_mode": {"name": "normal"},
             "mcmc": {
                 "n_indep": 1,
-                "iters": 320000,
+                "n_target_chain_iters": 20000,
                 "burn_in": 0.5,
                 "n_dags": 10000,
                 "move_weights": [1, 1, 2],
@@ -49,21 +49,16 @@ class Defaults:
                 == "adaptive": {
                     "name": name,
                     "params": {
-                        "M": 16,
+                        "M": 2,
                         "p_target": 0.234,
-                        "delta_t_init": 1000,
-                        "delta_t_max_delta": 1,
-                        "local_accept_history_size": 100,
+                        "delta_t_init": 0.5,
+                        "local_accept_history_size": 1000,
                         "update_freq": 100,
+                        "smoothing": 2.0,
                     },
                 },
                 name
-                == "adaptive-incremental": {
-                    "name": name,
-                    "params": {},
-                },
-                name
-                not in ("adaptive", "adaptive-incremental"): {
+                not in ("adaptive",): {
                     "name": "linear" if name is None else name,
                     "params": {"M": 16, "local_accept_history_size": 100},
                 },
@@ -127,8 +122,8 @@ class GadgetParameters:
         self._populate_default_parameters()
         self._complete_user_given_parameters()
         self._validate_parameters()
-        if self.p["run_mode"]["name"] == "normal":
-            self._adjust_inconsistent_parameters()
+        # if self.p["run_mode"]["name"] == "normal":
+        #    self._adjust_inconsistent_parameters()
         if self.p["run_mode"]["name"] == "budget":
             if "t" in self.p["run_mode"]["params"]:
                 self._adjust_to_time_budget()
@@ -162,19 +157,19 @@ class GadgetParameters:
                 if type(self.p[k][k2]) == dict:
                     self.p[k][k2] = dict(self.default[k][k2], **self.p[k][k2])
 
-    def _adjust_inconsistent_parameters(self):
-        iters = self.p["mcmc"]["iters"]
-        M = self.p["mc3"].get("M", 1)
-        burn_in = self.p["mcmc"]["burn_in"]
-        n_dags = self.p["mcmc"]["n_dags"]
-        self.p["mcmc"]["iters"] = iters // M * M
-        self.p["mcmc"]["n_dags"] = min(
-            (iters - int(iters * burn_in)) // M, n_dags
-        )
-        self.adjusted = (
-            self.p["mcmc"]["iters"] != iters,
-            self.p["mcmc"]["n_dags"] != n_dags,
-        )
+    # def _adjust_inconsistent_parameters(self):
+    #     iters = self.p["mcmc"]["iters"]
+    #     M = self.p["mc3"].get("M", 1)
+    #     burn_in = self.p["mcmc"]["burn_in"]
+    #     n_dags = self.p["mcmc"]["n_dags"]
+    #     self.p["mcmc"]["iters"] = iters // M * M
+    #     self.p["mcmc"]["n_dags"] = min(
+    #         (iters - int(iters * burn_in)) // M, n_dags
+    #     )
+    #     self.adjusted = (
+    #         self.p["mcmc"]["iters"] != iters,
+    #         self.p["mcmc"]["n_dags"] != n_dags,
+    #     )
 
     def _adjust_to_time_budget(self):
         self.gb = GadgetTimeBudget(
@@ -463,45 +458,39 @@ class GadgetLogger(Logger):
         )
 
         log_params = gadget.p["logging"]
+        self.verbose_logger = dict()
+        # if log_params["verbose_prefix"] is not None:
 
-        self.score = dict()
-        self.inv_temp = dict()
+        for verbose_output in [
+            "score",
+            "inv_temp",
+            "mc3_swap_prob",
+            "mc3_local_swap_prob",
+        ]:
+            self.verbose_logger[verbose_output] = dict()
+            for i in range(gadget.p["mcmc"]["n_indep"]):
+                if log_params["verbose_prefix"] is not None:
+                    verbose_log_path = (
+                        Path(log_params["verbose_prefix"])
+                        .absolute()
+                        .with_suffix(f".{i}.{verbose_output}.tmp")
+                    )
+                    # Just to raise error if the final log files
+                    # without .tmp suffix exist when overwrite=False
+                    Logger(
+                        logfile=verbose_log_path.with_suffix(""),
+                        overwrite=log_params["overwrite"],
+                    )
+                    self.verbose_logger[verbose_output][i] = Logger(
+                        logfile=verbose_log_path,
+                        overwrite=log_params["overwrite"],
+                    )
+                else:
+                    self.verbose_logger[verbose_output][i] = Logger(
+                        logfile=None,
+                    )
 
-        for i in range(gadget.p["mcmc"]["n_indep"]):
-            score_log_path = None
-            inv_temp_log_path = None
-            if log_params["verbose_prefix"] is not None:
-                score_log_path = (
-                    Path(log_params["verbose_prefix"])
-                    .absolute()
-                    .with_suffix(f".{i}.score.tmp")
-                )
-                inv_temp_log_path = (
-                    Path(log_params["verbose_prefix"])
-                    .absolute()
-                    .with_suffix(f".{i}.inv_temp.tmp")
-                )
-
-                # Just to raise error if the final log files
-                # without .tmp suffix exist when overwrite=False
-                Logger(
-                    logfile=score_log_path.with_suffix(""),
-                    overwrite=log_params["overwrite"],
-                )
-                Logger(
-                    logfile=inv_temp_log_path.with_suffix(""),
-                    overwrite=log_params["overwrite"],
-                )
-
-            self.score[i] = Logger(
-                logfile=score_log_path,
-                overwrite=log_params["overwrite"],
-            )
-            self.inv_temp[i] = Logger(
-                logfile=inv_temp_log_path,
-                overwrite=log_params["overwrite"],
-            )
-
+        self._time_last_periodic_stats = time.time()
         self._running_sec_num = 0
         self._linewidth = 80
         self.g = gadget
@@ -511,158 +500,232 @@ class GadgetLogger(Logger):
             return
         for i in range(self.g.p["mcmc"]["n_indep"]):
             M_max = 0
-            with open(self.score[i]._logfile, "r") as f:
+
+            with open(self.verbose_logger["score"][i]._logfile, "r") as f:
                 for line in f:
                     M_max = max(M_max, line.count(" ") + 1)
-            with open(self.score[i]._logfile.with_suffix(""), "w") as f_output:
-                f_output.write(" ".join(map(str, range(M_max))) + "\n")
-                with open(self.score[i]._logfile, "r") as f_input:
-                    for line in f_input:
-                        f_output.write(line)
-                self.score[i].unlink()
-            with open(
-                self.inv_temp[i]._logfile.with_suffix(""), "w"
-            ) as f_output:
-                f_output.write(" ".join(map(str, range(M_max))) + "\n")
-                with open(self.inv_temp[i]._logfile, "r") as f_input:
-                    for line in f_input:
-                        f_output.write(line)
-                self.inv_temp[i].unlink()
 
-    def h(self, title):
-        self._running_sec_num += 1
-        end = "." * (self._linewidth - len(title) - 4)
-        title = f"{self._running_sec_num}. {title} {end}"
+            for verbose_output in self.verbose_logger:
+                with open(
+                    self.verbose_logger[verbose_output][
+                        i
+                    ]._logfile.with_suffix(""),
+                    "w",
+                ) as f_output:
+                    f_output.write(" ".join(map(str, range(M_max))) + "\n")
+                    with open(
+                        self.verbose_logger[verbose_output][i]._logfile, "r"
+                    ) as f_input:
+                        for line in f_input:
+                            f_output.write(line)
+                    self.verbose_logger[verbose_output][i].unlink()
+
+    def h(self, title, secnum=True):
+        if secnum:
+            self._running_sec_num += 1
+            end = "." * (self._linewidth - len(title) - 4)
+            title = f"{self._running_sec_num}. {title} {end}"
+        else:
+            end = "." * (self._linewidth - len(title) - 1)
+            title = f"{title} {end}"
         self(title)
         self.br()
 
-    def periodic_stats(self, stats, header=False):
-        M = len(self.g.mcmc[0].chains)
-        msg_tmpl = "{:<12.12}" + " {:<5.5}" * M
-        temps = [1.0]
-        temps_labels = [1.0]
-        temps = sorted(stats["inv_temp"], reverse=True)
-        temps_labels = [round(t, 2) for t in temps]
-        moves = stats["accept_prob"].keys()
+    def periodic_stats(self):
 
-        def print_stats_title():
-            msg = "Periodic statistics on:\n"
-            msg += (
-                "1. Cumulative acceptance probability by move "
-                "and inverse temperature.\n"
-            )
-            if plot_trace:
-                msg += (
-                    "2. Root-partition score traces "
-                    "for each independent chain.\n"
-                )
-            else:
-                msg += (
-                    "2. Last root-partition score "
-                    "for each independent chain.\n"
-                )
-            self(msg)
+        if (
+            time.time() - self._time_last_periodic_stats
+            < self.g.p["logging"]["stats_period"]
+        ):
+            return
 
-        if header:
-            print_stats_title()
+        self._time_last_periodic_stats = time.time()
 
-        msg = msg_tmpl.format("move", *temps_labels)
-        msg += "\n" + "-" * self._linewidth
-        self(msg)
+        chain_stats = [indep_chain.describe() for indep_chain in self.g.mcmc]
 
-        for m in moves:
-            ar = [
-                round(r, 2) if not np.isnan(r) else ""
-                for r in stats["accept_prob"][m]
-            ]
-            msg = msg_tmpl.format(m, *ar)
-            self(msg)
-
+        self.progress(chain_stats)
+        if plot_trace:
+            self.br()
+            self.plot_score_trace()
+        else:
+            self.last_root_partition_scores()
+        self.move_probs(chain_stats)
         self.br()
 
+    def move_probs(self, stats):
+        self.h("Move acceptance probabilities", secnum=False)
+        for i, s in enumerate(stats):
+            self(f"Chain {i+1}:")
+            self(" " * 15 + "inv_temp")
+            msg_tmpl = "{:<12.12} |" + " {:<5.5}" * s["M"]
+            temps = [1.0]
+            temps_labels = [1.0]
+            temps = sorted(s["inv_temp"], reverse=True)
+            temps_labels = [round(t, 2) for t in temps]
+            moves = s["accept_prob"].keys()
+            msg = msg_tmpl.format("move", *temps_labels) + "\n"
+            msg = msg.replace("|", " ")
+            hr = ["-"] * self._linewidth
+            hr[13] = "+"
+            hr = "".join(hr)
+            msg += hr
+            self(msg)
+            for m in moves:
+                ar = [
+                    round(r, 2) if not np.isnan(r) else ""
+                    for r in s["accept_prob"][m]
+                ]
+                msg = msg_tmpl.format(m, *ar)
+                self(msg)
+
+            self.br()
+
     def run_stats(self):
-        w_iters = str(max(len("iters"), len(str(stats["iters"]["total"]))) + 2)
-        w_seconds = str(len(str(int(stats["t"]["mcmc"]))) + 2)
+
+        stats = self.g._stats
+        w_target_iters = str(
+            max(
+                len("1.0_iters"),
+                len(str(stats["mcmc"]["target_chain_iter_count"])),
+            )
+            + 2
+        )
+        w_iters = str(
+            max(
+                len("iters"),
+                len(str(stats["mcmc"]["iter_count"])),
+            )
+            + 2
+        )
+        w_seconds = str(len(str(int(stats["mcmc"]["time_used"]))) + 2)
         msg_title_tmpl = (
-            "{:<20}{:<" + w_iters + "}{:<13}{:<" + w_seconds + "}{:<9}{:<13}"
+            "{:<12}   {:<"
+            + w_target_iters
+            + "}{:<5}   {:<"
+            + w_iters
+            + "}{:<6}   {:<"
+            + w_seconds
+            + "}{:<8}{:<8} {:<8}"
         )
         msg_tmpl = (
-            "{:<20}{:<"
+            "{:<12} | {:<"
+            + w_target_iters
+            + "}{:<6.2} | {:<"
             + w_iters
-            + "}{:<13.3}{:<"
+            + "}{:<6.2} | {:<"
             + w_seconds
-            + "}{:<9.3}{:<13.3}"
+            + "}{:<8.2}{:<8.2} {:<8.2}"
         )
+
         msg = (
             msg_title_tmpl.format(
-                "phase", "iters", "iters/total", "s", "s/total", "s/iter"
+                "phase",
+                "1.0_iters",
+                "/total",
+                "iters",
+                "/total",
+                "s",
+                "/total",
+                "/iter",
+                "/1.0_iter",
             )
             + "\n"
         )
-        msg += "-" * self._linewidth + "\n"
 
-        phases = ["burn-in", "after burn-in"]
-        if self.g.p["mc3"]["name"] == "adaptive-incremental":
-            phases = ["adaptive tempering"] + phases
+        hr = ["-"] * self._linewidth
+        hr[13] = "+"
+        hr[33] = "+"
+        hr[50] = "+"
+        msg += "".join(hr) + "\n"
 
-        for phase in phases:
+        for phase in ["burnin", "after_burnin"]:
             msg += (
                 msg_tmpl.format(
                     phase,
-                    stats["iters"][phase],
-                    stats["iters"][phase] / stats["iters"]["total"],
-                    round(stats["t"][phase]),
-                    stats["t"][phase] / stats["t"]["mcmc"],
-                    (
-                        stats["t"][phase] / stats["iters"][phase]
-                        if stats["iters"][phase] > 0
-                        else "-"
-                    ),
+                    stats[phase]["target_chain_iter_count"],
+                    stats[phase]["target_chain_iter_count"]
+                    / stats["mcmc"]["target_chain_iter_count"],
+                    stats[phase]["iter_count"],
+                    stats[phase]["iter_count"] / stats["mcmc"]["iter_count"],
+                    round(stats[phase]["time_used"]),
+                    stats[phase]["time_used"] / stats[phase]["time_used"],
+                    stats[phase]["time_used"] / stats[phase]["iter_count"],
+                    stats[phase]["time_used"]
+                    / stats[phase]["target_chain_iter_count"],
                 )
                 + "\n"
             )
         msg += msg_tmpl.format(
             "mcmc total",
-            stats["iters"]["total"],
+            stats["mcmc"]["target_chain_iter_count"],
             1.0,
-            round(stats["t"]["mcmc"]),
+            stats["mcmc"]["iter_count"],
             1.0,
-            stats["t"]["mcmc"] / stats["iters"]["total"],
+            round(stats["mcmc"]["time_used"]),
+            1.0,
+            stats["mcmc"]["time_used"] / stats["mcmc"]["iter_count"],
+            stats["mcmc"]["time_used"]
+            / stats["mcmc"]["target_chain_iter_count"],
         )
         self(msg)
         self.br()
 
-    def progress(self, t, t_elapsed):
-        percentage = None
-        # BUG: With variable M this is not correct!
-        iterations = t * self.g.p["mc3"]["params"]["M"]
+    def progress(self, stats):
+
+        target_chain_iter_count = sum(
+            s["target_chain_iter_count"] for s in stats
+        )
+        iter_count = sum(s["iter_count"] for s in stats)
+        n_indep = self.g.p["mcmc"]["n_indep"]
+
+        percentage = ""
+        # stats = self.g._stats
         if self.g.p["run_mode"]["name"] == "normal" or (
             self.g.p["run_mode"]["name"] == "budget"
             and "t" not in self.g.p["run_mode"]["params"]
         ):
             percentage = round(
                 100
-                * t
-                / (self.g.p["mcmc"]["iters"] // self.g.p["mc3"]["params"]["M"])
+                * target_chain_iter_count
+                / (self.g.p["mcmc"]["n_target_chain_iters"] * n_indep)
             )
         elif self.g.p["run_mode"]["name"] == "budget":
-            percentage = round(100 * t_elapsed / self.g.p.gb.budget["mcmc"])
-        if percentage is not None:
-            msg = f"Progress: {percentage}% ({iterations} iterations)"
-        else:  # run_mode == anytime
-            msg = f"Progress: {iterations} iterations"
-        self(msg)
+            percentage = round(
+                100
+                * (time.time() - self.g._stats["mcmc"]["time_start"])
+                / self.g.p.gb.budget["mcmc"]
+            )
 
-    def r_scores(self, t, M, R_scores):
-        msg = "Last root-partition scores: " + " ".join(
-            str(int(R_scores[i][t % 1000][0]))
-            for i in range(self.g.p["mcmc"]["n_indep"])
+        self.h(
+            f"PROGRESS: {percentage}{'%' if percentage else ''}", secnum=False
         )
-        self(msg)
+        self(
+            f"- target temperature:  {target_chain_iter_count} "
+            f"iters (in {len(stats)} independent chain(s))"
+        )
+        self(f"- all temperatures:    {iter_count} iters")
         self.br()
 
-    def plot_score_trace(self, t, M, R_scores):
-        r = len(R_scores[0])
+    def last_root_partition_scores(self):
+        self.h("Last root-partition scores", secnum=False)
+        for i in range(self.g.p["mcmc"]["n_indep"]):
+            score = self.g._verbose["score"][i][
+                self.g._stats["mcmc"]["target_chain_iter_count"]
+                % self.g._verbose_len
+            ]
+            if len(score) > 0:
+                score = round(score[0], 2)
+            else:
+                score = "-"
+            msg = f"Chain {i+1}: {score}"
+            self(msg)
+        self.br()
+
+    def plot_score_trace(self):
+        self.h("Root-partition score traces", secnum=False)
+        t = self.g._stats["mcmc"]["target_chain_iter_count"]
+        r = self.g._verbose_len
+        R_scores = self.g._verbose["score"]
         plt.clear_plot()
         for i in range(self.g.p["mcmc"]["n_indep"]):
             if t < r:
@@ -684,14 +747,13 @@ class GadgetLogger(Logger):
                 )
         plt.plotsize(80, 20)
         plt.yfrequency(4)
-        if t < 1000:
+        if t < r:
             xticks = [int(w * t) for w in np.arange(0, 1 + 1 / 3, 1 / 3)]
-            xlabels = [str(round(x * M / 1000, 1)) + "k" for x in xticks]
+            xlabels = [str(round(x / r, 1)) + "k" for x in xticks]
         else:
-            xticks = np.array([0, 333, 666, 999])
+            xticks = np.array([r // 3 * i for i in range(4)])
             xlabels = [
-                str(round((x + t) * M / 1000, 1)) + "k"
-                for x in -1 * xticks[::-1]
+                str(round((x + t) / r, 1)) + "k" for x in -1 * xticks[::-1]
             ]
         plt.xticks(xticks, xlabels)
         plt.canvas_color("default")
@@ -971,24 +1033,62 @@ class Gadget:
         self.log = GadgetLogger(self)
         log = self.log
 
+        # Things collected along the running of the chain used e.g. in control
+        # structures. Here to make the overall structure explicit.
+        self._stats = dict(
+            candp=dict(time_used=0),
+            crscore=dict(time_used=0),
+            ccscore=dict(time_used=0),
+            mcmc=dict(
+                target_chain_iter_count=0,
+                iter_count=0,
+                deadline=None,
+                time_start=None,
+                time_used=0,
+                time_per_dag=0,
+            ),
+            burnin=dict(
+                target_chain_iter_count=0,
+                iter_count=0,
+                deadline=None,
+                time_start=None,
+                time_used=0,
+            ),
+            after_burnin=dict(
+                target_chain_iter_count=0,
+                iter_count=0,
+                time_start=None,
+                time_used=0,
+            ),
+        )
+
+        # if self.p["logging"]["verbose_prefix"] is not None:
+        # Number of iterations
+        # 1. to plot in score trace
+        # 2. specifying the size of in-memory verbose output arrays
+        #    which are periodically stored to file
+        self._verbose_len = 1000
+        self._verbose = dict()
+        for verbose_output in [
+            "score",
+            "inv_temp",
+            "mc3_swap_prob",
+            "mc3_local_swap_prob",
+        ]:
+            self._verbose[verbose_output] = {
+                c: [np.array([]) for i in range(self._verbose_len)]
+                for c in range(self.p["mcmc"]["n_indep"])
+            }
+
+        self.dags = list()
+        self.dag_scores = list()
+
         log.h("PROBLEM INSTANCE")
         log.dict(self.data.info)
         log.br()
 
         log.h("RUN PARAMETERS")
         log.dict(self.p.p)
-        if self.p["run_mode"]["name"] == "normal":
-            if any(self.p.adjusted):
-                log("WARNING")
-            if self.p.adjusted[0]:
-                log("iters adjusted downwards: needs to be multiple of mc3.")
-            if self.p.adjusted[1]:
-                log(
-                    "n_dags adjusted downwards: "
-                    "max is (iters * (1 - burn_in)) / mc3."
-                )
-            if any(self.p.adjusted):
-                log.br()
         mem_use_estimate = round(
             self.p._mem_estimate(
                 self.data.n, self.p["cons"]["K"], self.p["cons"]["d"]
@@ -1002,9 +1102,11 @@ class Gadget:
         log = self.log
 
         log.h("FINDING CANDIDATE PARENTS")
-        stats["t"]["C"] = time.time()
+        self._stats["candp"]["time_start"] = time.time()
         self._find_candidate_parents()
-        stats["t"]["C"] = time.time() - stats["t"]["C"]
+        self._stats["candp"]["time_used"] = (
+            time.time() - self._stats["candp"]["time_start"]
+        )
         log.numpy(self.C_array, "%i")
         if (
             self.p["run_mode"]["name"] == "budget"
@@ -1019,47 +1121,57 @@ class Gadget:
                 f"{round(self.p['candp']['params']['t_budget'])}s"
             )
         log.br()
-        log(f"time used: {round(stats['t']['C'])}s")
+        log(f"time used: {round(self._stats['candp']['time_used'])}s")
         log.br(2)
 
         log.h("PRECOMPUTING SCORING STRUCTURES FOR CANDIDATE PARENT SETS")
-        stats["t"]["crscore"] = time.time()
+        self._stats["crscore"]["time_start"] = time.time()
         self._precompute_scores_for_all_candidate_psets()
         self._precompute_candidate_restricted_scoring()
-        stats["t"]["crscore"] = time.time() - stats["t"]["crscore"]
+        self._stats["crscore"]["time_used"] = (
+            time.time() - self._stats["crscore"]["time_start"]
+        )
         if (
             self.p["run_mode"]["name"] == "budget"
             and "t" in self.p["run_mode"]["params"]
         ):
             log(f"time predicted: {round(self.p.gb.predicted['crs'])}s")
-        log(f"time used: {round(stats['t']['crscore'])}s")
+        log(f"time used: {round(self._stats['crscore']['time_used'])}s")
         log.br(2)
 
         log.h("PRECOMPUTING SCORING STRUCTURES FOR COMPLEMENTARY PARENT SETS")
-        stats["t"]["ccscore"] = time.time()
+        self._stats["ccscore"]["time_start"] = time.time()
         self._precompute_candidate_complement_scoring()
-        stats["t"]["ccscore"] = time.time() - stats["t"]["ccscore"]
+        self._stats["ccscore"]["time_used"] = (
+            time.time() - self._stats["ccscore"]["time_start"]
+        )
         if (
             self.p["run_mode"]["name"] == "budget"
             and "t" in self.p["run_mode"]["params"]
         ):
             log(f"time predicted: {round(self.p.gb.predicted['ccs'])}s")
-        log(f"time used: {round(stats['t']['ccscore'])}s")
+        log(f"time used: {round(self._stats['crscore']['time_used'])}s")
         log.br(2)
 
         log.h("RUNNING MCMC")
-        stats["t"]["mcmc"] = time.time()
+        self._stats["mcmc"]["time_start"] = time.time()
         self._mcmc_init()
-        stats["t"]["adaptive tempering"] = time.time() - stats["t"]["mcmc"]
         if self.p["run_mode"]["name"] == "anytime":
             self._mcmc_run_anytime()
-        else:
-            if self.p["mc3"]["name"] == "adaptive-incremental":
-                self._mcmc_run(t_elapsed_init=stats["t"]["adaptive tempering"])
-            else:
-                self._mcmc_run()
-        stats["t"]["mcmc"] = time.time() - stats["t"]["mcmc"]
-        log(f"time used: {round(stats['t']['mcmc'])}s")
+        if self.p["run_mode"]["name"] == "normal" or (
+            self.p["run_mode"]["name"] == "budget"
+            and "t" not in self.p["run_mode"]["params"]
+        ):
+            self._mcmc_run_normal()
+        if (
+            self.p["run_mode"]["name"] == "budget"
+            and "t" in self.p["run_mode"]["params"]
+        ):
+            self._mcmc_run_time_budget()
+        self._stats["mcmc"]["time_used"] = (
+            time.time() - self._stats["mcmc"]["time_start"]
+        )
+        log(f"time used: {round(self._stats['mcmc']['time_used'])}s")
         log.br(2)
 
         log.h("RUN STATISTICS")
@@ -1148,43 +1260,13 @@ class Gadget:
 
         for i in range(self.p["mcmc"]["n_indep"]):
 
-            if self.p["mc3"]["name"] == "adaptive-incremental":
-                self.log("Adaptive incremental tempering")
-                self.log.br()
-                self.mcmc.append(
-                    MC3.adaptive_incremental(
-                        PartitionMCMC(
-                            self.C,
-                            self.score,
-                            self.p["cons"]["d"],
-                            move_weights=self.p["mcmc"]["move_weights"],
-                        ),
-                        t_budget=self.p.gb.left()
-                        if self.p["run_mode"]["name"] == "budget"
-                        else None,
-                        stats=stats,
-                        log=self.log,
-                        **dict(
-                            dict(),
-                            **(
-                                self.p["mc3"]["params"]
-                                if "params" in self.p["mc3"]
-                                else dict()
-                            ),
-                        ),
-                    )
-                )
-                self.p["mc3"]["params"]["M"] = len(self.mcmc[0].chains)
-                self.log.br()
-
-            elif self.p["mc3"]["params"]["M"] == 1:
+            if self.p["mc3"]["params"]["M"] == 1:
                 self.mcmc.append(
                     PartitionMCMC(
                         self.C,
                         self.score,
                         self.p["cons"]["d"],
                         move_weights=self.p["mcmc"]["move_weights"],
-                        stats=stats,
                     )
                 )
 
@@ -1217,188 +1299,188 @@ class Gadget:
                     )
                 )
 
-    def _mcmc_run(self, t_elapsed_init=0):
-
-        r = 1000  # max number of iterations to plot in score trace
-
-        self.dags = list()
-        self.dag_scores = list()
-
-        R_scores = {
-            c: [
-                np.array([]) for i in range(r)
-            ]  # will contain up to r arrays of scores
-            # representing each mc3 chain
-            for c in range(self.p["mcmc"]["n_indep"])
-        }
-
-        inv_temps = {
-            c: [
-                np.array([]) for i in range(r)
-            ]  # will contain up to r arrays of inv_temps
-            # representing each mc3 chain
-            for c in range(self.p["mcmc"]["n_indep"])
-        }
-
-        timer = time.time()
-        first = True
-
-        if self.p["run_mode"]["name"] == "normal" or (
-            self.p["run_mode"]["name"] == "budget"
-            and "t" not in self.p["run_mode"]["params"]
-        ):
-            iters_burn_in = int(
-                self.p["mcmc"]["iters"]
-                / self.p["mc3"]["params"]["M"]
+    def _mcmc_run_normal(self):
+        def burn_in_cond():
+            return (
+                self._stats["mcmc"]["target_chain_iter_count"]
+                < self.p["mcmc"]["n_target_chain_iters"]
                 * self.p["mcmc"]["burn_in"]
             )
-            iters_burn_in = int(iters_burn_in)
-            iters_dag_sampling = (
-                self.p["mcmc"]["iters"] // self.p["mc3"]["params"]["M"]
-                - iters_burn_in
-            )
-            if self.p["mc3"]["name"] == "adaptive-incremental":
-                iters_burn_in -= int(
-                    stats["iters"]["adaptive tempering"]
-                    / self.p["mc3"]["params"]["M"]
-                )
-            burn_in_cond = lambda: t < iters_burn_in
-            mcmc_cond = lambda: t < iters_dag_sampling
-            dag_sample_cond = (
-                lambda: t
-                >= iters_dag_sampling / self.p["mcmc"]["n_dags"] * dag_count
+
+        def mcmc_cond():
+            return (
+                self._stats["mcmc"]["target_chain_iter_count"]
+                < self.p["mcmc"]["n_target_chain_iters"]
             )
 
-        elif (
-            self.p["run_mode"]["name"] == "budget"
-            and "t" in self.p["run_mode"]["params"]
-        ):
-            self.p.gb.budget["mcmc"] = self.p.gb.left()
-            t_b_burnin = self.p.gb.budget["mcmc"] * self.p["mcmc"]["burn_in"]
-            burn_in_cond = lambda: t_elapsed < t_b_burnin
-            mcmc_cond = (
-                lambda: dag_count < self.p["mcmc"]["n_dags"]
-                and t_elapsed < t_b_mcmc
+        def dag_sampling_cond():
+            return (
+                self._stats["after_burnin"]["target_chain_iter_count"]
+            ) >= (
+                self.p["mcmc"]["n_target_chain_iters"]
+                * (1 - self.p["mcmc"]["burn_in"])
+            ) / self.p[
+                "mcmc"
+            ][
+                "n_dags"
+            ] * len(
+                self.dags
             )
-            dag_sample_cond = lambda: dag_count < t_elapsed / t_per_dag
 
-        t = 0
-        t_elapsed = t_elapsed_init
-        t0 = time.time()
+        self._mcmc_run_burnin(burn_in_cond=burn_in_cond)
+        self._mcmc_run_dag_sampling(
+            mcmc_cond=mcmc_cond,
+            dag_sampling_cond=dag_sampling_cond,
+        )
+
+    def _mcmc_run_time_budget(self):
+        self._stats["burnin"]["deadline"] = (
+            time.time() + self.p.gb.left() * self.p["mcmc"]["burn_in"]
+        )
+        self._stats["mcmc"]["deadline"] = time.time() + self.p.gb.left()
+        self.p.gb.budget["mcmc"] = self.p.gb.left()
+
+        def burn_in_cond():
+            return time.time() < self._stats["burnin"]["deadline"]
+
+        def mcmc_cond():
+            return (
+                len(self.dags) < self.p["mcmc"]["n_dags"]
+                and time.time() < self._stats["mcmc"]["deadline"]
+            )
+
+        def dag_sampling_cond():
+            return (
+                len(self.dags)
+                < (time.time() - self._stats["burnin"]["deadline"])
+                / self._stats["mcmc"]["time_per_dag"]
+            )
+
+        self._mcmc_run_burnin(burn_in_cond=burn_in_cond)
+        self._stats["mcmc"]["time_per_dag"] = (
+            self._stats["mcmc"]["deadline"] - time.time()
+        ) / self.p["mcmc"]["n_dags"]
+        self._mcmc_run_dag_sampling(
+            mcmc_cond=mcmc_cond,
+            dag_sampling_cond=dag_sampling_cond,
+        )
+
+    def _mcmc_run_burnin(
+        self,
+        *,
+        burn_in_cond=None,
+    ):
+
+        self._stats["burnin"]["time_used"] = time.time()
         while burn_in_cond():
             for i in range(self.p["mcmc"]["n_indep"]):
                 R, R_score = self.mcmc[i].sample()
-                R_scores[i][t % r] = R_score
-                inv_temps[i][t % r] = self.mcmc[i].inverse_temperatures()
-                R, R_score = R[0], R_score[0]
-                if t > 0 and t % (r - 1) == 0:
-                    for row in R_scores[i]:
-                        self.log.score[i].numpy(np.expand_dims(row, 0))
-                    for row in inv_temps[i]:
-                        self.log.inv_temp[i].numpy(np.expand_dims(row, 0))
-            if time.time() - timer > self.p["logging"]["stats_period"]:
-                timer = time.time()
-                self.log.periodic_stats(self.mcmc[0].describe(), first)
-                self.log.progress(t, time.time() - t0)
-                if plot_trace:
-                    self.log.br()
-                    self.log.plot_score_trace(
-                        t, self.p["mc3"]["params"]["M"], R_scores
-                    )
-                else:
-                    self.log.r_scores(
-                        t, self.p["mc3"]["params"]["M"], R_scores
-                    )
-                first = False
 
-            t += 1
-            t_elapsed = t_elapsed_init + time.time() - t0
+                # if self.p["logging"]["verbose_prefix"]:
+                mcmc_stats = self.mcmc[i].describe()
+                cyclic_idx = (
+                    self._stats["mcmc"]["target_chain_iter_count"]
+                    % self._verbose_len
+                )
+                self._verbose["score"][i][cyclic_idx] = R_score
+                self._verbose["inv_temp"][i][cyclic_idx] = mcmc_stats[
+                    "inv_temp"
+                ]
+                if self.p["mc3"]["params"]["M"] > 1:
+                    self._verbose["mc3_swap_prob"][i][cyclic_idx] = mcmc_stats[
+                        "accept_prob"
+                    ]["mc3"]
+                    self._verbose["mc3_local_swap_prob"][i][
+                        cyclic_idx
+                    ] = mcmc_stats["accept_prob"]["local_mc3"]
+                if (
+                    self._stats["mcmc"]["target_chain_iter_count"] > 0
+                    and self._stats["mcmc"]["target_chain_iter_count"]
+                    % (self._verbose_len - 1)
+                    == 0
+                ):
+                    for verbose_output in self._verbose:
+                        for row in self._verbose[verbose_output][i]:
+                            self.log.verbose_logger[verbose_output][i].numpy(
+                                np.expand_dims(row, 0)
+                            )
+            self.log.periodic_stats()
+            self._stats["mcmc"]["target_chain_iter_count"] += 1
+            self._stats["burnin"]["target_chain_iter_count"] += 1
+        self._stats["burnin"]["iter_count"] = sum(
+            mcmc.describe()["iter_count"] for mcmc in self.mcmc
+        )
+        self._stats["burnin"]["time_used"] = (
+            time.time() - self._stats["burnin"]["time_used"]
+        )
 
-        stats["t"]["burn-in"] = time.time() - t0
-        if (
-            self.p["run_mode"]["name"] == "budget"
-            and "t" in self.p["run_mode"]["params"]
-        ):
-            t_b_mcmc = self.p["run_mode"]["params"]["t"] - (
-                time.time() - self.p.gb.t0
-            )
-            t_per_dag = t_b_mcmc / self.p["mcmc"]["n_dags"]
+    def _mcmc_run_dag_sampling(
+        self,
+        *,
+        mcmc_cond=None,
+        dag_sampling_cond=None,
+    ):
+
+        self._stats["after_burnin"]["time_start"] = time.time()
 
         self.log("Sampling DAGs...")
         self.log.br(2)
 
-        dag_count = 0
-        iters_burn_in = t
-        t = 0
-        t_elapsed = 0
-        t0 = time.time()
         while mcmc_cond():
-            if time.time() - timer > self.p["logging"]["stats_period"]:
-                timer = time.time()
-                self.log.periodic_stats(self.mcmc[0].describe(), first)
-                self.log.progress(
-                    t + iters_burn_in,
-                    time.time() - t0 + stats["t"]["burn-in"],
-                )
-                if plot_trace:
-                    self.log.br()
-                    self.log.plot_score_trace(
-                        t + iters_burn_in,
-                        self.p["mc3"]["params"]["M"],
-                        R_scores,
-                    )
-                else:
-                    self.log.r_scores(
-                        t + iters_burn_in,
-                        self.p["mc3"]["params"]["M"],
-                        R_scores,
-                    )
-                first = False
-            if dag_sample_cond():
-                # TODO: Fix stupidities in loop structure
-                for i in range(self.p["mcmc"]["n_indep"]):
-                    dag_count += 1
-                    R, R_score = self.mcmc[i].sample()
-                    R_scores[i][(t + iters_burn_in) % r] = R_score
-                    inv_temps[i][(t + iters_burn_in) % r] = self.mcmc[
-                        i
-                    ].inverse_temperatures()
-                    R, R_score = R[0], R_score[0]
-                    dag, score = self.score.sample_DAG(R)
+            self.log.periodic_stats()
+
+            for i in range(self.p["mcmc"]["n_indep"]):
+                R, R_score = self.mcmc[i].sample()
+                if dag_sampling_cond():
+                    dag, score = self.score.sample_DAG(R[0])
                     self.dags.append(dag)
                     self.dag_scores.append(score)
-            else:
-                for i in range(self.p["mcmc"]["n_indep"]):
-                    R, R_score = self.mcmc[i].sample()
-                    R_scores[i][(t + iters_burn_in) % r] = R_score
-                    inv_temps[i][(t + iters_burn_in) % r] = self.mcmc[
-                        i
-                    ].inverse_temperatures()
-                    R, R_score = R[0], R_score[0]
-            if t > 0 and t % (r - 1) == 0:
-                for i in range(self.p["mcmc"]["n_indep"]):
-                    for row in R_scores[i]:
-                        self.log.score[i].numpy(np.expand_dims(row, 0))
-                    for row in inv_temps[i]:
-                        self.log.inv_temp[i].numpy(np.expand_dims(row, 0))
 
-            t += 1
-            t_elapsed = time.time() - t0
-        stats["t"]["after burn-in"] = t_elapsed
+                if self.p["logging"]["verbose_prefix"]:
+                    mcmc_stats = self.mcmc[i].describe()
+                    cyclic_idx = (
+                        self._stats["mcmc"]["target_chain_iter_count"]
+                        % self._verbose_len
+                    )
+                    self._verbose["score"][i][cyclic_idx] = R_score
+                    self._verbose["inv_temp"][i][cyclic_idx] = mcmc_stats[
+                        "inv_temp"
+                    ]
+                    self._verbose["mc3_swap_prob"][i][cyclic_idx] = mcmc_stats[
+                        "accept_prob"
+                    ]["mc3"]
+                    self._verbose["mc3_local_swap_prob"][i][
+                        cyclic_idx
+                    ] = mcmc_stats["accept_prob"]["local_mc3"]
+                    if (
+                        self._stats["mcmc"]["target_chain_iter_count"] > 0
+                        and self._stats["mcmc"]["target_chain_iter_count"]
+                        % (self._verbose_len - 1)
+                        == 0
+                    ):
+                        for verbose_output in self._verbose:
+                            for row in self._verbose[verbose_output][i]:
+                                self.log.verbose_logger[verbose_output][
+                                    i
+                                ].numpy(np.expand_dims(row, 0))
 
-        self.log.periodic_stats(self.mcmc[0].describe(), first)
+            self._stats["mcmc"]["target_chain_iter_count"] += 1
+            self._stats["after_burnin"]["target_chain_iter_count"] += 1
 
-        stats["iters"]["burn-in"] = (
-            iters_burn_in * self.p["mc3"]["params"]["M"]
+        self._stats["mcmc"]["iter_count"] = sum(
+            mcmc.describe()["iter_count"] for mcmc in self.mcmc
         )
-        stats["iters"]["after burn-in"] = t * self.p["mc3"]["params"]["M"]
-        stats["iters"]["total"] = (iters_burn_in + t) * self.p["mc3"][
-            "params"
-        ]["M"]
-        if "adaptive tempering" in stats["iters"]:
-            stats["iters"]["total"] += stats["iters"]["adaptive tempering"]
+        self._stats["after_burnin"]["iter_count"] = (
+            self._stats["mcmc"]["iter_count"]
+            - self._stats["burnin"]["iter_count"]
+        )
+        self._stats["after_burnin"]["time_used"] = (
+            time.time() - self._stats["after_burnin"]["time_start"]
+        )
 
     def _mcmc_run_anytime(self):
+
+        # TODO: Needs to be fixed
 
         r = 1000  # max number of iterations to plot in score trace
 
