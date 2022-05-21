@@ -1365,6 +1365,33 @@ class Gadget:
             dag_sampling_cond=dag_sampling_cond,
         )
 
+    def _update_verbose_logs(self, indep_chain_idx, R_score):
+        mcmc_stats = self.mcmc[indep_chain_idx].describe()
+        cyclic_idx = (
+            self._stats["mcmc"]["target_chain_iter_count"] % self._verbose_len
+        )
+        self._verbose["score"][indep_chain_idx][cyclic_idx] = R_score
+        self._verbose["inv_temp"][indep_chain_idx][cyclic_idx] = mcmc_stats[
+            "inv_temp"
+        ]
+        self._verbose["mc3_swap_prob"][indep_chain_idx][
+            cyclic_idx
+        ] = mcmc_stats["accept_prob"]["mc3"]
+        self._verbose["mc3_local_swap_prob"][indep_chain_idx][
+            cyclic_idx
+        ] = mcmc_stats["accept_prob"]["local_mc3"]
+        if (
+            self._stats["mcmc"]["target_chain_iter_count"] > 0
+            and self._stats["mcmc"]["target_chain_iter_count"]
+            % (self._verbose_len - 1)
+            == 0
+        ):
+            for verbose_output in self._verbose:
+                for row in self._verbose[verbose_output][indep_chain_idx]:
+                    self.log.verbose_logger[verbose_output][
+                        indep_chain_idx
+                    ].numpy(np.expand_dims(row, 0))
+
     def _mcmc_run_burnin(
         self,
         *,
@@ -1375,38 +1402,12 @@ class Gadget:
         while burn_in_cond():
             for i in range(self.p["mcmc"]["n_indep"]):
                 R, R_score = self.mcmc[i].sample()
+                self._update_verbose_logs(i, R_score)
 
-                # if self.p["logging"]["verbose_prefix"]:
-                mcmc_stats = self.mcmc[i].describe()
-                cyclic_idx = (
-                    self._stats["mcmc"]["target_chain_iter_count"]
-                    % self._verbose_len
-                )
-                self._verbose["score"][i][cyclic_idx] = R_score
-                self._verbose["inv_temp"][i][cyclic_idx] = mcmc_stats[
-                    "inv_temp"
-                ]
-                if self.p["mc3"]["params"]["M"] > 1:
-                    self._verbose["mc3_swap_prob"][i][cyclic_idx] = mcmc_stats[
-                        "accept_prob"
-                    ]["mc3"]
-                    self._verbose["mc3_local_swap_prob"][i][
-                        cyclic_idx
-                    ] = mcmc_stats["accept_prob"]["local_mc3"]
-                if (
-                    self._stats["mcmc"]["target_chain_iter_count"] > 0
-                    and self._stats["mcmc"]["target_chain_iter_count"]
-                    % (self._verbose_len - 1)
-                    == 0
-                ):
-                    for verbose_output in self._verbose:
-                        for row in self._verbose[verbose_output][i]:
-                            self.log.verbose_logger[verbose_output][i].numpy(
-                                np.expand_dims(row, 0)
-                            )
             self.log.periodic_stats()
             self._stats["mcmc"]["target_chain_iter_count"] += 1
             self._stats["burnin"]["target_chain_iter_count"] += 1
+
         self._stats["burnin"]["iter_count"] = sum(
             mcmc.describe()["iter_count"] for mcmc in self.mcmc
         )
@@ -1422,48 +1423,19 @@ class Gadget:
     ):
 
         self._stats["after_burnin"]["time_start"] = time.time()
-
         self.log("Sampling DAGs...")
         self.log.br(2)
 
         while mcmc_cond():
-            self.log.periodic_stats()
-
             for i in range(self.p["mcmc"]["n_indep"]):
                 R, R_score = self.mcmc[i].sample()
                 if dag_sampling_cond():
                     dag, score = self.score.sample_DAG(R[0])
                     self.dags.append(dag)
                     self.dag_scores.append(score)
+                self._update_verbose_logs(i, R_score)
 
-                if self.p["logging"]["verbose_prefix"]:
-                    mcmc_stats = self.mcmc[i].describe()
-                    cyclic_idx = (
-                        self._stats["mcmc"]["target_chain_iter_count"]
-                        % self._verbose_len
-                    )
-                    self._verbose["score"][i][cyclic_idx] = R_score
-                    self._verbose["inv_temp"][i][cyclic_idx] = mcmc_stats[
-                        "inv_temp"
-                    ]
-                    self._verbose["mc3_swap_prob"][i][cyclic_idx] = mcmc_stats[
-                        "accept_prob"
-                    ]["mc3"]
-                    self._verbose["mc3_local_swap_prob"][i][
-                        cyclic_idx
-                    ] = mcmc_stats["accept_prob"]["local_mc3"]
-                    if (
-                        self._stats["mcmc"]["target_chain_iter_count"] > 0
-                        and self._stats["mcmc"]["target_chain_iter_count"]
-                        % (self._verbose_len - 1)
-                        == 0
-                    ):
-                        for verbose_output in self._verbose:
-                            for row in self._verbose[verbose_output][i]:
-                                self.log.verbose_logger[verbose_output][
-                                    i
-                                ].numpy(np.expand_dims(row, 0))
-
+            self.log.periodic_stats()
             self._stats["mcmc"]["target_chain_iter_count"] += 1
             self._stats["after_burnin"]["target_chain_iter_count"] += 1
 
