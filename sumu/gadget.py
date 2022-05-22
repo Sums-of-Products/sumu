@@ -55,6 +55,7 @@ class Defaults:
                         "local_accept_history_size": 1000,
                         "update_freq": 100,
                         "smoothing": 2.0,
+                        "slowdown": 1.0,
                     },
                 },
                 name

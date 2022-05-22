@@ -478,6 +478,7 @@ class MC3(Describable):
             and self._stats["target_chain_iter_count"] % self.update_freq == 0
         ):
             self.adapt_temperatures()
+            self.update_freq = round(self.slowdown * self.update_freq)
 
         return [c.R for c in self.chains], np.array(
             [sum(c.R_node_scores) for c in self.chains]
