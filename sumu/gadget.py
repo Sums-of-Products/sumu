@@ -537,7 +537,7 @@ class GadgetLogger(Logger):
             time.time() - self._time_last_periodic_stats
             < self.g.p["logging"]["stats_period"]
         ):
-            return
+            return False
 
         self._time_last_periodic_stats = time.time()
 
@@ -551,6 +551,7 @@ class GadgetLogger(Logger):
             self.last_root_partition_scores()
         self.move_probs(chain_stats)
         self.br()
+        return True
 
     def move_probs(self, stats):
         self.h("Move acceptance probabilities", secnum=False)
@@ -1046,6 +1047,7 @@ class Gadget:
                 time_start=None,
                 time_used=0,
                 time_per_dag=0,
+                thinning=1,
             ),
             burnin=dict(
                 target_chain_iter_count=0,
@@ -1156,8 +1158,6 @@ class Gadget:
         log.h("RUNNING MCMC")
         self._stats["mcmc"]["time_start"] = time.time()
         self._mcmc_init()
-        if self.p["run_mode"]["name"] == "anytime":
-            self._mcmc_run_anytime()
         if self.p["run_mode"]["name"] == "normal" or (
             self.p["run_mode"]["name"] == "budget"
             and "t" not in self.p["run_mode"]["params"]
@@ -1168,6 +1168,8 @@ class Gadget:
             and "t" in self.p["run_mode"]["params"]
         ):
             self._mcmc_run_time_budget()
+        if self.p["run_mode"]["name"] == "anytime":
+            self._mcmc_run_anytime()
         self._stats["mcmc"]["time_used"] = (
             time.time() - self._stats["mcmc"]["time_start"]
         )
@@ -1365,6 +1367,61 @@ class Gadget:
             dag_sampling_cond=dag_sampling_cond,
         )
 
+    def _mcmc_run_anytime(self):
+        def burn_in_cond():
+            return True
+
+        def mcmc_cond():
+            return True
+
+        def dag_sampling_cond():
+            return (
+                self._stats["after_burnin"]["target_chain_iter_count"] > 0
+                and self._stats["after_burnin"]["target_chain_iter_count"]
+                % self._stats["mcmc"]["thinning"]
+                == 0
+            )
+
+        def periodic_msg():
+            self.log(
+                f"{len(self.dags)} DAGs "
+                f"with thinning {self._stats['mcmc']['thinning']}."
+            )
+
+        def after_dag_sampling():
+            if len(self.dags) == 2 * self.p["mcmc"]["n_dags"]:
+                self.dags = self.dags[0::2]
+                self._stats["mcmc"]["thinning"] *= 2
+
+        try:
+            self._mcmc_run_burnin(burn_in_cond=burn_in_cond)
+        except KeyboardInterrupt:
+            self._stats["burnin"]["iter_count"] = sum(
+                mcmc.describe()["iter_count"] for mcmc in self.mcmc
+            )
+            self._stats["burnin"]["time_used"] = (
+                time.time() - self._stats["burnin"]["time_start"]
+            )
+
+        try:
+            self._mcmc_run_dag_sampling(
+                mcmc_cond=mcmc_cond,
+                dag_sampling_cond=dag_sampling_cond,
+                periodic_msg=periodic_msg,
+                after_dag_sampling=after_dag_sampling,
+            )
+        except KeyboardInterrupt:
+            self._stats["mcmc"]["iter_count"] = sum(
+                mcmc.describe()["iter_count"] for mcmc in self.mcmc
+            )
+            self._stats["after_burnin"]["iter_count"] = (
+                self._stats["mcmc"]["iter_count"]
+                - self._stats["burnin"]["iter_count"]
+            )
+            self._stats["after_burnin"]["time_used"] = (
+                time.time() - self._stats["after_burnin"]["time_start"]
+            )
+
     def _update_verbose_logs(self, indep_chain_idx, R_score):
         mcmc_stats = self.mcmc[indep_chain_idx].describe()
         cyclic_idx = (
@@ -1398,7 +1455,7 @@ class Gadget:
         burn_in_cond=None,
     ):
 
-        self._stats["burnin"]["time_used"] = time.time()
+        self._stats["burnin"]["time_start"] = time.time()
         while burn_in_cond():
             for i in range(self.p["mcmc"]["n_indep"]):
                 R, R_score = self.mcmc[i].sample()
@@ -1412,7 +1469,7 @@ class Gadget:
             mcmc.describe()["iter_count"] for mcmc in self.mcmc
         )
         self._stats["burnin"]["time_used"] = (
-            time.time() - self._stats["burnin"]["time_used"]
+            time.time() - self._stats["burnin"]["time_start"]
         )
 
     def _mcmc_run_dag_sampling(
@@ -1420,6 +1477,8 @@ class Gadget:
         *,
         mcmc_cond=None,
         dag_sampling_cond=None,
+        periodic_msg=None,
+        after_dag_sampling=None,
     ):
 
         self._stats["after_burnin"]["time_start"] = time.time()
@@ -1433,9 +1492,12 @@ class Gadget:
                     dag, score = self.score.sample_DAG(R[0])
                     self.dags.append(dag)
                     self.dag_scores.append(score)
+                    if after_dag_sampling:
+                        after_dag_sampling()
                 self._update_verbose_logs(i, R_score)
 
-            self.log.periodic_stats()
+            if self.log.periodic_stats() and periodic_msg:
+                periodic_msg()
             self._stats["mcmc"]["target_chain_iter_count"] += 1
             self._stats["after_burnin"]["target_chain_iter_count"] += 1
 
@@ -1449,130 +1511,6 @@ class Gadget:
         self._stats["after_burnin"]["time_used"] = (
             time.time() - self._stats["after_burnin"]["time_start"]
         )
-
-    def _mcmc_run_anytime(self):
-
-        # TODO: Needs to be fixed
-
-        r = 1000  # max number of iterations to plot in score trace
-
-        self.dags = list()
-        self.dag_scores = list()
-
-        R_scores = {
-            c: [
-                np.array([]) for i in range(r)
-            ]  # will contain up to r arrays of scores
-            # representing each mc3 chain
-            for c in range(self.p["mcmc"]["n_indep"])
-        }
-
-        inv_temps = {
-            c: [
-                np.array([]) for i in range(r)
-            ]  # will contain up to r arrays of inv_temps
-            # representing each mc3 chain
-            for c in range(self.p["mcmc"]["n_indep"])
-        }
-
-        timer = time.time()
-        t0 = timer
-        first = True
-
-        try:
-            t_b = -1
-            while True:
-                t_b += 1
-                for i in range(self.p["mcmc"]["n_indep"]):
-                    R, R_score = self.mcmc[i].sample()
-                    R_scores[i][t_b % r] = R_score
-                    inv_temps[i][t_b % r] = self.mcmc[i].inverse_temperatures()
-                    R, R_score = R[0], R_score[0]
-                if t_b > 0 and t_b % (r - 1) == 0:
-                    for row in R_scores[i]:
-                        self.log.score[i].numpy(np.expand_dims(row, 0))
-                    for row in inv_temps[i]:
-                        self.log.inv_temp[i].numpy(np.expand_dims(row, 0))
-                if time.time() - timer > self.p["logging"]["stats_period"]:
-                    timer = time.time()
-                    self.log.periodic_stats(self.mcmc[0].describe(), first)
-                    self.log.progress(t_b, 0)
-                    if plot_trace:
-                        self.log.br()
-                        self.log.plot_score_trace(t_b, R_scores)
-                    else:
-                        self.log.r_scores(
-                            t_b, self.p["mc3"]["params"]["M"], R_scores
-                        )
-                    first = False
-        except KeyboardInterrupt:
-            stats["t"]["burn-in"] = time.time() - t0
-            stats["iters"]["burn-in"] = t_b
-
-        self.log("Sampling DAGs...")
-        self.log.br(2)
-
-        try:
-            t0 = time.time()
-            thinning = 1
-            dag_count = 0
-            t = -1
-            while True:
-                t += 1
-                if time.time() - timer > self.p["logging"]["stats_period"]:
-                    timer = time.time()
-                    self.log.periodic_stats(self.mcmc[0].describe(), first)
-                    self.log.progress(t_b + t, 0)
-                    if plot_trace:
-                        self.log.br()
-                        self.log.plot_score_trace(t + t_b, R_scores)
-                    else:
-                        self.log.r_scores(
-                            t + t_b, self.p["mc3"]["params"]["M"], R_scores
-                        )
-                    first = False
-                    msg = "{} DAGs with thinning {}."
-                    self.log(msg.format(len(self.dags), thinning))
-                    self.log.br()
-                if t > 0 and t % thinning == 0:
-                    for i in range(self.p["mcmc"]["n_indep"]):
-                        dag_count += 1
-                        R, R_score = self.mcmc[i].sample()
-                        R_scores[i][(t + t_b) % r] = R_score
-                        inv_temps[i][(t + t_b) % r] = self.mcmc[
-                            i
-                        ].inverse_temperatures()
-                        R, R_score = R[0], R_score[0]
-                        dag, score = self.score.sample_DAG(R)
-                        self.dags.append(dag)
-                        self.dag_scores.append(score)
-                        if dag_count == 2 * self.p["mcmc"]["n_dags"]:
-                            self.dags = self.dags[0::2]
-                            dag_count = len(self.dags)
-                            thinning *= 2
-                else:
-                    for i in range(self.p["mcmc"]["n_indep"]):
-                        R, R_score = self.mcmc[i].sample()
-                        R_scores[i][(t + t_b) % r] = R_score
-                        inv_temps[i][(t + t_b) % r] = self.mcmc[
-                            i
-                        ].inverse_temperatures()
-                        R, R_score = R[0], R_score[0]
-                if t % (r - 1) == 0:
-                    for row in R_scores[i]:
-                        self.log.score[i].numpy(np.expand_dims(row, 0))
-                    for row in inv_temps[i]:
-                        self.log.inv_temp[i].numpy(np.expand_dims(row, 0))
-
-        except KeyboardInterrupt:
-            stats["t"]["after burn-in"] = time.time() - t0
-            stats["iters"]["after burn-in"] = t
-            stats["iters"]["total"] = (
-                stats["iters"]["burn-in"] + stats["iters"]["after burn-in"]
-            )
-
-        if first:
-            self.log.periodic_stats(self.mcmc[0].describe(), first)
 
 
 class LocalScore:

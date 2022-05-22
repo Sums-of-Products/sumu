@@ -227,7 +227,7 @@ def test_Gadget_runs_empty_data_discrete():
     assert True
 
 
-def _test_Gadget_runs_with_anytime_mode():
+def test_Gadget_runs_with_anytime_mode():
 
     import os
     import signal
