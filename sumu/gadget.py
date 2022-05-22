@@ -470,10 +470,9 @@ class GadgetLogger(Logger):
             self.verbose_logger[verbose_output] = dict()
             for i in range(gadget.p["mcmc"]["n_indep"]):
                 if log_params["verbose_prefix"] is not None:
-                    verbose_log_path = (
-                        Path(log_params["verbose_prefix"])
-                        .absolute()
-                        .with_suffix(f".{i}.{verbose_output}.tmp")
+                    verbose_log_path = Path(
+                        str(Path(log_params["verbose_prefix"]).absolute())
+                        + f".{i}.{verbose_output}.tmp"
                     )
                     # Just to raise error if the final log files
                     # without .tmp suffix exist when overwrite=False
