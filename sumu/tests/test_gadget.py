@@ -260,6 +260,7 @@ def test_Gadget_runs_with_anytime_mode():
     signal.signal(signal.SIGALRM, handler)
     signal.alarm(5)
     dags, meta = gadget_anytime()
+    signal.alarm(0)
     assert True
 
 
