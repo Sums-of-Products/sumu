@@ -1431,13 +1431,12 @@ class Gadget:
         self._verbose["inv_temp"][indep_chain_idx][cyclic_idx] = mcmc_stats[
             "inv_temp"
         ]
-        # added .get such that this works with only 1 MCMC chain
         self._verbose["mc3_swap_prob"][indep_chain_idx][
             cyclic_idx
-        ] = mcmc_stats["accept_prob"].get("mc3", -1)
+        ] = mcmc_stats["accept_prob"].get("mc3", np.array([]))
         self._verbose["mc3_local_swap_prob"][indep_chain_idx][
             cyclic_idx
-        ] = mcmc_stats["accept_prob"].get("local_mc3", -1)
+        ] = mcmc_stats["accept_prob"].get("local_mc3", np.array([]))
         if (
             self._stats["mcmc"]["target_chain_iter_count"] > 0
             and self._stats["mcmc"]["target_chain_iter_count"]
