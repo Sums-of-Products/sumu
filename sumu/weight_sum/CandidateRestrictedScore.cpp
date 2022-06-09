@@ -20,17 +20,9 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
 												   int* C, int n, int K,
 												   int cc_limit, double cc_tol,
 												   double isum_tol,
-												   string logfile,
 												   bool silent) {
 
-  coutbuf = std::cout.rdbuf();
-  // Second argument is "append".
-  ofstream out(logfile, ios_base::app);
-  if (!logfile.empty()) {
-	// Needs to be reset in destructor, if not => segfault.
-	cout.rdbuf(out.rdbuf());
-  }
-  else if (silent) {
+  if (silent) {
 	cout.rdbuf(0);
   }
 
@@ -93,11 +85,6 @@ CandidateRestrictedScore::~CandidateRestrictedScore() {
   }
   delete [] isums;
   delete [] m_score_array;
-  cout.rdbuf(coutbuf);
-}
-
-void CandidateRestrictedScore::reset_cout() {
-  cout.rdbuf(coutbuf);
 }
 
 void CandidateRestrictedScore::precompute_tau_simple() {

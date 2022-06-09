@@ -27,11 +27,9 @@ public:
   int m_cc_limit;
 
   CandidateRestrictedScore(double* scores, int* C, int n, int K, int cc_limit, double cc_tol, double isum_tol,
-						   string logfile,
 						   bool silent
 						   );
   ~CandidateRestrictedScore();
-  void reset_cout();
   Treal sum(int v, bm32 U, bm32 T, bool isum=false);
   Treal sum(int v, bm32 U);
   pair<bm32, double> sample_pset(int v, bm32 U, bm32 T, double wcum);

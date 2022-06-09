@@ -29,12 +29,10 @@ cdef extern from "CandidateRestrictedScore.hpp":
 
         CppCandidateRestrictedScore(double* w, int* C, int n, int K,
                                     int cc_limit, double cc_tol, double isum_tol,
-                                    string logfile,
                                     bool silent
                                     )
         Treal sum(int v, bm32 U, bm32 T, bool isum)
         Treal sum(int v, bm32 U)
-        void reset_cout()
         pair[bm32, double] sample_pset(int v, bm32 U, bm32 T, double wcum)
         pair[bm32, double] sample_pset(int v, bm32 U, double wcum)
 
@@ -59,7 +57,6 @@ cdef extern from "IntersectSums.hpp":
     cdef cppclass IntersectSums:
 
         IntersectSums(double *w, bm64 * pset, bm64 m, int n, double eps)
-        void dummy()
         double scan_sum_64(double w, bm64 U, bm64 T, bm64 t_ub)
         double scan_sum_128(double w, bm128 U, bm128 T, bm64 t_ub)
         double scan_sum_192(double w, bm192 U, bm192 T, bm64 t_ub)
@@ -90,15 +87,11 @@ cdef class CandidateRestrictedScore:
                                                        score_array.shape[0],
                                                        K, cc_cache_size,
                                                        cc_tolerance, pruning_eps,
-                                                       logfile.encode('utf-8'),
                                                        silent
                                                        )
 
     def __dealloc__(self):
         del self.thisptr
-
-    def reset_cout(self):
-        self.thisptr.reset_cout()
 
     def sum(self, int v, bm32 U, bm32 T=0, isum=False):
         if T == 0:

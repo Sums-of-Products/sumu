@@ -16,13 +16,23 @@ def test_Gadget_empirical_edge_prob_error_decreases():
         # generic MCMC parameters
         "mcmc": {
             "n_indep": 1,
-            "iters": 300000,
+            "n_target_chain_iters": 50000,
             "burn_in": 0.5,
             "n_dags": 10000,
             "move_weights": [1, 1, 16],
         },
         # Metropolis coupling
-        "mc3": {"name": "linear", "M": 6},
+        # "mc3": {"name": "linear", "params": {"M": 6}},
+        "mc3": {
+            "name": "adaptive",
+            "params": {
+                "M": 2,
+                "p_target": 0.234,
+                "delta_t_init": 0.5,
+                "local_accept_history_size": 1000,
+                "update_freq": 100,
+            },
+        },
         # score to use and its parameters
         "score": {"name": "bdeu", "params": {"ess": 10}},
         # modular structure prior and its parameters
@@ -69,7 +79,7 @@ def test_Gadget_runs_n_between_2_and_64():
     g = sumu.Gadget(
         data=data,
         mcmc={
-            "iters": 200,
+            "n_target_chain_iters": 200,
             "burn_in": 0.5,
             "n_dags": 50,
         },
@@ -90,7 +100,7 @@ def test_Gadget_runs_n_between_65_and_128():
     g = sumu.Gadget(
         data=data,
         mcmc={
-            "iters": 200,
+            "n_target_chain_iters": 200,
             "burn_in": 0.5,
             "n_dags": 50,
         },
@@ -111,7 +121,7 @@ def test_Gadget_runs_n_between_129_and_192():
     g = sumu.Gadget(
         data=data,
         mcmc={
-            "iters": 200,
+            "n_target_chain_iters": 200,
             "burn_in": 0.5,
             "n_dags": 50,
         },
@@ -132,7 +142,7 @@ def test_Gadget_runs_n_between_193_and_256():
     g = sumu.Gadget(
         data=data,
         mcmc={
-            "iters": 200,
+            "n_target_chain_iters": 200,
             "burn_in": 0.5,
             "n_dags": 50,
         },
@@ -155,7 +165,7 @@ def test_Gadget_runs_n_greater_than_256_continuous():
     sumu.Gadget(
         data=data,
         mcmc={
-            "iters": 200,
+            "n_target_chain_iters": 200,
             "burn_in": 0.5,
             "n_dags": 50,
         },
@@ -174,7 +184,7 @@ def test_Gadget_runs_n_greater_than_256_discrete():
     sumu.Gadget(
         data=data,
         mcmc={
-            "iters": 200,
+            "n_target_chain_iters": 200,
             "burn_in": 0.5,
             "n_dags": 50,
         },
@@ -190,7 +200,7 @@ def test_Gadget_runs_empty_data_continuous():
     sumu.Gadget(
         data=data,
         mcmc={
-            "iters": 200,
+            "n_target_chain_iters": 200,
             "burn_in": 0.5,
             "n_dags": 50,
         },
@@ -206,7 +216,7 @@ def test_Gadget_runs_empty_data_discrete():
     sumu.Gadget(
         data=data,
         mcmc={
-            "iters": 200,
+            "n_target_chain_iters": 200,
             "burn_in": 0.5,
             "n_dags": 50,
         },
@@ -282,7 +292,7 @@ sumu.Gadget(
 data=data,
 run_mode={"name": "budget", "params": {"mem": 1000}},
 cons={"K": 20, "d": 2},
-mcmc={"iters": 1},
+mcmc={"n_target_chain_iters": 1},
 mc3={"name": "linear", "M": 1},
 candp={"name": "rnd"},
 ).sample()"""
@@ -300,25 +310,36 @@ candp={"name": "rnd"},
 
 def test_adaptive_tempering():
 
+    bnet = "sachs"
+    n = 100
+    t = 60
+
+    p_target = 0.234
+    slack = 0.06
     data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
-    bn_path = data_path / "sachs.dsc"
+    bn_path = data_path / f"{bnet}.dsc"
     bn = sumu.DiscreteBNet.read_file(bn_path)
-    data = bn.sample(100)
-    g = sumu.Gadget(data=data, mcmc={"iters": 10000}, mc3={"name": "adaptive"})
-    dags, meta = g.sample()
-    inv_temps = meta["chains"][0]["inv_temperatures"]
-    acc_probs = meta["stats"]["mc3"]["accept_ratio"]
-    in_range_ratio = sum([p > 0.2 and p < 0.3 for p in acc_probs]) / len(
-        acc_probs
+    data = bn.sample(n)
+    g = sumu.Gadget(
+        data=data,
+        run_mode={"name": "budget", "params": {"t": t}},
+        # mcmc={"iters": 30000},
+        mc3={
+            "name": "adaptive",
+            "params": {
+                "M": 2,
+                "p_target": p_target,
+                "delta_t_init": 0.5,
+                "local_accept_history_size": 1000,
+                "update_freq": 100,
+                "smoothing": 2.0,
+            },
+        },
     )
-    mae = np.mean([abs(0.25 - p) for p in acc_probs])
-    print(f"Ratio of swap probs in range: {in_range_ratio}")
-    print(f"Swap prob Mean Absolute Error: {mae}")
-    print(inv_temps)
-    assert inv_temps == sorted(inv_temps)
-    assert inv_temps[0] == 0.0 and inv_temps[-1] == 1.0
-    assert len([i for i in inv_temps if i == 0.0]) == 1
-    assert len([i for i in inv_temps if i == 1.0]) == 1
+    dags, meta = g.sample()
+
+    acc_probs = meta["mcmc"]["accept_prob"]["mc3"][:-1]
+    assert all(acc_probs > p_target - slack)
 
 
 def test_Gadget_runs_without_Metropolis():
@@ -327,7 +348,7 @@ def test_Gadget_runs_without_Metropolis():
         data=data,
         cons={"K": 8},
         mcmc={"iters": 1000},
-        mc3={"name": "linear", "M": 1},
+        mc3={"params": {"M": 1}},
     ).sample()
     assert True
 
@@ -337,8 +358,9 @@ if __name__ == "__main__":
     # test_Gadget_runs_n_between_65_and_128()
     # test_Gadget_runs_n_between_129_and_192()
     # test_Gadget_runs_n_between_193_and_256()
-    test_Gadget_empirical_edge_prob_error_decreases()
-    # test_Gadget_runs_n_greater_than_256_discrete()
+    # test_Gadget_empirical_edge_prob_error_decreases()
+    test_Gadget_runs_n_greater_than_256_discrete()
     # test_Gadget_runs_with_anytime_mode()
     # test_Gadget_stays_in_budget()
     # test_adaptive_tempering()
+    # test_Gadget_runs_without_Metropolis()
