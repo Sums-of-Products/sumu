@@ -4,8 +4,8 @@ import sumu
 
 
 def test_data_info_is_correct():
-    info = sumu.Data(np.random.rand(10, 3)).info
-    assert info["no. variables"] == 3
+    info = sumu.Data(np.random.rand(10, 4)).info
+    assert info["no. variables"] == 4
     assert info["no. data points"] == 10
     assert info["type of data"] == "continuous"
 
