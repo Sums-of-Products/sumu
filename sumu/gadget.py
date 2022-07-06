@@ -44,7 +44,7 @@ class Defaults:
                 "n_dags": 10000,
                 "move_weights": [1, 1, 2],
             },
-            "mc3": lambda name: {
+            "metropolis_coupling_scheme": lambda name: {
                 name
                 == "adaptive": {
                     "name": name,
@@ -67,19 +67,22 @@ class Defaults:
             "score": lambda discrete: {"name": "bdeu", "params": {"ess": 10}}
             if discrete
             else {"name": "bge"},
-            "prior": {"name": "fair"},
-            "cons": {
+            "structure_prior": {"name": "fair"},
+            "constraints": {
                 "max_id": -1,
                 "K": lambda n: min(n - 1, 16),
                 "d": lambda n: min(n - 1, 3),
                 "pruning_eps": 0.001,
                 "score_sum_eps": 0.1,
             },
-            "candp": {
+            "candidate_parent_algorithm": {
                 "name": "greedy",
                 "params": {"k": 6, "criterion": "score"},
             },
-            "catc": {"tolerance": 2 ** -32, "cache_size": 10 ** 7},
+            "catastrophic_cancellation": {
+                "tolerance": 2 ** -32,
+                "cache_size": 10 ** 7,
+            },
             "logging": {
                 "silent": False,
                 "verbose_prefix": None,
@@ -100,14 +103,17 @@ class GadgetParameters:
         self,
         *,
         data,
+        validate_params=True,
         run_mode=dict(),
         mcmc=dict(),
-        mc3=dict(),
+        metropolis_coupling_scheme=dict(),
         score=dict(),
-        prior=dict(),
-        cons=dict(),
-        candp=dict(),
-        catc=dict(),
+        structure_prior=dict(),
+        constraints=dict(),
+        candidate_parent_algorithm=dict(),
+        candidate_parents_path=None,
+        candidate_parents=None,
+        catastrophic_cancellation=dict(),
         logging=dict(),
     ):
         # Save parameters initially given by user.
@@ -116,13 +122,20 @@ class GadgetParameters:
         del self.init["self"]
         del self.init["data"]
 
+        # useful to set this to False when developing new features
+        if validate.is_boolean(
+            validate_params, msg="'validate_params' should be boolean"
+        ):
+            self._validate_parameters()
+        del self.init["validate_params"]
+
         self.data = Data(data)
         self.default = Defaults()()
         self.p = copy.deepcopy(self.init)
 
         self._populate_default_parameters()
         self._complete_user_given_parameters()
-        self._validate_parameters()
+
         # if self.p["run_mode"]["name"] == "normal":
         #    self._adjust_inconsistent_parameters()
         if self.p["run_mode"]["name"] == "budget":
@@ -132,27 +145,77 @@ class GadgetParameters:
                 self._adjust_to_mem_budget()
 
     def _validate_parameters(self):
-        # only validating possible user given candidate parents for now
-        if "name" not in self.p["candp"] and "path" not in self.p["candp"]:
-            validate.candidates(self.p["candp"])
+        validate.run_mode_args(self.init["run_mode"])
+        validate.mcmc_args(self.init["mcmc"])
+        validate.metropolis_coupling_scheme_args(
+            self.init["metropolis_coupling_scheme"]
+        )
+        validate.score_args(self.init["score"])
+        validate.structure_prior_args(self.init["structure_prior"])
+        validate.constraints_args(self.init["constraints"])
+        validate.catastrophic_cancellation_args(
+            self.init["catastrophic_cancellation"]
+        )
+        validate.logging_args(self.init["logging"])
+        # Ensure candidate parents are set only by one of the three ways and
+        # remove all except the used param from self.init.
+        # If none of the ways are set use the defaults for
+        # candidate_parent_algorithm.
+        # Finally, validate the used way.
+        alt_candp_params = [
+            "candidate_parent_algorithm",
+            "candidate_parents_path",
+            "candidate_parents",
+        ]
+        validate.max_n_truthy(
+            1,
+            [self.init[k] for k in alt_candp_params],
+            msg=f"only one of {alt_candp_params} can be set",
+        )
+        removed = list()
+        for k in alt_candp_params:
+            if not bool(self.init[k]):
+                del self.init[k]
+                removed.append(k)
+        if len(removed) == 3:
+            self.init[alt_candp_params[0]] = dict()
+        if alt_candp_params[0] in self.init:
+            validate.candidate_parent_algorithm_args(
+                self.init[alt_candp_params[0]]
+            )
+        if alt_candp_params[1] in self.init:
+            validate.is_string(
+                self.init[alt_candp_params[1]],
+                msg=f"'{alt_candp_params[1]}' should be string",
+            )
+        if alt_candp_params[2] in self.init:
+            validate.candidates(self.init[alt_candp_params[2]])
 
     def _populate_default_parameters(self):
         # Some defaults are defined as functions of data.
         # Evaluate the functions here.
-        self.default["cons"]["K"] = self.default["cons"]["K"](self.data.n)
-        self.default["cons"]["d"] = self.default["cons"]["d"](self.data.n)
+        self.default["constraints"]["K"] = self.default["constraints"]["K"](
+            self.data.n
+        )
+        self.default["constraints"]["d"] = self.default["constraints"]["d"](
+            self.data.n
+        )
         self.default["score"] = self.default["score"](self.data.discrete)
-        self.default["mc3"] = self.default["mc3"](self.p["mc3"].get("name"))
+        self.default["metropolis_coupling_scheme"] = self.default[
+            "metropolis_coupling_scheme"
+        ](self.p["metropolis_coupling_scheme"].get("name"))
 
     def _complete_user_given_parameters(self):
         for k in self.p:
+            if k in {"candidate_parents_path", "candidate_parents"}:
+                continue
             if (
                 "name" in self.p[k]
                 and self.p[k]["name"] != self.default[k]["name"]
             ):
                 continue
-            if validate.candidates_is_valid(self.p[k]):
-                continue
+            # if validate.candidates_is_valid(self.p[k]):
+            #     continue
             self.p[k] = dict(self.default[k], **self.p[k])
             for k2 in self.p[k]:
                 if type(self.p[k][k2]) == dict:
@@ -180,37 +243,47 @@ class GadgetParameters:
         # dict of preset values for params if any
         preset_params = dict(
             i
-            for i in ((k, self.init["cons"].get(k)) for k in params_to_predict)
+            for i in (
+                (k, self.init["constraints"].get(k)) for k in params_to_predict
+            )
             if i[1] is not None
         )
 
         # params needs to be copied because of the remove below
         for k in list(params_to_predict):
             if k in preset_params:
-                self.p["cons"][k] = self.gb.get_and_pred(k, preset_params[k])
+                self.p["constraints"][k] = self.gb.get_and_pred(
+                    k, preset_params[k]
+                )
                 params_to_predict.remove(k)
         for k in params_to_predict:
-            self.p["cons"][k] = self.gb.get_and_pred(k)
+            self.p["constraints"][k] = self.gb.get_and_pred(k)
 
-        candp_is_given = self.init["candp"] != dict()
-        candp_is_greedy = (
-            candp_is_given
-            and self.init["candp"]["name"] == Defaults()["candp"]["name"]
+        candidate_parent_algorithm_is_given = (
+            self.init["candidate_parent_algorithm"] != dict()
         )
-        candp_params_is_given = (
-            candp_is_given and "params" in self.init["candp"]
+        candidate_parent_algorithm_is_greedy = (
+            candidate_parent_algorithm_is_given
+            and self.init["candidate_parent_algorithm"]["name"]
+            == Defaults()["candidate_parent_algorithm"]["name"]
         )
-        candp_k_is_preset = (
-            candp_is_greedy
-            and candp_params_is_given
-            and "k" in self.init["candp"]["params"]
+        candidate_parent_algorithm_params_is_given = (
+            candidate_parent_algorithm_is_given
+            and "params" in self.init["candidate_parent_algorithm"]
         )
-        if candp_k_is_preset:
-            self.gb.preset.add("candp")
+        candidate_parent_algorithm_k_is_preset = (
+            candidate_parent_algorithm_is_greedy
+            and candidate_parent_algorithm_params_is_given
+            and "k" in self.init["candidate_parent_algorithm"]["params"]
+        )
+        if candidate_parent_algorithm_k_is_preset:
+            self.gb.preset.add("candidate_parent_algorithm")
         else:
-            if not candp_params_is_given:
-                self.p["candp"]["params"] = self.default["candp"]["params"]
-            self.p["candp"]["params"]["t_budget"] = int(
+            if not candidate_parent_algorithm_params_is_given:
+                self.p["candidate_parent_algorithm"]["params"] = self.default[
+                    "candidate_parent_algorithm"
+                ]["params"]
+            self.p["candidate_parent_algorithm"]["params"]["t_budget"] = int(
                 self.gb.budget["candp"]
             )
 
@@ -223,8 +296,8 @@ class GadgetParameters:
     def _adjust_to_mem_budget(self):
         mem_budget = self.p["run_mode"]["params"]["mem"]
         n = self.data.n
-        K = self.p["cons"]["K"]
-        d = self.p["cons"]["d"]
+        K = self.p["constraints"]["K"]
+        d = self.p["constraints"]["d"]
         # Decrement d until we're in budget.
         d_changed = False
         while self._mem_estimate(n, K, d) > mem_budget and d > 0:
@@ -236,7 +309,7 @@ class GadgetParameters:
             self._mem_estimate(n, K, d) < mem_budget
             and self._mem_estimate(n, K + 1, d) > mem_budget
         ):
-            self.p["cons"]["d"] = d
+            self.p["constraints"]["d"] = d
             return
         # If not, increment d by one, if it was changed,
         # and decrement K until budget constraint met.
@@ -244,8 +317,8 @@ class GadgetParameters:
             d += 1
         while self._mem_estimate(n, K, d) > mem_budget and K > 1:
             K -= 1
-        self.p["cons"]["K"] = K
-        self.p["cons"]["d"] = d
+        self.p["constraints"]["K"] = K
+        self.p["constraints"]["d"] = d
 
     def __getitem__(self, key):
         return self.p[key]
@@ -344,8 +417,8 @@ class GadgetTimeBudget:
         i = 0
         for K in range(K_low, K_high + 1):
             params = {
-                "cons": {"K": K},
-                "candp": {"name": "rnd"},
+                "constraints": {"K": K},
+                "candidate_parent_algorithm": {"name": "rnd"},
                 "logging": {"silent": True},
             }
             g = Gadget(data=self.data, **params)
@@ -907,7 +980,7 @@ class Gadget:
 
         **Default**: ``{"ess": 10}`` for ``bdeu``.
 
-    - **prior**: Modular structure prior to use.
+    - **structure_prior**: Modular structure prior to use.
 
       - **name**: Structure prior: *fair* or *unif*
         :footcite:`eggeling:2019`.
@@ -968,9 +1041,9 @@ class Gadget:
 
         **Default**: ``None``.
 
-    - **catc**: Parameters determining how catastrofic cancellations are
-      handled. Catastrofic cancellation occurs when a score sum
-      :math:`\\tau_i(U,T)` computed as :math:`\\tau_i(U) - \\tau_i(U
+    - **catastrophic_cancellation**: Parameters determining how catastrofic
+      cancellations are handled. Catastrofic cancellation occurs when a score
+      sum :math:`\\tau_i(U,T)` computed as :math:`\\tau_i(U) - \\tau_i(U
       \setminus T)` evaluates to zero due to numerical reasons.
 
       - **tolerance**: how small should the absolute difference
@@ -1014,20 +1087,24 @@ class Gadget:
         self,
         *,
         data,
+        validate_params=True,
         run_mode=dict(),
         mcmc=dict(),
-        mc3=dict(),
+        metropolis_coupling_scheme=dict(),
         score=dict(),
-        prior=dict(),
-        cons=dict(),
-        candp=dict(),
-        catc=dict(),
+        structure_prior=dict(),
+        constraints=dict(),
+        candidate_parent_algorithm=dict(),
+        candidate_parents_path=None,
+        candidate_parents=None,
+        catastrophic_cancellation=dict(),
         logging=dict(),
     ):
 
         # locals() has to be the first thing called in __init__.
         user_given_parameters = locals()
         del user_given_parameters["self"]
+
         self.p = GadgetParameters(**user_given_parameters)
         self.data = self.p.data
 
@@ -1064,7 +1141,6 @@ class Gadget:
             ),
         )
 
-        # if self.p["logging"]["verbose_prefix"] is not None:
         # Number of iterations
         # 1. to plot in score trace
         # 2. specifying the size of in-memory verbose output arrays
@@ -1093,7 +1169,9 @@ class Gadget:
         log.dict(self.p.p)
         mem_use_estimate = round(
             self.p._mem_estimate(
-                self.data.n, self.p["cons"]["K"], self.p["cons"]["d"]
+                self.data.n,
+                self.p["constraints"]["K"],
+                self.p["constraints"]["d"],
             )
         )
         log(f"Estimated memory use: {mem_use_estimate}MB")
@@ -1113,15 +1191,14 @@ class Gadget:
         if (
             self.p["run_mode"]["name"] == "budget"
             and "t" in self.p["run_mode"]["params"]
-            and "candp" not in self.p.gb.preset
-            and self.p["candp"]["name"] == Defaults()["candp"]["name"]
+            and "candidate_parent_algorithm" not in self.p.gb.preset
+            and self.p["candidate_parent_algorithm"]["name"]
+            == Defaults()["candidate_parent_algorithm"]["name"]
         ):
             log.br()
             log(f"Adjusted for time budget: k = {stats['C']['k']}")
-            log(
-                "time budgeted: "
-                f"{round(self.p['candp']['params']['t_budget'])}s"
-            )
+            k = "candidate_parent_algorithm"  # to shorten next row
+            log(f"time budgeted: {round(self.p[k]['params']['t_budget'])}s")
         log.br()
         log(f"time used: {round(self._stats['candp']['time_used'])}s")
         log.br(2)
@@ -1194,25 +1271,29 @@ class Gadget:
         self.l_score = LocalScore(
             data=self.data,
             score=self.p["score"],
-            prior=self.p["prior"],
-            maxid=self.p["cons"]["max_id"],
+            prior=self.p["structure_prior"],
+            maxid=self.p["constraints"]["max_id"],
         )
 
-        if "path" in self.p["candp"]:
-            self.C = read_candidates(self.p["candp"]["path"])
+        if "path" in self.p["candidate_parent_algorithm"]:
+            self.C = read_candidates(
+                self.p["candidate_parent_algorithm"]["path"]
+            )
 
-        elif "name" in self.p["candp"]:
-            self.C, stats["C"] = cpa[self.p["candp"]["name"]](
-                self.p["cons"]["K"],
+        elif "name" in self.p["candidate_parent_algorithm"]:
+            self.C, stats["C"] = cpa[
+                self.p["candidate_parent_algorithm"]["name"]
+            ](
+                self.p["constraints"]["K"],
                 scores=self.l_score,
                 data=self.data,
-                params=self.p["candp"].get("params"),
+                params=self.p["candidate_parent_algorithm"].get("params"),
             )
         else:
-            self.C = self.p["candp"]
+            self.C = self.p["candidate_parent_algorithm"]
 
         self.C_array = np.empty(
-            (self.data.n, self.p["cons"]["K"]), dtype=np.int32
+            (self.data.n, self.p["constraints"]["K"]), dtype=np.int32
         )
         for v in self.C:
             self.C_array[v] = np.array(self.C[v])
@@ -1224,31 +1305,34 @@ class Gadget:
         self.c_r_score = CandidateRestrictedScore(
             score_array=self.score_array,
             C=self.C_array,
-            K=self.p["cons"]["K"],
-            cc_tolerance=self.p["catc"]["tolerance"],
-            cc_cache_size=self.p["catc"]["cache_size"],
-            pruning_eps=self.p["cons"]["pruning_eps"],
+            K=self.p["constraints"]["K"],
+            cc_tolerance=self.p["catastrophic_cancellation"]["tolerance"],
+            cc_cache_size=self.p["catastrophic_cancellation"]["cache_size"],
+            pruning_eps=self.p["constraints"]["pruning_eps"],
             silent=self.log.silent(),
         )
         del self.score_array
 
     def _precompute_candidate_complement_scoring(self):
         self.c_c_score = None
-        if self.p["cons"]["K"] < self.data.n - 1 and self.p["cons"]["d"] > 0:
+        if (
+            self.p["constraints"]["K"] < self.data.n - 1
+            and self.p["constraints"]["d"] > 0
+        ):
             # NOTE: CandidateComplementScore gives error if K = n-1,
             #       and is unnecessary.
             # NOTE: Does this really need to be reinitialized?
             self.l_score = LocalScore(
                 data=self.data,
                 score=self.p["score"],
-                prior=self.p["prior"],
-                maxid=self.p["cons"]["d"],
+                prior=self.p["structure_prior"],
+                maxid=self.p["constraints"]["d"],
             )
             self.c_c_score = CandidateComplementScore(
                 localscore=self.l_score,
                 C=self.C,
-                d=self.p["cons"]["d"],
-                eps=self.p["cons"]["score_sum_eps"],
+                d=self.p["constraints"]["d"],
+                eps=self.p["constraints"]["score_sum_eps"],
             )
             del self.l_score
 
@@ -1262,27 +1346,30 @@ class Gadget:
 
         for i in range(self.p["mcmc"]["n_indep"]):
 
-            if self.p["mc3"]["params"]["M"] == 1:
+            if self.p["metropolis_coupling_scheme"]["params"]["M"] == 1:
                 self.mcmc.append(
                     PartitionMCMC(
                         self.C,
                         self.score,
-                        self.p["cons"]["d"],
+                        self.p["constraints"]["d"],
                         move_weights=self.p["mcmc"]["move_weights"],
                     )
                 )
 
-            elif self.p["mc3"]["params"]["M"] > 1:
-                scheme = self.p["mc3"]["name"]
+            elif self.p["metropolis_coupling_scheme"]["params"]["M"] > 1:
+                scheme = self.p["metropolis_coupling_scheme"]["name"]
                 if scheme == "adaptive":
                     inv_temps = MC3.get_inv_temperatures(
                         "inv_linear",
-                        self.p["mc3"]["params"]["M"],
-                        self.p["mc3"]["params"]["delta_t_init"],
+                        self.p["metropolis_coupling_scheme"]["params"]["M"],
+                        self.p["metropolis_coupling_scheme"]["params"][
+                            "delta_t_init"
+                        ],
                     )
                 else:
                     inv_temps = MC3.get_inv_temperatures(
-                        scheme, self.p["mc3"]["params"]["M"]
+                        scheme,
+                        self.p["metropolis_coupling_scheme"]["params"]["M"],
                     )
                 self.mcmc.append(
                     MC3(
@@ -1290,14 +1377,18 @@ class Gadget:
                             PartitionMCMC(
                                 self.C,
                                 self.score,
-                                self.p["cons"]["d"],
+                                self.p["constraints"]["d"],
                                 inv_temp=inv_temps[i],
                                 move_weights=self.p["mcmc"]["move_weights"],
                             )
-                            for i in range(self.p["mc3"]["params"]["M"])
+                            for i in range(
+                                self.p["metropolis_coupling_scheme"]["params"][
+                                    "M"
+                                ]
+                            )
                         ],
                         scheme,
-                        **self.p["mc3"]["params"],
+                        **self.p["metropolis_coupling_scheme"]["params"],
                     )
                 )
 
@@ -1526,8 +1617,8 @@ class LocalScore:
         *,
         data,
         score=None,
-        prior=Defaults()["prior"],
-        maxid=Defaults()["cons"]["max_id"],
+        prior=Defaults()["structure_prior"],
+        maxid=Defaults()["constraints"]["max_id"],
     ):
         self.data = Data(data)
         self.score = score

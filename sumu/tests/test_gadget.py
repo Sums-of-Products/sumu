@@ -1,16 +1,16 @@
-import pathlib
 import subprocess
 import time
 
 import numpy as np
 import psutil
+import pytest
 
 import sumu
 
 np.random.seed(0)
 
 
-def test_Gadget_empirical_edge_prob_error_decreases():
+def test_Gadget_empirical_edge_prob_error_decreases(discrete_bn):
 
     params = {
         # generic MCMC parameters
@@ -22,8 +22,7 @@ def test_Gadget_empirical_edge_prob_error_decreases():
             "move_weights": [1, 1, 16],
         },
         # Metropolis coupling
-        # "mc3": {"name": "linear", "params": {"M": 6}},
-        "mc3": {
+        "metropolis_coupling_scheme": {
             "name": "adaptive",
             "params": {
                 "M": 2,
@@ -36,23 +35,23 @@ def test_Gadget_empirical_edge_prob_error_decreases():
         # score to use and its parameters
         "score": {"name": "bdeu", "params": {"ess": 10}},
         # modular structure prior and its parameters
-        "prior": {"name": "fair"},
+        "structure_prior": {"name": "fair"},
         # constraints on the DAG space
-        "cons": {"max_id": -1, "K": 8, "d": 3, "pruning_eps": 0.001},
+        "constraints": {"max_id": -1, "K": 8, "d": 3, "pruning_eps": 0.001},
         # algorithm to use for finding candidate parents
-        "candp": {"name": "greedy", "params": {"k": 6}},
+        "candidate_parent_algorithm": {"name": "greedy", "params": {"k": 6}},
         # preparing for catastrofic cancellations
-        "catc": {"tolerance": 2 ** -32, "cache_size": 10 ** 7},
+        "catastrophic_cancellation": {
+            "tolerance": 2 ** -32,
+            "cache_size": 10 ** 7,
+        },
         # Logging
         "logging": {
             "stats_period": 15,
         },
     }
 
-    data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
-    bn_path = data_path / "sachs.dsc"
-    bn = sumu.DiscreteBNet.read_file(bn_path)
-    data = bn.sample(100)
+    data = discrete_bn["sachs"].sample(100)
     ls = sumu.gadget.LocalScore(data=data, maxid=-1, score=params["score"])
     pset_probs = sumu.aps(ls.candidate_scores(), as_dict=True)
     edge_probs = sumu.utils.edge_probs_from_pset_probs(pset_probs)
@@ -70,85 +69,69 @@ def test_Gadget_empirical_edge_prob_error_decreases():
     assert max_errors[-1] < 0.10
 
 
-def test_Gadget_runs_n_between_2_and_64():
+def test_Gadget_runs_n_between_2_and_64(discrete_bn):
     # NOTE: This does not test all numbers of variables up to 64
-    data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
-    bn_path = data_path / "sachs.dsc"
-    bn = sumu.DiscreteBNet.read_file(bn_path)
-    data = bn.sample(200)
     g = sumu.Gadget(
-        data=data,
+        data=discrete_bn["sachs"].sample(200),
         mcmc={
             "n_target_chain_iters": 200,
             "burn_in": 0.5,
             "n_dags": 50,
         },
-        mc3={"name": "linear", "M": 2},
-        candp={"name": "rnd"},
-        cons={"K": 10, "d": 2},
+        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
+        candidate_parent_algorithm={"name": "rnd"},
+        constraints={"K": 10, "d": 2},
     )
     g.sample()
     assert True
 
 
-def test_Gadget_runs_n_between_65_and_128():
+def test_Gadget_runs_n_between_65_and_128(discrete_bn):
     # NOTE: This does not test all numbers of variables between 65 and 128
-    data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
-    bn_path = data_path / "hepar2.dsc"
-    bn = sumu.DiscreteBNet.read_file(bn_path)
-    data = bn.sample(1000)
     g = sumu.Gadget(
-        data=data,
+        data=discrete_bn["hepar2"].sample(1000),
         mcmc={
             "n_target_chain_iters": 200,
             "burn_in": 0.5,
             "n_dags": 50,
         },
-        mc3={"name": "linear", "M": 2},
-        candp={"name": "rnd"},
-        cons={"K": 10, "d": 2},
+        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
+        candidate_parent_algorithm={"name": "rnd"},
+        constraints={"K": 10, "d": 2},
     )
     g.sample()
     assert True
 
 
-def test_Gadget_runs_n_between_129_and_192():
+def test_Gadget_runs_n_between_129_and_192(discrete_bn):
     # NOTE: This does not test all numbers of variables between 129 and 192
-    data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
-    bn_path = data_path / "munin1.dsc"
-    bn = sumu.DiscreteBNet.read_file(bn_path)
-    data = bn.sample(200)
     g = sumu.Gadget(
-        data=data,
+        data=discrete_bn["munin1"].sample(200),
         mcmc={
             "n_target_chain_iters": 200,
             "burn_in": 0.5,
             "n_dags": 50,
         },
-        mc3={"name": "linear", "M": 2},
-        candp={"name": "rnd"},
-        cons={"K": 10, "d": 2},
+        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
+        candidate_parent_algorithm={"name": "rnd"},
+        constraints={"K": 10, "d": 2},
     )
     g.sample()
     assert True
 
 
-def test_Gadget_runs_n_between_193_and_256():
+def test_Gadget_runs_n_between_193_and_256(discrete_bn):
     # NOTE: This does not test all numbers of variables between 193 and 256
-    data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
-    bn_path = data_path / "andes.dsc"
-    bn = sumu.DiscreteBNet.read_file(bn_path)
-    data = bn.sample(200)
     g = sumu.Gadget(
-        data=data,
+        data=discrete_bn["andes"].sample(200),
         mcmc={
             "n_target_chain_iters": 200,
             "burn_in": 0.5,
             "n_dags": 50,
         },
-        mc3={"name": "linear", "M": 2},
-        candp={"name": "rnd"},
-        cons={"K": 10, "d": 2},
+        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
+        candidate_parent_algorithm={"name": "rnd"},
+        constraints={"K": 10, "d": 2},
     )
     g.sample()
     assert True
@@ -156,7 +139,9 @@ def test_Gadget_runs_n_between_193_and_256():
 
 def test_Gadget_runs_continuous_data():
     data = np.random.rand(200, 10)
-    sumu.Gadget(data=data, mcmc={"iters": 200}, cons={"K": 8}).sample()
+    sumu.Gadget(
+        data=data, mcmc={"n_target_chain_iters": 200}, constraints={"K": 8}
+    ).sample()
     assert True
 
 
@@ -169,28 +154,24 @@ def test_Gadget_runs_n_greater_than_256_continuous():
             "burn_in": 0.5,
             "n_dags": 50,
         },
-        mc3={"name": "linear", "M": 2},
-        candp={"name": "rnd"},
-        cons={"K": 8, "d": 1},
+        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
+        candidate_parent_algorithm={"name": "rnd"},
+        constraints={"K": 8, "d": 1},
     ).sample()
     assert True
 
 
-def test_Gadget_runs_n_greater_than_256_discrete():
-    data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
-    bn_path = data_path / "pigs.dsc"
-    bn = sumu.DiscreteBNet.read_file(bn_path)
-    data = bn.sample(1000)
+def test_Gadget_runs_n_greater_than_256_discrete(discrete_bn):
     sumu.Gadget(
-        data=data,
+        data=discrete_bn["pigs"].sample(1000),
         mcmc={
             "n_target_chain_iters": 200,
             "burn_in": 0.5,
             "n_dags": 50,
         },
-        mc3={"name": "linear", "M": 2},
-        candp={"name": "rnd"},
-        cons={"K": 8, "d": 1},
+        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
+        candidate_parent_algorithm={"name": "rnd"},
+        constraints={"K": 8, "d": 1},
     ).sample()
     assert True
 
@@ -204,9 +185,9 @@ def test_Gadget_runs_empty_data_continuous():
             "burn_in": 0.5,
             "n_dags": 50,
         },
-        mc3={"name": "linear", "M": 2},
-        candp={"name": "rnd"},
-        cons={"K": 8, "d": 1},
+        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
+        candidate_parent_algorithm={"name": "rnd"},
+        constraints={"K": 8, "d": 1},
     ).sample()
     assert True
 
@@ -220,14 +201,14 @@ def test_Gadget_runs_empty_data_discrete():
             "burn_in": 0.5,
             "n_dags": 50,
         },
-        mc3={"name": "linear", "M": 2},
-        candp={"name": "rnd"},
-        cons={"K": 8, "d": 1},
+        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
+        candidate_parent_algorithm={"name": "rnd"},
+        constraints={"K": 8, "d": 1},
     ).sample()
     assert True
 
 
-def test_Gadget_runs_with_anytime_mode():
+def test_Gadget_runs_with_anytime_mode(discrete_bn):
 
     import os
     import signal
@@ -238,17 +219,13 @@ def test_Gadget_runs_with_anytime_mode():
         return
 
     def gadget_anytime():
-        data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
-        bn_path = data_path / "sachs.dsc"
-        bn = sumu.DiscreteBNet.read_file(bn_path)
-        data = bn.sample(200)
         g = sumu.Gadget(
-            data=data,
+            data=discrete_bn["sachs"].sample(200),
             run_mode={"name": "anytime"},
             mcmc={"n_dags": 50},
-            mc3={"name": "linear", "M": 2},
-            candp={"name": "rnd"},
-            cons={"K": 6, "d": 2},
+            metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
+            candidate_parent_algorithm={"name": "rnd"},
+            constraints={"K": 6, "d": 2},
         )
         return g.sample()
 
@@ -264,24 +241,21 @@ def test_Gadget_runs_with_anytime_mode():
     assert True
 
 
-def test_Gadget_stays_in_budget():
+def test_Gadget_stays_in_budget(discrete_bn):
     budget = 30
     t = time.time()
     params = {
         "run_mode": {"name": "budget", "params": {"t": budget}},
-        "candp": {"name": "greedy"},
+        "candidate_parent_algorithm": {"name": "greedy"},
     }
 
-    data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
-    bn_path = data_path / "sachs.dsc"
-    bn = sumu.DiscreteBNet.read_file(bn_path)
-    data = bn.sample(100)
-    sumu.Gadget(data=data, **params).sample()
+    sumu.Gadget(data=discrete_bn["sachs"].sample(100), **params).sample()
     t = time.time() - t
     print(t)
     assert abs(t - budget) < 1
 
 
+@pytest.mark.select
 def test_Gadget_stays_in_mem_budget():
 
     mem_budget = 1000
@@ -291,12 +265,14 @@ data = np.random.randint(4, size=(200, 40), dtype=np.int32)
 sumu.Gadget(
 data=data,
 run_mode={"name": "budget", "params": {"mem": 1000}},
-cons={"K": 20, "d": 2},
-mcmc={"n_target_chain_iters": 1},
-mc3={"name": "linear", "M": 1},
-candp={"name": "rnd"},
+constraints={"K": 20, "d": 2},
+mcmc={"n_target_chain_iters": 100},
+metropolis_coupling_scheme={"name": "linear", "params": {"M": 1}},
+candidate_parent_algorithm={"name": "rnd"},
 ).sample()"""
 
+    # TODO: should be subprocess.run(..., check=True)
+    #       but then process.poll() fails.
     process = subprocess.Popen(["python", "-c", cmd])
     maxmem = 0
     while process.poll() is None:
@@ -308,23 +284,16 @@ candp={"name": "rnd"},
     assert maxmem < mem_budget
 
 
-def test_adaptive_tempering():
-
-    bnet = "sachs"
+def test_adaptive_tempering(discrete_bn):
     n = 100
     t = 60
-
     p_target = 0.234
     slack = 0.06
-    data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
-    bn_path = data_path / f"{bnet}.dsc"
-    bn = sumu.DiscreteBNet.read_file(bn_path)
-    data = bn.sample(n)
     g = sumu.Gadget(
-        data=data,
+        data=discrete_bn["sachs"].sample(n),
         run_mode={"name": "budget", "params": {"t": t}},
         # mcmc={"iters": 30000},
-        mc3={
+        metropolis_coupling_scheme={
             "name": "adaptive",
             "params": {
                 "M": 2,
@@ -346,21 +315,27 @@ def test_Gadget_runs_without_Metropolis():
     data = np.random.rand(200, 10)
     sumu.Gadget(
         data=data,
-        cons={"K": 8},
-        mcmc={"iters": 1000},
-        mc3={"params": {"M": 1}},
+        constraints={"K": 8},
+        mcmc={"n_target_chain_iters": 100000},
+        metropolis_coupling_scheme={"params": {"M": 1}},
+        logging={"verbose_prefix": "M1/M1", "overwrite": True},
     ).sample()
     assert True
 
 
-if __name__ == "__main__":
-    # test_Gadget_runs_n_between_2_and_64()
-    # test_Gadget_runs_n_between_65_and_128()
-    # test_Gadget_runs_n_between_129_and_192()
-    # test_Gadget_runs_n_between_193_and_256()
-    # test_Gadget_empirical_edge_prob_error_decreases()
-    test_Gadget_runs_n_greater_than_256_discrete()
-    # test_Gadget_runs_with_anytime_mode()
-    # test_Gadget_stays_in_budget()
-    # test_adaptive_tempering()
-    # test_Gadget_runs_without_Metropolis()
+def test_Gadget_runs_with_preset_candidate_parents(discrete_bn):
+    data = discrete_bn["sachs"].sample(100)
+    C = sumu.candidates.candidate_parent_algorithm["rnd"](5, data=data)[0]
+    sumu.Gadget(data=data, candidate_parents=C)
+
+
+def test_Gadget_reads_candidate_parents_from_file(discrete_bn, tmp_path):
+    K = 5
+    data = discrete_bn["sachs"].sample(100)
+    C = sumu.candidates.candidate_parent_algorithm["rnd"](K, data=data)[0]
+    C_array = np.empty((data.n, K), dtype=np.int32)
+    for v in C:
+        C_array[v] = C[v]
+    log = sumu.gadget.Logger(logfile=tmp_path / "C")
+    log.numpy(C_array)
+    sumu.Gadget(data=data, candidate_parents_path=str(tmp_path / "C"))

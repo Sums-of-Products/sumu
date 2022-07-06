@@ -22,11 +22,3 @@ def test_pairwise_causal_estimation():
     mse = (errors ** 2).sum() / (n * n - n)
     print("mse:", mse)
     assert mse < 0.1
-
-
-def main():
-    test_pairwise_causal_estimation()
-
-
-if __name__ == "__main__":
-    main()

@@ -14,7 +14,3 @@ def test_data_info_is_correct():
     assert info["no. data points"] == 1000
     assert info["type of data"] == "discrete"
     assert info["arities [min, max]"] == "[3, 3]"
-
-
-if __name__ == "__main__":
-    test_data_info_is_correct()

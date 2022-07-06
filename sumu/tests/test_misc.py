@@ -20,7 +20,3 @@ def test_write_read_jkl():
         Path(fpath).unlink()
     except PermissionError as e:
         print(e)
-
-
-if __name__ == "__main__":
-    test_write_read_jkl()
