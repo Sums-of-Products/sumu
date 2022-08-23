@@ -1,4 +1,5 @@
 import numpy as np
+
 import sumu
 
 
@@ -51,7 +52,3 @@ def test_aps_runs():
 
     sumu.aps(w, as_dict=True, normalize=True)
     assert True
-
-
-if __name__ == "__main__":
-    test_aps_runs()

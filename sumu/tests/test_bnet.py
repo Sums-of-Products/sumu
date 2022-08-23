@@ -1,19 +1,15 @@
-import pathlib
-
 import numpy as np
 
 import sumu
 
 
-def test_discrete_bnet_node_samples_from_correct_distribution():
+def test_discrete_bnet_node_samples_from_correct_distribution(discrete_bn):
 
     # TODO: Multivariate test
 
     np.random.seed(0)
 
-    data_path = pathlib.Path(__file__).resolve().parents[2] / "data"
-    bn_path = data_path / "sachs.dsc"
-    bn = sumu.DiscreteBNet.read_file(bn_path)
+    bn = discrete_bn["sachs"]
     data = bn.sample(5000)
 
     i_u = bn.nodes.index(bn["Mek"])
