@@ -255,7 +255,6 @@ def test_Gadget_stays_in_budget(discrete_bn):
     assert abs(t - budget) < 1
 
 
-@pytest.mark.select
 def test_Gadget_stays_in_mem_budget():
 
     mem_budget = 1000
@@ -339,3 +338,21 @@ def test_Gadget_reads_candidate_parents_from_file(discrete_bn, tmp_path):
     log = sumu.gadget.Logger(logfile=tmp_path / "C")
     log.numpy(C_array)
     sumu.Gadget(data=data, candidate_parents_path=str(tmp_path / "C"))
+
+
+@pytest.mark.select
+def test_Gadget_runs_initial_rootpartition(discrete_bn):
+    g = sumu.Gadget(
+        initial_rootpartition=sumu.bnet.partition(discrete_bn["sachs"].dag),
+        data=discrete_bn["sachs"].sample(200),
+        mcmc={
+            "n_target_chain_iters": 200,
+            "burn_in": 0.5,
+            "n_dags": 50,
+        },
+        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
+        candidate_parent_algorithm={"name": "rnd"},
+        constraints={"K": 10, "d": 2},
+    )
+    g.sample()
+    assert True

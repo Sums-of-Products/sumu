@@ -122,7 +122,8 @@ def random_dag_with_expected_neighbourhood_size(n, *, enb=4):
 class GaussianBNet:
     def __init__(self, dag, *, data=None):
         self.n = len(validate.dag(dag))
-        self.dag = family_sequence_to_adj_mat(dag)
+        self.dag = dag
+        self.adj_mat = family_sequence_to_adj_mat(dag)
         self.sample_params(data=data)
 
     def sample_params(self, data=None):
@@ -160,7 +161,7 @@ class GaussianBNet:
         self.mu = np.zeros(self.n)
 
         for node in range(self.n):
-            pa = np.where(self.dag[node])[0]
+            pa = np.where(self.adj_mat[node])[0]
             l = len(pa) + 1
             # here l is the number of parents for node i plus 1
             T11 = Tmat[pa[:, None], pa]
@@ -211,10 +212,16 @@ class DiscreteBNet:
     def __init__(self, nodes):
         self.nodes = nodes
         self.topo_sort = topological_sort(nodes_to_family_list(nodes))
+        # Parents in the CPTs are not in order so this is needed. Otherwise
+        # self.dag would do. Maybe it could be arranged better.
         self.index_to_pset_indices = {
             u: [self.nodes.index(p) for p in node.parents]
             for u, node in enumerate(self.nodes)
         }
+        self.dag = [
+            (u, {self.nodes.index(p) for p in node.parents})
+            for u, node in enumerate(self.nodes)
+        ]
 
     @classmethod
     def from_dag(cls, dag, *, data=None, arity=2, ess=0.5, params="MP"):
@@ -339,6 +346,7 @@ class DiscreteBNet:
                         probs = np.array(
                             [float(x) for x in "".join(items)[:-1].split(",")]
                         )
+
                         probs = normalize(current_node_name, (), probs)
                         nodes[current_node_name].cpt[()] = probs
                 except ValueError as e:

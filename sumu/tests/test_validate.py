@@ -1,3 +1,5 @@
+import pytest
+
 import sumu
 from sumu.validate import ValidationError
 
@@ -16,6 +18,25 @@ def test_candidates_validation():
     for p in test_params:
         try:
             sumu.validate.candidates(p[0])
+            assert p[1]
+        except ValidationError as e:
+            assert not p[1]
+            print(f"{p[0]} correctly identified as invalid argument: {e}")
+
+
+@pytest.mark.select
+def test_rootpartition_validation():
+    test_params = [
+        (({4}, {1}, {2, 3}), False),
+        ([{4}, {1}, {2, 3}], False),
+        ([{4}, {1}, {2, 3}], False),
+        ([{4}, {1}, {1, 2, 3}], False),
+        ([{4}, {1}, {0, 2, 3}], True),
+    ]
+
+    for p in test_params:
+        try:
+            sumu.validate.rootpartition(p[0])
             assert p[1]
         except ValidationError as e:
             assert not p[1]

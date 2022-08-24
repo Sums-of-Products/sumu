@@ -104,6 +104,7 @@ class GadgetParameters:
         *,
         data,
         validate_params=True,
+        initial_rootpartition=None,
         run_mode=dict(),
         mcmc=dict(),
         metropolis_coupling_scheme=dict(),
@@ -145,6 +146,8 @@ class GadgetParameters:
                 self._adjust_to_mem_budget()
 
     def _validate_parameters(self):
+        if self.init["initial_rootpartition"]:
+            validate.rootpartition(self.init["initial_rootpartition"])
         validate.run_mode_args(self.init["run_mode"])
         validate.mcmc_args(self.init["mcmc"])
         validate.metropolis_coupling_scheme_args(
@@ -207,7 +210,11 @@ class GadgetParameters:
 
     def _complete_user_given_parameters(self):
         for k in self.p:
-            if k in {"candidate_parents_path", "candidate_parents"}:
+            if k in {
+                "initial_rootpartition",
+                "candidate_parents_path",
+                "candidate_parents",
+            }:
                 continue
             if (
                 "name" in self.p[k]
@@ -1087,6 +1094,7 @@ class Gadget:
         self,
         *,
         data,
+        initial_rootpartition=None,
         validate_params=True,
         run_mode=dict(),
         mcmc=dict(),
@@ -1114,6 +1122,7 @@ class Gadget:
         # Things collected along the running of the chain used e.g. in control
         # structures. Here to make the overall structure explicit.
         self._stats = dict(
+            highest_scoring_rootpartition=None,
             candp=dict(time_used=0),
             crscore=dict(time_used=0),
             ccscore=dict(time_used=0),
@@ -1264,7 +1273,10 @@ class Gadget:
             scores=self.dag_scores,
             candidates=self.C,
             mcmc=self.mcmc[0].describe(),
-            stats=stats,
+            highest_scoring_rootpartition=self._stats[
+                "highest_scoring_rootpartition"
+            ],
+            stats=stats,  # TODO: Get rid of this?
         )
 
     def _find_candidate_parents(self):
@@ -1353,6 +1365,7 @@ class Gadget:
                         self.score,
                         self.p["constraints"]["d"],
                         move_weights=self.p["mcmc"]["move_weights"],
+                        R=self.p["initial_rootpartition"],
                     )
                 )
 
@@ -1380,6 +1393,7 @@ class Gadget:
                                 self.p["constraints"]["d"],
                                 inv_temp=inv_temps[i],
                                 move_weights=self.p["mcmc"]["move_weights"],
+                                R=self.p["initial_rootpartition"],
                             )
                             for i in range(
                                 self.p["metropolis_coupling_scheme"]["params"][
@@ -1550,6 +1564,15 @@ class Gadget:
         while burn_in_cond():
             for i in range(self.p["mcmc"]["n_indep"]):
                 R, R_score = self.mcmc[i].sample()
+                if (
+                    self._stats["highest_scoring_rootpartition"] is None
+                    or R_score[0]
+                    > self._stats["highest_scoring_rootpartition"][1]
+                ):
+                    self._stats["highest_scoring_rootpartition"] = (
+                        R[0],
+                        R_score[0],
+                    )
                 self._update_verbose_logs(i, R_score)
 
             self.log.periodic_stats()
@@ -1579,6 +1602,15 @@ class Gadget:
         while mcmc_cond():
             for i in range(self.p["mcmc"]["n_indep"]):
                 R, R_score = self.mcmc[i].sample()
+                if (
+                    self._stats["highest_scoring_rootpartition"] is None
+                    or R_score[0]
+                    > self._stats["highest_scoring_rootpartition"][1]
+                ):
+                    self._stats["highest_scoring_rootpartition"] = (
+                        R[0],
+                        R_score[0],
+                    )
                 if dag_sampling_cond():
                     dag, score = self.score.sample_DAG(R[0])
                     self.dags.append(dag)
