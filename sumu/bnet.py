@@ -212,6 +212,12 @@ class DiscreteBNet:
     def __init__(self, nodes):
         self.nodes = nodes
         self.topo_sort = topological_sort(nodes_to_family_list(nodes))
+        # Parents in the CPTs are not in order so this is needed. Otherwise
+        # self.dag would do. Maybe it could be arranged better.
+        self.index_to_pset_indices = {
+            u: [self.nodes.index(p) for p in node.parents]
+            for u, node in enumerate(self.nodes)
+        }
         self.dag = [
             (u, {self.nodes.index(p) for p in node.parents})
             for u, node in enumerate(self.nodes)
@@ -359,7 +365,7 @@ class DiscreteBNet:
         data = np.zeros(shape=(N, len(self.nodes)), dtype=np.int32)
         for i in range(N):
             for i_node in self.topo_sort:
-                pset = list(self.dag[i_node][1])
+                pset = self.index_to_pset_indices[i_node]
                 pset_config = tuple(data[i, pset])
                 data[i, i_node] = self.nodes[i_node].sample(config=pset_config)
         return Data(data)
