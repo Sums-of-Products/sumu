@@ -515,6 +515,18 @@ _logging_args.update(
 )
 
 
+_rootpartition = {
+    "should be a list partitioning integers 0..n to sets":
+    lambda R: all([
+        type(R) == list,
+        all([type(R_i) == set for R_i in R]),
+        all([is_int(u) for R_i in R for u in R_i]),
+        sorted([u for R_i in R for u in R_i])
+        == list(range(max([max(R_i) for R_i in R]) + 1))
+    ])
+}
+
+
 _dag = {
 
     (
