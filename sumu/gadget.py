@@ -1122,6 +1122,7 @@ class Gadget:
         # Things collected along the running of the chain used e.g. in control
         # structures. Here to make the overall structure explicit.
         self._stats = dict(
+            highest_scoring_rootpartition=None,
             candp=dict(time_used=0),
             crscore=dict(time_used=0),
             ccscore=dict(time_used=0),
@@ -1272,7 +1273,10 @@ class Gadget:
             scores=self.dag_scores,
             candidates=self.C,
             mcmc=self.mcmc[0].describe(),
-            stats=stats,
+            highest_scoring_rootpartition=self._stats[
+                "highest_scoring_rootpartition"
+            ],
+            stats=stats,  # TODO: Get rid of this?
         )
 
     def _find_candidate_parents(self):
@@ -1560,6 +1564,15 @@ class Gadget:
         while burn_in_cond():
             for i in range(self.p["mcmc"]["n_indep"]):
                 R, R_score = self.mcmc[i].sample()
+                if (
+                    self._stats["highest_scoring_rootpartition"] is None
+                    or R_score[0]
+                    > self._stats["highest_scoring_rootpartition"][1]
+                ):
+                    self._stats["highest_scoring_rootpartition"] = (
+                        R[0],
+                        R_score[0],
+                    )
                 self._update_verbose_logs(i, R_score)
 
             self.log.periodic_stats()
@@ -1589,6 +1602,15 @@ class Gadget:
         while mcmc_cond():
             for i in range(self.p["mcmc"]["n_indep"]):
                 R, R_score = self.mcmc[i].sample()
+                if (
+                    self._stats["highest_scoring_rootpartition"] is None
+                    or R_score[0]
+                    > self._stats["highest_scoring_rootpartition"][1]
+                ):
+                    self._stats["highest_scoring_rootpartition"] = (
+                        R[0],
+                        R_score[0],
+                    )
                 if dag_sampling_cond():
                     dag, score = self.score.sample_DAG(R[0])
                     self.dags.append(dag)
