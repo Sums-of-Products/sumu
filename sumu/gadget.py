@@ -1186,7 +1186,9 @@ class Gadget:
         log(f"Estimated memory use: {mem_use_estimate}MB")
         log.br()
 
-    def sample(self):
+        self.precomputations_done = False
+
+    def precompute(self):
 
         log = self.log
 
@@ -1240,6 +1242,15 @@ class Gadget:
             log(f"time predicted: {round(self.p.gb.predicted['ccs'])}s")
         log(f"time used: {round(self._stats['crscore']['time_used'])}s")
         log.br(2)
+
+        self.precomputations_done = True
+
+    def sample(self):
+
+        if not self.precomputations_done:
+            self.precompute()
+
+        log = self.log
 
         log.h("RUNNING MCMC")
         self._stats["mcmc"]["time_start"] = time.time()
@@ -1348,11 +1359,11 @@ class Gadget:
             )
             del self.l_score
 
-    def _mcmc_init(self):
-
         self.score = Score(
             C=self.C, c_r_score=self.c_r_score, c_c_score=self.c_c_score
         )
+
+    def _mcmc_init(self):
 
         self.mcmc = list()
 
@@ -1812,6 +1823,24 @@ class Score:  # should be renamed to e.g. ScoreHandler
         self.n = len(self.C)
         self.c_r_score = c_r_score
         self.c_c_score = c_c_score
+
+    def score_rootpartition(self, R):
+        # Utility for computing rootpartition score. The actual scoring for
+        # simulation happens slightly differently in PartitionMCMC class.
+        inpart = [0] * sum(len(R[i]) for i in range(len(R)))
+        for i in range(len(R)):
+            for v in R[i]:
+                inpart[v] = i
+        R_node_scores = [0] * len(inpart)
+        for v in set().union(*R):
+            if inpart[v] == 0:
+                R_node_scores[v] = self.sum(v, set(), set())
+
+            else:
+                R_node_scores[v] = self.sum(
+                    v, set().union(*R[: inpart[v]]), R[inpart[v] - 1]
+                )
+        return sum(R_node_scores)
 
     def sum(self, v, U, T=set()):
         """Returns the sum of scores for node v over the parent sets that
