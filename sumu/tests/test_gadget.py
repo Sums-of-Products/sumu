@@ -340,7 +340,6 @@ def test_Gadget_reads_candidate_parents_from_file(discrete_bn, tmp_path):
     sumu.Gadget(data=data, candidate_parents_path=str(tmp_path / "C"))
 
 
-@pytest.mark.select
 def test_Gadget_runs_initial_rootpartition(discrete_bn):
     g = sumu.Gadget(
         initial_rootpartition=sumu.bnet.partition(discrete_bn["sachs"].dag),
@@ -355,4 +354,16 @@ def test_Gadget_runs_initial_rootpartition(discrete_bn):
         constraints={"K": 10, "d": 2},
     )
     g.sample()
+    assert True
+
+
+@pytest.mark.select
+def test_Gadget_utility_for_rootpartition_score(discrete_bn):
+    g = sumu.Gadget(
+        data=discrete_bn["sachs"].sample(200),
+        candidate_parent_algorithm={"name": "rnd"},
+        constraints={"K": 1, "d": 1},
+    )
+    g.precompute()
+    g.score.score_rootpartition(sumu.bnet.partition(discrete_bn["sachs"].dag))
     assert True
