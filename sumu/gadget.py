@@ -104,6 +104,7 @@ class GadgetParameters:
         *,
         data,
         validate_params=True,
+        initial_rootpartition=None,
         run_mode=dict(),
         mcmc=dict(),
         metropolis_coupling_scheme=dict(),
@@ -145,6 +146,8 @@ class GadgetParameters:
                 self._adjust_to_mem_budget()
 
     def _validate_parameters(self):
+        if self.init["initial_rootpartition"]:
+            validate.rootpartition(self.init["initial_rootpartition"])
         validate.run_mode_args(self.init["run_mode"])
         validate.mcmc_args(self.init["mcmc"])
         validate.metropolis_coupling_scheme_args(
@@ -207,7 +210,11 @@ class GadgetParameters:
 
     def _complete_user_given_parameters(self):
         for k in self.p:
-            if k in {"candidate_parents_path", "candidate_parents"}:
+            if k in {
+                "initial_rootpartition",
+                "candidate_parents_path",
+                "candidate_parents",
+            }:
                 continue
             if (
                 "name" in self.p[k]
@@ -1087,6 +1094,7 @@ class Gadget:
         self,
         *,
         data,
+        initial_rootpartition=None,
         validate_params=True,
         run_mode=dict(),
         mcmc=dict(),
@@ -1353,6 +1361,7 @@ class Gadget:
                         self.score,
                         self.p["constraints"]["d"],
                         move_weights=self.p["mcmc"]["move_weights"],
+                        R=self.p["initial_rootpartition"],
                     )
                 )
 
@@ -1380,6 +1389,7 @@ class Gadget:
                                 self.p["constraints"]["d"],
                                 inv_temp=inv_temps[i],
                                 move_weights=self.p["mcmc"]["move_weights"],
+                                R=self.p["initial_rootpartition"],
                             )
                             for i in range(
                                 self.p["metropolis_coupling_scheme"]["params"][
