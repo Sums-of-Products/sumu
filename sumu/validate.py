@@ -554,7 +554,7 @@ _candidates = {
         [
             type(C) == dict,
             all(type(v) == tuple for v in C.values()),
-            all(isinstance(vi, (np.integer, int))
+            all(is_int(vi)
                 for v in C.values() for vi in v),
         ]
     ),

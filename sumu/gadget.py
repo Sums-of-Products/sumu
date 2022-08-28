@@ -191,8 +191,14 @@ class GadgetParameters:
                 self.init[alt_candp_params[1]],
                 msg=f"'{alt_candp_params[1]}' should be string",
             )
+            self.init["constraints"]["K"] = len(
+                read_candidates(self.init[alt_candp_params[1]])[0]
+            )
         if alt_candp_params[2] in self.init:
             validate.candidates(self.init[alt_candp_params[2]])
+            self.init["constraints"]["K"] = len(
+                self.init[alt_candp_params[2]][0]
+            )
 
     def _populate_default_parameters(self):
         # Some defaults are defined as functions of data.
@@ -266,8 +272,15 @@ class GadgetParameters:
         for k in params_to_predict:
             self.p["constraints"][k] = self.gb.get_and_pred(k)
 
+        if (
+            "candidate_parents" in self.init
+            or "candidate_parents_path" in self.init
+        ):
+            return
+
         candidate_parent_algorithm_is_given = (
-            self.init["candidate_parent_algorithm"] != dict()
+            "candidate_parent_algorithm" in self.init
+            and self.init["candidate_parent_algorithm"] != dict()
         )
         candidate_parent_algorithm_is_greedy = (
             candidate_parent_algorithm_is_given
@@ -329,6 +342,9 @@ class GadgetParameters:
 
     def __getitem__(self, key):
         return self.p[key]
+
+    def __contains__(self, key):
+        return key in self.p
 
 
 class GadgetTimeBudget:
@@ -1203,6 +1219,7 @@ class Gadget:
             self.p["run_mode"]["name"] == "budget"
             and "t" in self.p["run_mode"]["params"]
             and "candidate_parent_algorithm" not in self.p.gb.preset
+            and "candidate_parent_algorithm" in self.p
             and self.p["candidate_parent_algorithm"]["name"]
             == Defaults()["candidate_parent_algorithm"]["name"]
         ):
@@ -1298,12 +1315,14 @@ class Gadget:
             maxid=self.p["constraints"]["max_id"],
         )
 
-        if "path" in self.p["candidate_parent_algorithm"]:
-            self.C = read_candidates(
-                self.p["candidate_parent_algorithm"]["path"]
+        if "candidate_parents_path" in self.p:
+            self.C = validate.candidates(
+                read_candidates(self.p["candidate_parents_path"])
             )
+        elif "candidate_parents" in self.p:
+            self.C = self.p["candidate_parents"]
 
-        elif "name" in self.p["candidate_parent_algorithm"]:
+        else:
             self.C, stats["C"] = cpa[
                 self.p["candidate_parent_algorithm"]["name"]
             ](
@@ -1312,8 +1331,6 @@ class Gadget:
                 data=self.data,
                 params=self.p["candidate_parent_algorithm"].get("params"),
             )
-        else:
-            self.C = self.p["candidate_parent_algorithm"]
 
         self.C_array = np.empty(
             (self.data.n, self.p["constraints"]["K"]), dtype=np.int32
