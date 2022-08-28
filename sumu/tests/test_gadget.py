@@ -10,6 +10,13 @@ import sumu
 np.random.seed(0)
 
 
+minimal_mcmc = {
+    "n_target_chain_iters": 200,
+    "burn_in": 0.5,
+    "n_dags": 50,
+}
+
+
 def test_Gadget_empirical_edge_prob_error_decreases(discrete_bn):
 
     params = {
@@ -322,10 +329,13 @@ def test_Gadget_runs_without_Metropolis():
     assert True
 
 
+@pytest.mark.select
 def test_Gadget_runs_with_preset_candidate_parents(discrete_bn):
     data = discrete_bn["sachs"].sample(100)
     C = sumu.candidates.candidate_parent_algorithm["rnd"](5, data=data)[0]
-    sumu.Gadget(data=data, candidate_parents=C)
+    g = sumu.Gadget(data=data, candidate_parents=C, mcmc=minimal_mcmc)
+    g.sample()
+    assert g.C == C
 
 
 def test_Gadget_reads_candidate_parents_from_file(discrete_bn, tmp_path):
@@ -336,19 +346,21 @@ def test_Gadget_reads_candidate_parents_from_file(discrete_bn, tmp_path):
     for v in C:
         C_array[v] = C[v]
     log = sumu.gadget.Logger(logfile=tmp_path / "C")
-    log.numpy(C_array)
-    sumu.Gadget(data=data, candidate_parents_path=str(tmp_path / "C"))
+    log.numpy(C_array, fmt="%i")
+    g = sumu.Gadget(
+        data=data,
+        candidate_parents_path=str(tmp_path / "C"),
+        mcmc=minimal_mcmc,
+    )
+    g.sample()
+    assert (C_array == g.C_array).all()
 
 
 def test_Gadget_runs_initial_rootpartition(discrete_bn):
     g = sumu.Gadget(
         initial_rootpartition=sumu.bnet.partition(discrete_bn["sachs"].dag),
         data=discrete_bn["sachs"].sample(200),
-        mcmc={
-            "n_target_chain_iters": 200,
-            "burn_in": 0.5,
-            "n_dags": 50,
-        },
+        mcmc=minimal_mcmc,
         metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
         candidate_parent_algorithm={"name": "rnd"},
         constraints={"K": 10, "d": 2},
@@ -357,7 +369,6 @@ def test_Gadget_runs_initial_rootpartition(discrete_bn):
     assert True
 
 
-@pytest.mark.select
 def test_Gadget_utility_for_rootpartition_score(discrete_bn):
     g = sumu.Gadget(
         data=discrete_bn["sachs"].sample(200),
