@@ -449,7 +449,9 @@ class MC3(Describable):
         for i, c in enumerate(self.chains):
             c.inv_temp = inv_temps_new[i]
 
-        if len(self.chains) > 2 and (acc_probs > 0.9).sum() > 1:
+        if (len(self.chains) > 2 and (acc_probs > 0.9).sum() > 1) or np.isnan(
+            self.inverse_temperatures()
+        ).any():
             self._decrement_chains()
         if (acc_probs > 0.9).sum() == 0:
             self._increment_chains()
