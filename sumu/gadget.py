@@ -544,6 +544,11 @@ class Logger:
     def br(self, n=1):
         self("\n" * (n - 1))
 
+    def fraction(self, n, d):
+        if d == 0:
+            return ""
+        return n / d
+
 
 class GadgetLogger(Logger):
     """Stuff for printing stuff."""
@@ -740,15 +745,25 @@ class GadgetLogger(Logger):
                 msg_tmpl.format(
                     phase,
                     stats[phase]["target_chain_iter_count"],
-                    stats[phase]["target_chain_iter_count"]
-                    / stats["mcmc"]["target_chain_iter_count"],
+                    self.fraction(
+                        stats[phase]["target_chain_iter_count"],
+                        stats["mcmc"]["target_chain_iter_count"],
+                    ),
                     stats[phase]["iter_count"],
-                    stats[phase]["iter_count"] / stats["mcmc"]["iter_count"],
+                    self.fraction(
+                        stats[phase]["iter_count"], stats["mcmc"]["iter_count"]
+                    ),
                     round(stats[phase]["time_used"]),
-                    stats[phase]["time_used"] / stats[phase]["time_used"],
-                    stats[phase]["time_used"] / stats[phase]["iter_count"],
-                    stats[phase]["time_used"]
-                    / stats[phase]["target_chain_iter_count"],
+                    self.fraction(
+                        stats[phase]["time_used"], stats[phase]["time_used"]
+                    ),
+                    self.fraction(
+                        stats[phase]["time_used"], stats[phase]["iter_count"]
+                    ),
+                    self.fraction(
+                        stats[phase]["time_used"],
+                        stats[phase]["target_chain_iter_count"],
+                    ),
                 )
                 + "\n"
             )
@@ -760,9 +775,13 @@ class GadgetLogger(Logger):
             1.0,
             round(stats["mcmc"]["time_used"]),
             1.0,
-            stats["mcmc"]["time_used"] / stats["mcmc"]["iter_count"],
-            stats["mcmc"]["time_used"]
-            / stats["mcmc"]["target_chain_iter_count"],
+            self.fraction(
+                stats["mcmc"]["time_used"], stats["mcmc"]["iter_count"]
+            ),
+            self.fraction(
+                stats["mcmc"]["time_used"],
+                stats["mcmc"]["target_chain_iter_count"],
+            ),
         )
         self(msg)
         self.br()
