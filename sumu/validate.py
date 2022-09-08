@@ -412,7 +412,7 @@ _constraints_args.update(
 _candidate_parent_algorithm_args = {
     "_arg_names": ["name", "params"],
     "_names": ["greedy", "opt", "rnd"],
-    "_params_keys": {"greedy": ["k"], "opt": [], "rnd": []},
+    "_params_keys": {"greedy": ["k", "criterion"], "opt": [], "rnd": []},
 }
 _candidate_parent_algorithm_args.update(
     {
