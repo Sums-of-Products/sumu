@@ -29,8 +29,8 @@ from .utils.io import read_candidates
 from .utils.math_utils import comb, subsets
 from .weight_sum import CandidateComplementScore, CandidateRestrictedScore
 
-# Set this to True to print more stuff useful in development.
-DEBUG = True
+# Debugging level. 0 = no debug prints.
+DEBUG = 1
 
 
 def DBUG(msg):

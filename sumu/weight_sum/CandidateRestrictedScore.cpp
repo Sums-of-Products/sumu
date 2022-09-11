@@ -20,7 +20,7 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
 												   int* C, int n, int K,
 												   int cc_limit, double cc_tol,
 												   double isum_tol,
-												   bool silent, bool debug) {
+												   bool silent, int debug) {
 
   timer = Timer();
 
@@ -82,6 +82,7 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
 
   int cc = 0;
   for (int v = 0; v < n; ++v) {
+	if (debug > 1) {cout << "DEBUG: v=" << v << " cc=" << m_tau_cc[v].size() << endl;}
     cc += m_tau_cc[v].size();
   }
 

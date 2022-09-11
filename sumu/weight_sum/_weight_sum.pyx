@@ -29,7 +29,7 @@ cdef extern from "CandidateRestrictedScore.hpp":
 
         CppCandidateRestrictedScore(double* w, int* C, int n, int K,
                                     int cc_limit, double cc_tol, double isum_tol,
-                                    bool silent, bool debug
+                                    bool silent, int debug
                                     )
         Treal sum(int v, bm32 U, bm32 T, bool isum)
         Treal sum(int v, bm32 U)

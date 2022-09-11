@@ -27,7 +27,7 @@ public:
   int m_cc_limit;
 
   CandidateRestrictedScore(double* scores, int* C, int n, int K, int cc_limit, double cc_tol, double isum_tol,
-						   bool silent, bool debug
+						   bool silent, int debug
 						   );
   ~CandidateRestrictedScore();
   Treal sum(int v, bm32 U, bm32 T, bool isum=false);
