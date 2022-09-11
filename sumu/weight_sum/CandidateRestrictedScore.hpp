@@ -27,7 +27,7 @@ public:
   int m_cc_limit;
 
   CandidateRestrictedScore(double* scores, int* C, int n, int K, int cc_limit, double cc_tol, double isum_tol,
-						   bool silent
+						   bool silent, bool debug
 						   );
   ~CandidateRestrictedScore();
   Treal sum(int v, bm32 U, bm32 T, bool isum=false);
@@ -38,7 +38,7 @@ public:
 private:
 
   GroundSetIntersectSums **isums;
-  streambuf *coutbuf;
+  Timer timer;
   void precompute_tau_simple();
   void precompute_tau_cc_basecases();
   void precompute_tau_cc();

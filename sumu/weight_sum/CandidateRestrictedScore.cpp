@@ -20,9 +20,13 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
 												   int* C, int n, int K,
 												   int cc_limit, double cc_tol,
 												   double isum_tol,
-												   bool silent) {
+												   bool silent, bool debug) {
 
-  if (silent) {
+  timer = Timer();
+
+  streambuf *coutbuf;
+  coutbuf = cout.rdbuf();
+  if (silent & !debug) {
 	cout.rdbuf(0);
   }
 
@@ -45,6 +49,7 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
   cout << "Number of candidate parent sets after pruning (unpruned 2^K = " << (1L << K) << "):" << endl << endl;;
   cout << "node\tpsets\tratio" << endl;
 
+  timer.lap();
   for (int v = 0; v < n; ++v) {
     m_tau_simple[v] = new Treal[ (bm32) 1 << K];
 	m_tau_cc[v] = unordered_map< bm64, Treal >();
@@ -62,21 +67,30 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
     }
   }
   cout << endl;
+  if (debug) {cout << "DEBUG: K=" << m_K << " t_GroundSetIntersectsums=" << timer.lap() << endl;}
 
   for (bm64 i = 0; i < n * ((bm64) 1 << K); ++i) { m_score_array[i].set_log(score_array[i]);}
 
   precompute_tau_simple();
+  if (debug) {cout << "DEBUG: K=" << m_K << " t_precompute_tau_simple=" << timer.lap() << endl;}
+
   precompute_tau_cc_basecases();
+  if (debug) {cout << "DEBUG: K=" << m_K << " t_precompute_tau_cc_basecases=" << timer.lap() << endl;}
+
   precompute_tau_cc();
+  if (debug) {cout << "DEBUG: K=" << m_K << " t_precompute_tau_cc=" << timer.lap() << endl;}
 
   int cc = 0;
   for (int v = 0; v < n; ++v) {
     cc += m_tau_cc[v].size();
   }
+
   cout << "Number of score sums stored in cc cache: " << cc << endl << endl;
+  cout.rdbuf(coutbuf);
 }
 
 CandidateRestrictedScore::~CandidateRestrictedScore() {
+  // TODO: Analyze whether this is called properly (when searching for K)
   delete [] m_tau_cc;
   for (int v = m_n - 1; v > -1; --v) {
     delete[] m_tau_simple[v];

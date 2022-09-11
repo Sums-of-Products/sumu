@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include "Breal.hpp"
+#include <chrono>
 
 namespace wsum {
 
@@ -12,5 +13,14 @@ namespace wsum {
   void fzt_inpl(Treal* b, bm32 n);
 
 }
+
+class Timer {
+public:
+  Timer();
+  ~Timer();
+  int lap();
+private:
+  std::chrono::time_point<std::chrono::steady_clock> t;
+};
 
 #endif

@@ -29,7 +29,7 @@ cdef extern from "CandidateRestrictedScore.hpp":
 
         CppCandidateRestrictedScore(double* w, int* C, int n, int K,
                                     int cc_limit, double cc_tol, double isum_tol,
-                                    bool silent
+                                    bool silent, bool debug
                                     )
         Treal sum(int v, bm32 U, bm32 T, bool isum)
         Treal sum(int v, bm32 U)
@@ -74,7 +74,7 @@ cdef class CandidateRestrictedScore:
     cdef CppCandidateRestrictedScore * thisptr;
 
     def __cinit__(self, *, score_array, C, K, cc_cache_size, cc_tolerance,
-                  pruning_eps, logfile="", silent):
+                  pruning_eps, logfile="", silent, debug):
 
         cdef double[:, ::1] memview_score_array
         memview_score_array = score_array
@@ -87,7 +87,7 @@ cdef class CandidateRestrictedScore:
                                                        score_array.shape[0],
                                                        K, cc_cache_size,
                                                        cc_tolerance, pruning_eps,
-                                                       silent
+                                                       silent, debug
                                                        )
 
     def __dealloc__(self):

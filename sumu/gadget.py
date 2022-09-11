@@ -29,6 +29,14 @@ from .utils.io import read_candidates
 from .utils.math_utils import comb, subsets
 from .weight_sum import CandidateComplementScore, CandidateRestrictedScore
 
+# Set this to True to print more stuff useful in development.
+DEBUG = True
+
+
+def DBUG(msg):
+    if DEBUG:
+        print("DEBUG: " + msg)
+
 
 class Defaults:
 
@@ -424,6 +432,8 @@ class GadgetTimeBudget:
             # IntersectSums, as it seemed negligible.
             ls.complement_psets_and_scores(0, C, d)
             t_d = time.time() - t_d
+            DBUG(f"d={d} t_d={t_d}")
+
         self.predicted["ccs"] = t_d * self.n
         self.used["ccs"] = time.time() - t0
         self._not_done.remove(phase)
@@ -454,8 +464,10 @@ class GadgetTimeBudget:
             t = time.time() - t
             X[i] = np.array([1, K ** 2 * 2 ** K, t])
             i += 1
-
+            DBUG(f"K={K} t_score={t_score / 2**K} t={t}")
         t_score = t_score / 2 ** K_high
+        DBUG(f"final t_score={t_score}")
+
         a, b = np.linalg.lstsq(X[:, :-1], X[:, -1], rcond=None)[0]
         t_pred = 0
         K = K_high
@@ -470,9 +482,11 @@ class GadgetTimeBudget:
         while K_cond():
             K += 1
             t_pred = a + b * K ** 2 * 2 ** K + 2 ** K * t_score
+            DBUG(f"K={K} t_pred={t_pred}")
         K -= 1
+        t_pred = a + b * K ** 2 * 2 ** K + 2 ** K * t_score
 
-        self.predicted["crs"] = a + b * K ** 2 * 2 ** K + 2 ** K * t_score
+        self.predicted["crs"] = t_pred
         self.used["crs"] = time.time() - t0
         self._not_done.remove(phase)
         self._update_precomp_budgets()
@@ -1369,6 +1383,7 @@ class Gadget:
             cc_cache_size=self.p["catastrophic_cancellation"]["cache_size"],
             pruning_eps=self.p["constraints"]["pruning_eps"],
             silent=self.log.silent(),
+            debug=DEBUG,
         )
         del self.score_array
 
