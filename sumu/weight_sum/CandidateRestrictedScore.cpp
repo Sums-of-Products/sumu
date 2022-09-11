@@ -34,7 +34,7 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
 
   m_n = n;
   m_K = K;
-  m_cc_limit = cc_limit;
+  m_cc_limit = cc_limit / n;
 
   m_tau_simple = new Treal*[n];
   m_tau_cc = new unordered_map< bm64, Treal >[n];
@@ -111,8 +111,8 @@ void CandidateRestrictedScore::precompute_tau_simple() {
 
 void CandidateRestrictedScore::precompute_tau_cc_basecases() {
 
-  int count = 0;
   for (int v = 0; v < m_n; ++v) {
+	bool next_node = false;
     for (int k = 0; k < m_K; ++k) {
       bm32 j = 1 << k;
       bm32 U_minus_j = (( (bm32) 1 << m_K) - 1) & ~j;
@@ -130,16 +130,15 @@ void CandidateRestrictedScore::precompute_tau_cc_basecases() {
 		bm32 U = ikbit_32(S, k, 1);
 		if (m_tau_simple[v][U] < m_cc_tol * m_tau_simple[v][U & ~j]) {
 		  m_tau_cc[v].insert({(bm64) U << 32 | j, tmp[S]});
-
-		  count++;
-		  if (count >= m_cc_limit) {
-			delete[] tmp;
-			return;
+		  if (m_tau_cc[v].size() >= m_cc_limit) {
+			next_node = true;
+			break;
 		  }
 		}
       }
 
       delete[] tmp;
+	  if (next_node) {break;}
     }
   }
 }
@@ -154,6 +153,7 @@ void CandidateRestrictedScore::precompute_tau_cc() {
 
   // With Insurance data, this order seems about 25% faster than having v loop after count check
   for (int v = 0; v < m_n; ++v) {
+	bool next_node = false;
     for (int T_size_limit = 1; T_size_limit <= m_K; ++T_size_limit) {
       for (bm32 U = 1; U < (bm32) 1 << m_K; ++U) {
 		if (count_32(U) < T_size_limit) {
@@ -161,9 +161,11 @@ void CandidateRestrictedScore::precompute_tau_cc() {
 		}
 		rec_it_dfs(v, U, U, 0, 0, T_size_limit, count);
 		if (*count >= m_cc_limit) {
-		  return;
+		  next_node = true;
+		  break;
 		}
       }
+	  if (next_node) {break;}
     }
   }
 }
