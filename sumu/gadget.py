@@ -398,6 +398,7 @@ class GadgetTimeBudget:
             self.budget[phase] = (
                 self.share[phase] / normalizer * precomp_budget_left
             )
+        DBUG(f"_update_precomp_budget : budget = {self.budget}")
 
     def prerun(self, K_max):
         self.prstats = dict()
@@ -554,11 +555,11 @@ class GadgetTimeBudget:
             # IntersectSums, as it seemed negligible.
             ls.complement_psets_and_scores(0, C, d)
             t_d = time.time() - t_d
-            DBUG(f"d={d} t_d={t_d}")
 
         self.predicted["ccs"] = t_d * self.n
         self.used["ccs"] = time.time() - t0
         self._not_done.remove(phase)
+        DBUG(f"get_and_pred_d : self.budget = {self.budget}")
         self._update_precomp_budgets()
         return d
 
@@ -600,6 +601,7 @@ class GadgetTimeBudget:
         self.predicted["crs"] = t_pred
         self.used["crs"] = time.time() - t0
         self._not_done.remove(phase)
+        DBUG(f"get_and_pred_K : self.budget = {self.budget}")
         self._update_precomp_budgets()
         return K
 
