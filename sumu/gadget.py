@@ -411,17 +411,23 @@ class GadgetTimeBudget:
             }
             g = Gadget(data=self.data, **params)
             g._find_candidate_parents()
-            t1 = time.monotonic_ns()
-            DBUG(f"prerun : 1st time.monotonic_ns() = {time.monotonic_ns()}")
+            t1 = time.perf_counter_ns()
+            DBUG(
+                "prerun : 1st time.perf_counter_ns() ="
+                f" {time.perf_counter_ns()}"
+            )
             g._precompute_scores_for_all_candidate_psets()
-            DBUG(f"prerun : 2nd time.monotonic_ns() = {time.monotonic_ns()}")
-            t1 = (time.monotonic_ns() - t1) / 10 ** 9
-            t2 = time.monotonic_ns()
+            DBUG(
+                "prerun : 2nd time.perf_counter_ns() ="
+                f" {time.perf_counter_ns()}"
+            )
+            t1 = (time.perf_counter_ns() - t1) / 10 ** 9
+            t2 = time.perf_counter_ns()
             g._init_crs()
-            t2 = (time.monotonic_ns() - t2) / 10 ** 9
-            t3 = time.monotonic_ns()
+            t2 = (time.perf_counter_ns() - t2) / 10 ** 9
+            t3 = time.perf_counter_ns()
             g.c_r_score.precompute_tau_simple()
-            t3 = (time.monotonic_ns() - t3) / 10 ** 9
+            t3 = (time.perf_counter_ns() - t3) / 10 ** 9
             t4 = g.c_r_score.precompute_tau_cc_basecases()
             cc_basecases = g.c_r_score.number_of_scoresums_in_cache()
             t5 = g.c_r_score.precompute_tau_cc()
