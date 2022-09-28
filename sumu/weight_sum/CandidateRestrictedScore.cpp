@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <limits>
 #include <iostream>
+#include <vector>
 #include "../bitmap/bitmap.hpp"
 #include "common.hpp"
 #include "CandidateRestrictedScore.hpp"
@@ -14,6 +15,7 @@ using std::cout;
 using std::endl;
 using std::ofstream;
 using std::ios_base;
+using std::vector;
 
 
 CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
@@ -46,6 +48,7 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
   bm64 i = 0;
   int j = 0;
 
+  // TODO: all prints to python
   cout << "Number of candidate parent sets after pruning (unpruned 2^K = " << (1L << K) << "):" << endl << endl;;
   cout << "node\tpsets\tratio" << endl;
 
@@ -66,27 +69,6 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
       m_C[v][c] = C[j++];
     }
   }
-  cout << endl;
-  if (debug) {cout << "DEBUG: K=" << m_K << " t_GroundSetIntersectsums=" << timer.lap() << endl;}
-
-  for (bm64 i = 0; i < n * ((bm64) 1 << K); ++i) { m_score_array[i].set_log(score_array[i]);}
-
-  precompute_tau_simple();
-  if (debug) {cout << "DEBUG: K=" << m_K << " t_precompute_tau_simple=" << timer.lap() << endl;}
-
-  precompute_tau_cc_basecases();
-  if (debug) {cout << "DEBUG: K=" << m_K << " t_precompute_tau_cc_basecases=" << timer.lap() << endl;}
-
-  precompute_tau_cc();
-  if (debug) {cout << "DEBUG: K=" << m_K << " t_precompute_tau_cc=" << timer.lap() << endl;}
-
-  int cc = 0;
-  for (int v = 0; v < n; ++v) {
-	if (debug > 1) {cout << "DEBUG: v=" << v << " cc=" << m_tau_cc[v].size() << endl;}
-    cc += m_tau_cc[v].size();
-  }
-
-  cout << "Number of score sums stored in cc cache: " << cc << endl << endl;
   cout.rdbuf(coutbuf);
 }
 
@@ -102,6 +84,10 @@ CandidateRestrictedScore::~CandidateRestrictedScore() {
   delete [] m_score_array;
 }
 
+int CandidateRestrictedScore::number_of_scoresums_in_cache(int v) {
+  return m_tau_cc[v].size();
+}
+
 void CandidateRestrictedScore::precompute_tau_simple() {
 
   for (int v = 0; v < m_n; ++v) {
@@ -109,9 +95,12 @@ void CandidateRestrictedScore::precompute_tau_simple() {
   }
 }
 
-void CandidateRestrictedScore::precompute_tau_cc_basecases() {
+vector<double> CandidateRestrictedScore::precompute_tau_cc_basecases() {
+
+  vector<double> time_use(m_n);
 
   for (int v = 0; v < m_n; ++v) {
+	timer.lap();
 	bool next_node = false;
     for (int k = 0; k < m_K; ++k) {
       bm32 j = 1 << k;
@@ -140,19 +129,21 @@ void CandidateRestrictedScore::precompute_tau_cc_basecases() {
       delete[] tmp;
 	  if (next_node) {break;}
     }
+	time_use[v] = timer.lap() / 1000000.0;
   }
+  return time_use;
 }
 
 
-void CandidateRestrictedScore::precompute_tau_cc() {
+vector<double> CandidateRestrictedScore::precompute_tau_cc() {
 
+  vector<double> time_use(m_n);
   int count[1] = {0};
-  for (int v = 0; v < m_n; ++v) {
-    *count += m_tau_cc[v].size();
-  }
 
   // With Insurance data, this order seems about 25% faster than having v loop after count check
   for (int v = 0; v < m_n; ++v) {
+	timer.lap();
+	*count = m_tau_cc[v].size();
 	bool next_node = false;
     for (int T_size_limit = 1; T_size_limit <= m_K; ++T_size_limit) {
       for (bm32 U = 1; U < (bm32) 1 << m_K; ++U) {
@@ -167,7 +158,9 @@ void CandidateRestrictedScore::precompute_tau_cc() {
       }
 	  if (next_node) {break;}
     }
+	time_use[v] = timer.lap() / 1000000.0;
   }
+  return time_use;
 }
 
 

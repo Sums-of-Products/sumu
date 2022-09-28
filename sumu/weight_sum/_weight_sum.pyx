@@ -31,10 +31,14 @@ cdef extern from "CandidateRestrictedScore.hpp":
                                     int cc_limit, double cc_tol, double isum_tol,
                                     bool silent, int debug
                                     )
+        void precompute_tau_simple()
+        vector[double] precompute_tau_cc_basecases()
+        vector[double] precompute_tau_cc()
         Treal sum(int v, bm32 U, bm32 T, bool isum)
         Treal sum(int v, bm32 U)
         pair[bm32, double] sample_pset(int v, bm32 U, bm32 T, double wcum)
         pair[bm32, double] sample_pset(int v, bm32 U, double wcum)
+        int number_of_scoresums_in_cache(int v)
 
 
 cdef extern from "IntersectSums.hpp":
@@ -71,7 +75,8 @@ cdef extern from "IntersectSums.hpp":
 
 cdef class CandidateRestrictedScore:
 
-    cdef CppCandidateRestrictedScore * thisptr;
+    cdef CppCandidateRestrictedScore * thisptr
+    cdef int n
 
     def __cinit__(self, *, score_array, C, K, cc_cache_size, cc_tolerance,
                   pruning_eps, logfile="", silent, debug):
@@ -81,6 +86,7 @@ cdef class CandidateRestrictedScore:
 
         cdef int[:, ::1] memview_C
         memview_C = C
+        self.n = score_array.shape[0]
 
         self.thisptr = new CppCandidateRestrictedScore(& memview_score_array[0, 0],
                                                        & memview_C[0, 0],
@@ -89,6 +95,15 @@ cdef class CandidateRestrictedScore:
                                                        cc_tolerance, pruning_eps,
                                                        silent, debug
                                                        )
+
+    def precompute_tau_simple(self):
+        self.thisptr.precompute_tau_simple()
+
+    def precompute_tau_cc_basecases(self):
+        return self.thisptr.precompute_tau_cc_basecases()
+
+    def precompute_tau_cc(self):
+        return self.thisptr.precompute_tau_cc()
 
     def __dealloc__(self):
         del self.thisptr
@@ -103,6 +118,9 @@ cdef class CandidateRestrictedScore:
         if T > 0:
             return self.thisptr.sample_pset(v, U, T, wcum)
         return self.thisptr.sample_pset(v, U, wcum)
+
+    def number_of_scoresums_in_cache(self):
+        return [self.thisptr.number_of_scoresums_in_cache(v) for v in range(self.n)]
 
 
 cdef class CandidateComplementScore:
@@ -120,7 +138,7 @@ cdef class CandidateComplementScore:
         n = len(C)
         self.d = d
         self.k = (n-1)//64+1
-        self.localscore = localscore  # 2
+        self.localscore = localscore
 
         self.t_ub = np.zeros(shape=(n, n), dtype=np.int32)
         for u in range(1, n+1):

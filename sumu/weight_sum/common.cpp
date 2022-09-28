@@ -15,7 +15,7 @@ Timer::Timer() {
 Timer::~Timer() {}
 
 int Timer::lap() {
-  int laptime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t).count();
+  int laptime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t).count();
   t = std::chrono::steady_clock::now();
   return laptime;
 }
