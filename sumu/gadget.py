@@ -432,6 +432,7 @@ class GadgetTimeBudget:
             self.prstats[K]["t_score_sums"] = t3
             self.prstats[K]["t_cc_basecases"] = t4
             self.prstats[K]["t_cc"] = t5
+        DBUG(f"prerun : self.prstats = {self.prstats}")
         self._init_pred(1, K_max)
 
     def _init_pred(self, K_low, K_high):
@@ -564,18 +565,18 @@ class GadgetTimeBudget:
         return d
 
     def _pred_K_time_use(self, K):
-        return sum(
-            [
-                self.est[k](K)
-                for k in [
-                    "t_score_psets",
-                    "t_prune_scores",
-                    "t_score_sums",
-                    "t_cc_basecases",
-                    "t_cc",
-                ]
+        t = [
+            self.est[k](K)
+            for k in [
+                "t_score_psets",
+                "t_prune_scores",
+                "t_score_sums",
+                "t_cc_basecases",
+                "t_cc",
             ]
-        )
+        ]
+        DBUG(f"_pred_K_time_use : K = {K}, t = {t}")
+        return sum(t)
 
     def get_and_pred_K(self, K_preset=None):
         phase = "crs"
