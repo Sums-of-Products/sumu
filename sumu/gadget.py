@@ -412,7 +412,9 @@ class GadgetTimeBudget:
             g = Gadget(data=self.data, **params)
             g._find_candidate_parents()
             t1 = time.monotonic_ns()
+            DBUG(f"prerun : 1st time.monotonic_ns() = {time.monotonic_ns()}")
             g._precompute_scores_for_all_candidate_psets()
+            DBUG(f"prerun : 2nd time.monotonic_ns() = {time.monotonic_ns()}")
             t1 = (time.monotonic_ns() - t1) / 10 ** 9
             t2 = time.monotonic_ns()
             g._init_crs()
