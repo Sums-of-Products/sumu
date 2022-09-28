@@ -411,15 +411,15 @@ class GadgetTimeBudget:
             }
             g = Gadget(data=self.data, **params)
             g._find_candidate_parents()
-            t1 = time.time()
+            t1 = time.monotonic_ns()
             g._precompute_scores_for_all_candidate_psets()
-            t1 = time.time() - t1
-            t2 = time.time()
+            t1 = (time.monotonic_ns() - t1) / 10 ** 9
+            t2 = time.monotonic_ns()
             g._init_crs()
-            t2 = time.time() - t2
-            t3 = time.time()
+            t2 = (time.monotonic_ns() - t2) / 10 ** 9
+            t3 = time.monotonic_ns()
             g.c_r_score.precompute_tau_simple()
-            t3 = time.time() - t3
+            t3 = (time.monotonic_ns() - t3) / 10 ** 9
             t4 = g.c_r_score.precompute_tau_cc_basecases()
             cc_basecases = g.c_r_score.number_of_scoresums_in_cache()
             t5 = g.c_r_score.precompute_tau_cc()
