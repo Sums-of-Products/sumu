@@ -1416,7 +1416,7 @@ class Gadget:
             and "t" in self.p["run_mode"]["params"]
         ):
             log(f"time predicted: {round(self.p.gb.predicted['ccs'])}s")
-        log(f"time used: {round(self._stats['crscore']['time_used'])}s")
+        log(f"time used: {round(self._stats['ccscore']['time_used'])}s")
         log.br(2)
 
         self.precomputations_done = True
