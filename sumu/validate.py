@@ -393,8 +393,8 @@ _constraints_args.update(
         if "K" in p
         else True,
 
-        "d should be a positive integer":
-        lambda p: is_pos_int(p["d"])
+        "d should be non-negative integer":
+        lambda p: is_nonneg_int(p["d"])
         if "d" in p
         else True,
 
