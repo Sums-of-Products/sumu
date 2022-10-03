@@ -398,7 +398,6 @@ class GadgetTimeBudget:
             self.budget[phase] = (
                 self.share[phase] / normalizer * precomp_budget_left
             )
-        DBUG(f"_update_precomp_budget : budget = {self.budget}")
 
     def prerun(self, K_max):
         self.prstats = dict()
@@ -412,15 +411,7 @@ class GadgetTimeBudget:
             g = Gadget(data=self.data, **params)
             g._find_candidate_parents()
             t1 = time.perf_counter_ns()
-            DBUG(
-                "prerun : 1st time.perf_counter_ns() ="
-                f" {time.perf_counter_ns()}"
-            )
             g._precompute_scores_for_all_candidate_psets()
-            DBUG(
-                "prerun : 2nd time.perf_counter_ns() ="
-                f" {time.perf_counter_ns()}"
-            )
             t1 = (time.perf_counter_ns() - t1) / 10 ** 9
             t2 = time.perf_counter_ns()
             g._init_crs()
@@ -568,7 +559,6 @@ class GadgetTimeBudget:
         self.predicted["ccs"] = t_d * self.n
         self.used["ccs"] = time.time() - t0
         self._not_done.remove(phase)
-        DBUG(f"get_and_pred_d : self.budget = {self.budget}")
         self._update_precomp_budgets()
         return d
 
@@ -602,7 +592,6 @@ class GadgetTimeBudget:
         K = max(self.prstats)
         while K_cond():
             t_pred = self._pred_K_time_use(K)
-            DBUG(f"K={K} t_pred={t_pred}")
             K += 1
         K -= 1
         t_pred = self._pred_K_time_use(K)
@@ -610,7 +599,6 @@ class GadgetTimeBudget:
         self.predicted["crs"] = t_pred
         self.used["crs"] = time.time() - t0
         self._not_done.remove(phase)
-        DBUG(f"get_and_pred_K : self.budget = {self.budget}")
         self._update_precomp_budgets()
         return K
 
