@@ -7,3 +7,15 @@ void fzt_inpl(Treal* b, bm32 n){ // 550 adds per microsecond, Treal = Breal.
 }
 
 }
+
+Timer::Timer() {
+  t = std::chrono::steady_clock::now();
+}
+
+Timer::~Timer() {}
+
+int Timer::lap() {
+  int laptime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t).count();
+  t = std::chrono::steady_clock::now();
+  return laptime;
+}

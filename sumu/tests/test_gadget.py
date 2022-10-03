@@ -8,7 +8,7 @@ import pytest
 import sumu
 
 np.random.seed(0)
-
+sumu.gadget.DEBUG = 1
 
 minimal_mcmc = {
     "n_target_chain_iters": 200,

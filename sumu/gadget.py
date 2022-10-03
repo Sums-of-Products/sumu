@@ -26,8 +26,16 @@ from .scorer import BDeu, BGe
 from .stats import Stats, stats
 from .utils.bitmap import bm, bm_to_ints, bm_to_np64
 from .utils.io import read_candidates
-from .utils.math_utils import comb, subsets
+from .utils.math_utils import comb, fit_linreg, subsets
 from .weight_sum import CandidateComplementScore, CandidateRestrictedScore
+
+# Debugging level. 0 = no debug prints.
+DEBUG = 0
+
+
+def DBUG(msg):
+    if DEBUG:
+        print("DEBUG: " + msg)
 
 
 class Defaults:
@@ -250,8 +258,11 @@ class GadgetParameters:
 
     def _adjust_to_time_budget(self):
         self.gb = GadgetTimeBudget(
-            self.data, self.p["run_mode"]["params"]["t"]
+            self.data,
+            self.p["run_mode"]["params"]["t"],
+            self.p["catastrophic_cancellation"]["cache_size"],
         )
+        self.gb.prerun(min(15, self.data.n - 3))
         params_to_predict = ["d", "K"]
         # dict of preset values for params if any
         preset_params = dict(
@@ -354,6 +365,7 @@ class GadgetTimeBudget:
         self,
         data,
         t_budget,
+        cc_cache_size,
         share={"candp": 1 / 9, "crs": 1 / 9, "ccs": 1 / 9, "mcmc": 2 / 3},
     ):
         # The preferred order is: predict d, predict K,
@@ -361,6 +373,7 @@ class GadgetTimeBudget:
         self.t0 = time.time()
         self.n = data.n
         self.data = data
+        self.cc_cache_size = cc_cache_size
         self.share = share
         # NOTE: After get_d and get_K the sum of budgets might exceed
         #       total, since remaining budget is adjusted upwards if previous
@@ -385,6 +398,124 @@ class GadgetTimeBudget:
             self.budget[phase] = (
                 self.share[phase] / normalizer * precomp_budget_left
             )
+
+    def prerun(self, K_max):
+        self.prstats = dict()
+        K_max = min(K_max, self.data.n - 3)
+        for K in range(1, K_max + 1):
+            params = {
+                "constraints": {"K": K},
+                "candidate_parent_algorithm": {"name": "rnd"},
+                "logging": {"silent": True},
+            }
+            g = Gadget(data=self.data, **params)
+            g._find_candidate_parents()
+            t1 = time.perf_counter_ns()
+            g._precompute_scores_for_all_candidate_psets()
+            t1 = (time.perf_counter_ns() - t1) / 10 ** 9
+            t2 = time.perf_counter_ns()
+            g._init_crs()
+            t2 = (time.perf_counter_ns() - t2) / 10 ** 9
+            t3 = time.perf_counter_ns()
+            g.c_r_score.precompute_tau_simple()
+            t3 = (time.perf_counter_ns() - t3) / 10 ** 9
+            t4 = g.c_r_score.precompute_tau_cc_basecases()
+            cc_basecases = g.c_r_score.number_of_scoresums_in_cache()
+            t5 = g.c_r_score.precompute_tau_cc()
+            cc = g.c_r_score.number_of_scoresums_in_cache()
+            self.prstats[K] = dict()
+            self.prstats[K]["cc_basecases"] = cc_basecases
+            self.prstats[K]["cc_total"] = cc
+            self.prstats[K]["t_score_psets"] = t1
+            self.prstats[K]["t_prune_scores"] = t2
+            self.prstats[K]["t_score_sums"] = t3
+            self.prstats[K]["t_cc_basecases"] = t4
+            self.prstats[K]["t_cc"] = t5
+        DBUG(f"prerun : self.prstats = {self.prstats}")
+        self._init_pred(1, K_max)
+
+    def _init_pred(self, K_low, K_high):
+
+        exp_base = dict(
+            t_prune_scores=2.35,
+            t_cc_basecases=2.2,
+            cc_basecases=2.2,
+            t_cc=2.2,
+            cc_total=2.2,
+        )
+        n = self.n
+        cc_max = np.floor(self.cc_cache_size / n)
+        Ks = np.arange(K_low, K_high + 1)
+        prerun = self.prstats
+
+        est = dict()
+
+        y = 1 / (
+            np.array([prerun[K]["t_score_psets"] for K in Ks]) / (2 ** Ks * n)
+        )
+        f = fit_linreg(Ks[-2:], y[-2:])[0]
+        est["t_score_psets"] = lambda K: (1 / f(K)) * 2 ** K * n
+
+        y = np.array([prerun[K]["t_prune_scores"] for K in Ks])
+        est["t_prune_scores"] = fit_linreg(
+            Ks, y, lambda K: exp_base["t_prune_scores"] ** K
+        )[0]
+
+        y = np.array([prerun[K]["t_score_sums"] for K in Ks])
+        est["t_score_sums"] = fit_linreg(Ks, y, lambda K: 2 ** K * K ** 2)[0]
+
+        est["t_cc_basecases_v"] = dict()
+        est["t_cc_v"] = dict()
+        for v in range(self.n):
+            y = np.array([prerun[K]["t_cc_basecases"][v] for K in Ks])
+            f_t_cc_bc = fit_linreg(
+                Ks, y, lambda K: exp_base["t_cc_basecases"] ** K
+            )[0]
+
+            y = np.array([prerun[K]["cc_basecases"][v] for K in Ks])
+            f_tmp, a, b = fit_linreg(
+                Ks, y, lambda K: exp_base["cc_basecases"] ** K
+            )[:-1]
+            f_n_cc_bc = (
+                lambda f_tmp: lambda K: max(0.0, min(cc_max, f_tmp(K)))
+            )(f_tmp)
+
+            # The lowest K for which it is estimated the number of cc basecases
+            # will hit the cache size limit
+            K_ceil = np.inf
+            if b > 0:
+                K_ceil = np.ceil(
+                    np.log((cc_max - a) / b) / np.log(exp_base["cc_basecases"])
+                )
+            est["t_cc_basecases_v"][v] = (
+                lambda f_t_cc_bc, K_ceil: lambda K: max(
+                    0.0, f_t_cc_bc(min(K, K_ceil))
+                )
+            )(f_t_cc_bc, K_ceil)
+
+            y = np.array([prerun[K]["cc_total"][v] for K in Ks])
+            f_tmp = fit_linreg(Ks, y, lambda K: exp_base["cc_total"] ** K)[0]
+            f_n_cc = (lambda f_tmp: lambda K: max(0.0, min(cc_max, f_tmp(K))))(
+                f_tmp
+            )
+
+            f_n_cc_nonbc = (
+                lambda f_n_cc, f_n_cc_bc: lambda K: f_n_cc(K) - f_n_cc_bc(K)
+            )(f_n_cc, f_n_cc_bc)
+
+            y = np.array([prerun[K]["t_cc"][v] for K in Ks])
+            pred_time = fit_linreg(Ks, y, lambda K: exp_base["t_cc"] ** K)[0]
+            est["t_cc_v"][v] = (
+                lambda f_n_cc_bc, f_n_cc_nonbc, pred_time: lambda K: 0
+                if f_n_cc_bc(K) == cc_max and f_n_cc_nonbc(K) == 0
+                else pred_time(K)
+            )(f_n_cc_bc, f_n_cc_nonbc, pred_time)
+
+        est["t_cc_basecases"] = lambda K: sum(
+            [est["t_cc_basecases_v"][v](K) for v in range(n)]
+        )
+        est["t_cc"] = lambda K: sum([est["t_cc_v"][v](K) for v in range(n)])
+        self.est = est
 
     def get_and_pred(self, param, preset_value=None):
         # if preset_value given only the time use is predicted
@@ -424,42 +555,33 @@ class GadgetTimeBudget:
             # IntersectSums, as it seemed negligible.
             ls.complement_psets_and_scores(0, C, d)
             t_d = time.time() - t_d
+
         self.predicted["ccs"] = t_d * self.n
         self.used["ccs"] = time.time() - t0
         self._not_done.remove(phase)
         self._update_precomp_budgets()
         return d
 
+    def _pred_K_time_use(self, K):
+        t = [
+            self.est[k](K)
+            for k in [
+                "t_score_psets",
+                "t_prune_scores",
+                "t_score_sums",
+                "t_cc_basecases",
+                "t_cc",
+            ]
+        ]
+        DBUG(f"_pred_K_time_use : K = {K}, t = {t}")
+        return sum(t)
+
     def get_and_pred_K(self, K_preset=None):
         phase = "crs"
         t0 = time.time()
-        K_high = min(self.n - 1, 13)
-        K_low = max(K_high - 8, 1)
         t_budget = self.budget[phase]
-        X = np.zeros((K_high - K_low + 1, 3))
-        i = 0
-        for K in range(K_low, K_high + 1):
-            params = {
-                "constraints": {"K": K},
-                "candidate_parent_algorithm": {"name": "rnd"},
-                "logging": {"silent": True},
-            }
-            g = Gadget(data=self.data, **params)
-            g._find_candidate_parents()
-            t_score = time.time()
-            g._precompute_scores_for_all_candidate_psets()
-            t_score = time.time() - t_score
-            t = time.time()
-            g._precompute_candidate_restricted_scoring()
-            t = time.time() - t
-            X[i] = np.array([1, K ** 2 * 2 ** K, t])
-            i += 1
 
-        t_score = t_score / 2 ** K_high
-        a, b = np.linalg.lstsq(X[:, :-1], X[:, -1], rcond=None)[0]
         t_pred = 0
-        K = K_high
-
         if K_preset is None:
             K_cond = lambda: K < self.n and t_pred < t_budget
         else:
@@ -467,12 +589,14 @@ class GadgetTimeBudget:
             K = K_preset
             self.preset.add("K")
 
+        K = max(self.prstats)
         while K_cond():
+            t_pred = self._pred_K_time_use(K)
             K += 1
-            t_pred = a + b * K ** 2 * 2 ** K + 2 ** K * t_score
         K -= 1
+        t_pred = self._pred_K_time_use(K)
 
-        self.predicted["crs"] = a + b * K ** 2 * 2 ** K + 2 ** K * t_score
+        self.predicted["crs"] = t_pred
         self.used["crs"] = time.time() - t0
         self._not_done.remove(phase)
         self._update_precomp_budgets()
@@ -1254,6 +1378,10 @@ class Gadget:
         self._stats["crscore"]["time_start"] = time.time()
         self._precompute_scores_for_all_candidate_psets()
         self._precompute_candidate_restricted_scoring()
+        n_cc = sum(self.c_r_score.number_of_scoresums_in_cache())
+        log.br()
+        log(f"Number of score sums stored in cc cache: {n_cc}")
+        log.br()
         self._stats["crscore"]["time_used"] = (
             time.time() - self._stats["crscore"]["time_start"]
         )
@@ -1276,7 +1404,7 @@ class Gadget:
             and "t" in self.p["run_mode"]["params"]
         ):
             log(f"time predicted: {round(self.p.gb.predicted['ccs'])}s")
-        log(f"time used: {round(self._stats['crscore']['time_used'])}s")
+        log(f"time used: {round(self._stats['ccscore']['time_used'])}s")
         log.br(2)
 
         self.precomputations_done = True
@@ -1361,6 +1489,13 @@ class Gadget:
         self.score_array = self.l_score.candidate_scores(self.C_array)
 
     def _precompute_candidate_restricted_scoring(self):
+        self._init_crs()
+        self.c_r_score.precompute_tau_simple()
+        self.c_r_score.precompute_tau_cc_basecases()
+        self.c_r_score.precompute_tau_cc()
+
+    def _init_crs(self):
+        # separated from the func above to make it easy to profile time use.
         self.c_r_score = CandidateRestrictedScore(
             score_array=self.score_array,
             C=self.C_array,
@@ -1369,6 +1504,7 @@ class Gadget:
             cc_cache_size=self.p["catastrophic_cancellation"]["cache_size"],
             pruning_eps=self.p["constraints"]["pruning_eps"],
             silent=self.log.silent(),
+            debug=DEBUG,
         )
         del self.score_array
 

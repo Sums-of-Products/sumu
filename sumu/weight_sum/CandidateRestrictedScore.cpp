@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <limits>
 #include <iostream>
+#include <vector>
 #include "../bitmap/bitmap.hpp"
 #include "common.hpp"
 #include "CandidateRestrictedScore.hpp"
@@ -14,15 +15,20 @@ using std::cout;
 using std::endl;
 using std::ofstream;
 using std::ios_base;
+using std::vector;
 
 
 CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
 												   int* C, int n, int K,
 												   int cc_limit, double cc_tol,
 												   double isum_tol,
-												   bool silent) {
+												   bool silent, int debug) {
 
-  if (silent) {
+  timer = Timer();
+
+  streambuf *coutbuf;
+  coutbuf = cout.rdbuf();
+  if (silent & !debug) {
 	cout.rdbuf(0);
   }
 
@@ -30,7 +36,7 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
 
   m_n = n;
   m_K = K;
-  m_cc_limit = cc_limit;
+  m_cc_limit = cc_limit / n;
 
   m_tau_simple = new Treal*[n];
   m_tau_cc = new unordered_map< bm64, Treal >[n];
@@ -42,9 +48,11 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
   bm64 i = 0;
   int j = 0;
 
+  // TODO: all prints to python
   cout << "Number of candidate parent sets after pruning (unpruned 2^K = " << (1L << K) << "):" << endl << endl;;
   cout << "node\tpsets\tratio" << endl;
 
+  timer.lap();
   for (int v = 0; v < n; ++v) {
     m_tau_simple[v] = new Treal[ (bm32) 1 << K];
 	m_tau_cc[v] = unordered_map< bm64, Treal >();
@@ -61,22 +69,11 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
       m_C[v][c] = C[j++];
     }
   }
-  cout << endl;
-
-  for (bm64 i = 0; i < n * ((bm64) 1 << K); ++i) { m_score_array[i].set_log(score_array[i]);}
-
-  precompute_tau_simple();
-  precompute_tau_cc_basecases();
-  precompute_tau_cc();
-
-  int cc = 0;
-  for (int v = 0; v < n; ++v) {
-    cc += m_tau_cc[v].size();
-  }
-  cout << "Number of score sums stored in cc cache: " << cc << endl << endl;
+  cout.rdbuf(coutbuf);
 }
 
 CandidateRestrictedScore::~CandidateRestrictedScore() {
+  // TODO: Analyze whether this is called properly (when searching for K)
   delete [] m_tau_cc;
   for (int v = m_n - 1; v > -1; --v) {
     delete[] m_tau_simple[v];
@@ -87,6 +84,10 @@ CandidateRestrictedScore::~CandidateRestrictedScore() {
   delete [] m_score_array;
 }
 
+int CandidateRestrictedScore::number_of_scoresums_in_cache(int v) {
+  return m_tau_cc[v].size();
+}
+
 void CandidateRestrictedScore::precompute_tau_simple() {
 
   for (int v = 0; v < m_n; ++v) {
@@ -94,10 +95,13 @@ void CandidateRestrictedScore::precompute_tau_simple() {
   }
 }
 
-void CandidateRestrictedScore::precompute_tau_cc_basecases() {
+vector<double> CandidateRestrictedScore::precompute_tau_cc_basecases() {
 
-  int count = 0;
+  vector<double> time_use(m_n);
+
   for (int v = 0; v < m_n; ++v) {
+	timer.lap();
+	bool next_node = false;
     for (int k = 0; k < m_K; ++k) {
       bm32 j = 1 << k;
       bm32 U_minus_j = (( (bm32) 1 << m_K) - 1) & ~j;
@@ -115,30 +119,32 @@ void CandidateRestrictedScore::precompute_tau_cc_basecases() {
 		bm32 U = ikbit_32(S, k, 1);
 		if (m_tau_simple[v][U] < m_cc_tol * m_tau_simple[v][U & ~j]) {
 		  m_tau_cc[v].insert({(bm64) U << 32 | j, tmp[S]});
-
-		  count++;
-		  if (count >= m_cc_limit) {
-			delete[] tmp;
-			return;
+		  if (m_tau_cc[v].size() >= m_cc_limit) {
+			next_node = true;
+			break;
 		  }
 		}
       }
 
       delete[] tmp;
+	  if (next_node) {break;}
     }
+	time_use[v] = timer.lap() / 1000000.0;
   }
+  return time_use;
 }
 
 
-void CandidateRestrictedScore::precompute_tau_cc() {
+vector<double> CandidateRestrictedScore::precompute_tau_cc() {
 
+  vector<double> time_use(m_n);
   int count[1] = {0};
-  for (int v = 0; v < m_n; ++v) {
-    *count += m_tau_cc[v].size();
-  }
 
   // With Insurance data, this order seems about 25% faster than having v loop after count check
   for (int v = 0; v < m_n; ++v) {
+	timer.lap();
+	*count = m_tau_cc[v].size();
+	bool next_node = false;
     for (int T_size_limit = 1; T_size_limit <= m_K; ++T_size_limit) {
       for (bm32 U = 1; U < (bm32) 1 << m_K; ++U) {
 		if (count_32(U) < T_size_limit) {
@@ -146,11 +152,15 @@ void CandidateRestrictedScore::precompute_tau_cc() {
 		}
 		rec_it_dfs(v, U, U, 0, 0, T_size_limit, count);
 		if (*count >= m_cc_limit) {
-		  return;
+		  next_node = true;
+		  break;
 		}
       }
+	  if (next_node) {break;}
     }
+	time_use[v] = timer.lap() / 1000000.0;
   }
+  return time_use;
 }
 
 

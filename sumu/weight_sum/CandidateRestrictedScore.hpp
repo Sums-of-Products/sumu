@@ -4,6 +4,7 @@
 #include "GroundSetIntersectSums.hpp"
 #include <unordered_map>
 #include <utility>
+#include <vector>
 #include "common.hpp"
 
 using std::unordered_map;
@@ -27,21 +28,22 @@ public:
   int m_cc_limit;
 
   CandidateRestrictedScore(double* scores, int* C, int n, int K, int cc_limit, double cc_tol, double isum_tol,
-						   bool silent
+						   bool silent, int debug
 						   );
   ~CandidateRestrictedScore();
   Treal sum(int v, bm32 U, bm32 T, bool isum=false);
   Treal sum(int v, bm32 U);
   pair<bm32, double> sample_pset(int v, bm32 U, bm32 T, double wcum);
   pair<bm32, double> sample_pset(int v, bm32 U, double wcum);
+  int number_of_scoresums_in_cache(int v);
+  void precompute_tau_simple();
+  std::vector<double> precompute_tau_cc_basecases();
+  std::vector<double> precompute_tau_cc();
 
 private:
 
   GroundSetIntersectSums **isums;
-  streambuf *coutbuf;
-  void precompute_tau_simple();
-  void precompute_tau_cc_basecases();
-  void precompute_tau_cc();
+  Timer timer;
   void rec_it_dfs(int v, bm32 U, bm32 R, bm32 T, int T_size, int T_size_limit, int * count);
 
 };
