@@ -77,7 +77,7 @@ class Defaults:
             },
             "candidate_parent_algorithm": {
                 "name": "greedy",
-                "params": {"k": 6, "criterion": "score"},
+                "params": {"k": 6, "criterion": "score", "opt_criterion": "max", "discount": "none","d": 0, "var": -1},
             },
             "catastrophic_cancellation": {
                 "tolerance": 2 ** -32,
@@ -741,14 +741,14 @@ class GadgetLogger(Logger):
                     phase,
                     stats[phase]["target_chain_iter_count"],
                     stats[phase]["target_chain_iter_count"]
-                    / stats["mcmc"]["target_chain_iter_count"],
+                    / max([1,stats["mcmc"]["target_chain_iter_count"]]),
                     stats[phase]["iter_count"],
-                    stats[phase]["iter_count"] / stats["mcmc"]["iter_count"],
+                    stats[phase]["iter_count"] / max([1,stats["mcmc"]["iter_count"]]),
                     round(stats[phase]["time_used"]),
                     stats[phase]["time_used"] / stats[phase]["time_used"],
-                    stats[phase]["time_used"] / stats[phase]["iter_count"],
+                    stats[phase]["time_used"] / max([1,stats[phase]["iter_count"]]),
                     stats[phase]["time_used"]
-                    / stats[phase]["target_chain_iter_count"],
+                    / max([1,stats[phase]["target_chain_iter_count"]]),
                 )
                 + "\n"
             )
@@ -760,9 +760,9 @@ class GadgetLogger(Logger):
             1.0,
             round(stats["mcmc"]["time_used"]),
             1.0,
-            stats["mcmc"]["time_used"] / stats["mcmc"]["iter_count"],
+            stats["mcmc"]["time_used"] / max([1,stats["mcmc"]["iter_count"]]),
             stats["mcmc"]["time_used"]
-            / stats["mcmc"]["target_chain_iter_count"],
+            / max([1,stats["mcmc"]["target_chain_iter_count"]]),
         )
         self(msg)
         self.br()
@@ -1230,6 +1230,8 @@ class Gadget:
         log.br()
         log(f"time used: {round(self._stats['candp']['time_used'])}s")
         log.br(2)
+
+        assert False
 
         log.h("PRECOMPUTING SCORING STRUCTURES FOR CANDIDATE PARENT SETS")
         self._stats["crscore"]["time_start"] = time.time()

@@ -1,3 +1,4 @@
+
 """Module for validating arbitrary objects.
 
 The module can be used in two ways:
@@ -412,7 +413,7 @@ _constraints_args.update(
 _candidate_parent_algorithm_args = {
     "_arg_names": ["name", "params"],
     "_names": ["greedy", "opt", "rnd"],
-    "_params_keys": {"greedy": ["k"], "opt": [], "rnd": []},
+    "_params_keys": {"greedy": ["k","criterion","opt_criterion","discount","d","var"], "opt": [], "rnd": []},
 }
 _candidate_parent_algorithm_args.update(
     {
