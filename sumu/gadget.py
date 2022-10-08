@@ -3,6 +3,7 @@
 """
 
 import copy
+import datetime
 import os
 import pathlib
 import sys
@@ -17,6 +18,8 @@ try:
     plot_trace = plt.__version__ == "4.1.3"
 except ImportError:
     plot_trace = False
+
+from sumu import __version__
 
 from . import validate
 from .candidates import candidate_parent_algorithm as cpa
@@ -1328,6 +1331,10 @@ class Gadget:
 
         self.dags = list()
         self.dag_scores = list()
+
+        log(f"sumu version: {__version__}")
+        log(f"run started: {datetime.datetime.now()}")
+        log.br()
 
         log.h("PROBLEM INSTANCE")
         log.dict(self.data.info)
