@@ -157,7 +157,6 @@ exts = [
 
 setup(
     name="sumu",
-    version="0.2.0",
     description=(
         "Library for working with probabilistic and causal graphical models"
     ),
