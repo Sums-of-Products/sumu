@@ -9,8 +9,20 @@ using std::make_pair;
 bool decr_ws32(ws32 x, ws32 y) { return x.weight > y.weight; }
 void sort_ws32(vector<ws32> &c){ sort(c.begin(), c.end(), decr_ws32); }
 
-GroundSetIntersectSums::GroundSetIntersectSums(int K0, double *w, double eps0){ K = K0; eps = eps0; prune(w); sort_ws32(s); }
+GroundSetIntersectSums::GroundSetIntersectSums(int K0, double *w, double eps0){
+  K = K0; eps = eps0;
+  if (eps > 0) {prune(w);} else {init(w);}
+  sort_ws32(s);
+}
+
 GroundSetIntersectSums::~GroundSetIntersectSums(){ }
+void GroundSetIntersectSums::init(double *w){
+	bm32 l = 1L << K;
+    Treal* c = new Treal[l];
+	for (bm32 S = 0; S < l; ++S){ c[S].set_log(w[S]); s.push_back({ S, c[S] });}
+	delete[] c;
+}
+
 void GroundSetIntersectSums::prune(double *w){
 //	Pruning rule: given a tolerance of relative error eps > 0, prune S if
 //		w(S) < eps \sum_{j in R subset of S} w(R) 2^{|R| - K} for all j in S.
