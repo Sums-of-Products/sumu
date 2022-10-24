@@ -371,7 +371,9 @@ _structure_prior_args.update(
 )
 
 
-_constraints_args = {"_arg_names": ["max_id", "K", "d", "pruning_eps"]}
+_constraints_args = {
+    "_arg_names": ["max_id", "K", "d", "pruning_eps", "score_sum_eps"]
+}
 _constraints_args.update(
     {
 
@@ -398,11 +400,18 @@ _constraints_args.update(
         if "d" in p
         else True,
 
-        "pruning_eps should be a positive number":
-        lambda p: is_pos_num(
+        "pruning_eps should be a non-negative number":
+        lambda p: is_nonneg_num(
             p["pruning_eps"]
         )
         if "pruning_eps" in p
+        else True,
+
+        "score_sum_eps should be a non-negative number":
+        lambda p: is_nonneg_num(
+            p["score_sum_eps"]
+        )
+        if "score_sum_eps" in p
         else True,
 
     }

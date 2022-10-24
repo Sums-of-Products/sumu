@@ -32,6 +32,7 @@ private:
   int				K;	// Size of the ground set.
   double 			eps;// Tolerated relative error.
   void prune(double *w);
+  void init(double *w);
 };
 
 #endif
