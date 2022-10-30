@@ -636,10 +636,10 @@ class Logger:
 
     def __call__(self, string):
         if self._logfile == sys.stdout:
-            print(string, file=self._logfile)
+            print(string, file=self._logfile, flush=True)
         else:
             with open(self._logfile, self._mode) as f:
-                print(string, file=f)
+                print(string, file=f, flush=True)
 
     def unlink(self):
         if type(self._logfile) == pathlib.PosixPath:
