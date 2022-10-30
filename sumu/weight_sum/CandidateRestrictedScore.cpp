@@ -69,6 +69,9 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
       m_C[v][c] = C[j++];
     }
   }
+
+  for (bm64 i = 0; i < n * ((bm64) 1 << K); ++i) { m_score_array[i].set_log(score_array[i]);}
+
   cout.rdbuf(coutbuf);
 }
 
