@@ -69,6 +69,21 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
       m_C[v][c] = C[j++];
     }
   }
+
+  cout << endl;
+  if (debug) {cout << "DEBUG: K=" << m_K << " t_GroundSetIntersectsums=" << timer.lap() << endl;}
+
+  for (bm64 i = 0; i < n * ((bm64) 1 << K); ++i) { m_score_array[i].set_log(score_array[i]);}
+
+  precompute_tau_simple();
+  if (debug) {cout << "DEBUG: K=" << m_K << " t_precompute_tau_simple=" << timer.lap() << endl;}
+
+  precompute_tau_cc_basecases();
+  if (debug) {cout << "DEBUG: K=" << m_K << " t_precompute_tau_cc_basecases=" << timer.lap() << endl;}
+
+  precompute_tau_cc();
+  if (debug) {cout << "DEBUG: K=" << m_K << " t_precompute_tau_cc=" << timer.lap() << endl;}
+
   cout.rdbuf(coutbuf);
 }
 
