@@ -20,6 +20,7 @@ class Data:
         if type(data_or_path) == Data:
             self.data = data_or_path.data
             self.discrete = data_or_path.discrete
+            self.data_path = data_or_path.data_path
             return
 
         # Initializing from np.array
@@ -27,12 +28,14 @@ class Data:
             # TODO: Should cast all int types to np.int32 as that is what bdeu
             # scorer expects. Also make sure float is np.float64, not
             # np.float32 or so?
+            self.data_path = None
             self.data = data_or_path
             self.discrete = self.data.dtype != np.float64
             return
 
         # Initializing from path
         if type(data_or_path) == str:
+            self.data_path = data_or_path
             with open(data_or_path) as f:
                 # . is assumed to be a decimal separator
                 if "." in f.read():
@@ -79,11 +82,16 @@ class Data:
 
     @property
     def info(self):
-        info = {
-            "no. variables": self.n,
-            "no. data points": self.N,
-            "type of data": ["continuous", "discrete"][1 * self.discrete],
-        }
+        info = dict()
+        if self.data_path:
+            info["data file"] = self.data_path
+        info.update(
+            {
+                "no. variables": self.n,
+                "no. data points": self.N,
+                "type of data": ["continuous", "discrete"][1 * self.discrete],
+            }
+        )
         if self.discrete:
             info[
                 "arities [min, max]"
