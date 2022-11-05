@@ -1398,8 +1398,42 @@ class Gadget:
                 self.p["constraints"]["d"],
             )
         )
-        log(f"Estimated memory use: {mem_use_estimate}MB")
+        log(f"estimated memory use: {mem_use_estimate}MB")
         log.br()
+
+        if self.p["run_mode"]["name"] == "budget":
+            budget_exceeded_msg = list()
+            if "t" in self.p["run_mode"]["params"]:
+                time_pred_precomputation = round(
+                    (time.time() - self.p.gb.t0)
+                    + self.p.gb.predicted["crs"]
+                    + self.p.gb.predicted["ccs"]
+                )
+                if (
+                    time_pred_precomputation
+                    > self.p["run_mode"]["params"]["t"]
+                ):
+                    budget_exceeded_msg.append(
+                        "estimated time use "
+                        "for precomputations exceeds budget: "
+                        f"{time_pred_precomputation} > "
+                        f"{self.p['run_mode']['params']['t']}"
+                    )
+
+            if "mem" in self.p["run_mode"]["params"]:
+                if mem_use_estimate > self.p["run_mode"]["params"]["mem"]:
+                    budget_exceeded_msg.append(
+                        "estimated memory use exceeds budget: "
+                        f"{mem_use_estimate} > "
+                        f"{self.p['run_mode']['params']['mem']}"
+                    )
+
+            for msg in budget_exceeded_msg:
+                log(msg)
+            if len(budget_exceeded_msg) > 0:
+                log.br()
+                log("terminating ...")
+                exit()
 
         self.precomputations_done = False
 
