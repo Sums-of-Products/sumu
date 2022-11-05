@@ -43,64 +43,92 @@ def DBUG(msg):
 
 class Defaults:
 
-    # default parameter values used by multiple classes
+    # default parameter values for Gadget
 
     def __init__(self):
-        self.default = {
-            "run_mode": {"name": "normal"},
-            "mcmc": {
-                "n_indep": 1,
-                "n_target_chain_iters": 20000,
-                "burn_in": 0.5,
-                "n_dags": 10000,
-                "move_weights": [1, 1, 2],
+
+        default = dict()
+
+        default["run_mode"] = lambda name: {
+            name != "budget": {"name": "normal" if name is None else name},
+            name == "budget": {"name": "budget", "params": {}},  # placeholder
+        }.get(True)
+
+        default["mcmc"] = {
+            "n_indep": 1,
+            # TODO: move to run_mode normal params
+            "n_target_chain_iters": 20000,
+            "burn_in": 0.5,
+            "n_dags": 10000,
+            "move_weights": [1, 1, 2],
+        }
+
+        default["metropolis_coupling_scheme"] = lambda name: {
+            name
+            == "adaptive": {
+                "name": name,
+                "params": {
+                    "M": 2,
+                    "p_target": 0.234,
+                    "delta_t_init": 0.5,
+                    "local_accept_history_size": 1000,
+                    "update_freq": 100,
+                    "smoothing": 2.0,
+                    "slowdown": 1.0,
+                },
             },
-            "metropolis_coupling_scheme": lambda name: {
-                name
-                == "adaptive": {
-                    "name": name,
-                    "params": {
-                        "M": 2,
-                        "p_target": 0.234,
-                        "delta_t_init": 0.5,
-                        "local_accept_history_size": 1000,
-                        "update_freq": 100,
-                        "smoothing": 2.0,
-                        "slowdown": 1.0,
-                    },
-                },
-                name
-                not in ("adaptive",): {
-                    "name": "linear" if name is None else name,
-                    "params": {"M": 16, "local_accept_history_size": 100},
-                },
-            }.get(True),
-            "score": lambda discrete: {"name": "bdeu", "params": {"ess": 10}}
+            name
+            != "adaptive": {
+                "name": "linear" if name is None else name,
+                "params": {"M": 16, "local_accept_history_size": 100},
+            },
+        }.get(True)
+
+        default["score"] = (
+            lambda discrete: {"name": "bdeu", "params": {"ess": 10}}
             if discrete
-            else {"name": "bge"},
-            "structure_prior": {"name": "fair"},
-            "constraints": {
+            else {"name": "bge"}
+        )
+
+        default["structure_prior"] = {"name": "fair"}
+
+        default["constraints"] = lambda runmode: {
+            runmode
+            == "normal": {
                 "max_id": -1,
                 "K": lambda n: min(n - 1, 16),
                 "d": lambda n: min(n - 1, 3),
                 "pruning_eps": 0.001,
                 "score_sum_eps": 0.1,
             },
-            "candidate_parent_algorithm": {
-                "name": "greedy",
-                "params": {"k": 6, "criterion": "score"},
+            runmode
+            == "budget": {
+                "max_id": -1,
+                "K_min": 1,
+                "d_min": 2,
+                "pruning_eps": 0.001,
+                "score_sum_eps": 0.1,
             },
-            "catastrophic_cancellation": {
-                "tolerance": 2 ** -32,
-                "cache_size": 10 ** 7,
-            },
-            "logging": {
-                "silent": False,
-                "verbose_prefix": None,
-                "stats_period": 15,
-                "overwrite": False,
-            },
+        }.get(True)
+
+        default["candidate_parent_algorithm"] = {
+            "name": "greedy",
+            "params": {"k": 6, "criterion": "score"},
         }
+
+        default["catastrophic_cancellation"] = {
+            "tolerance": 2 ** -32,
+            "cache_size": 10 ** 7,
+        }
+
+        default["logging"] = {
+            "silent": False,
+            "verbose_prefix": None,
+            "stats_period": 15,
+            "overwrite": False,
+        }
+
+        self.default = default
 
     def __call__(self):
         return self.default
@@ -212,14 +240,21 @@ class GadgetParameters:
             )
 
     def _populate_default_parameters(self):
-        # Some defaults are defined as functions of data.
+        # Some defaults are defined as functions of data or other parameters.
         # Evaluate the functions here.
-        self.default["constraints"]["K"] = self.default["constraints"]["K"](
-            self.data.n
+        self.default["run_mode"] = self.default["run_mode"](
+            self.p["run_mode"].get("name")
         )
-        self.default["constraints"]["d"] = self.default["constraints"]["d"](
-            self.data.n
+        self.default["constraints"] = self.default["constraints"](
+            self.default["run_mode"]["name"]
         )
+        if self.default["run_mode"]["name"] == "normal":
+            self.default["constraints"]["K"] = self.default["constraints"][
+                "K"
+            ](self.data.n)
+            self.default["constraints"]["d"] = self.default["constraints"][
+                "d"
+            ](self.data.n)
         self.default["score"] = self.default["score"](self.data.discrete)
         self.default["metropolis_coupling_scheme"] = self.default[
             "metropolis_coupling_scheme"
@@ -262,8 +297,7 @@ class GadgetParameters:
     def _adjust_to_time_budget(self):
         self.gb = GadgetTimeBudget(
             self.data,
-            self.p["run_mode"]["params"]["t"],
-            self.p["catastrophic_cancellation"]["cache_size"],
+            self.p,
         )
         self.gb.prerun(min(15, self.data.n - 3))
         params_to_predict = ["d", "K"]
@@ -298,8 +332,7 @@ class GadgetParameters:
         )
         candidate_parent_algorithm_is_greedy = (
             candidate_parent_algorithm_is_given
-            and self.init["candidate_parent_algorithm"]["name"]
-            == Defaults()["candidate_parent_algorithm"]["name"]
+            and self.init["candidate_parent_algorithm"]["name"] == "greedy"
         )
         candidate_parent_algorithm_params_is_given = (
             candidate_parent_algorithm_is_given
@@ -321,7 +354,8 @@ class GadgetParameters:
                 self.gb.budget["candp"]
             )
 
-    def _mem_estimate(self, n, K, d):
+    @staticmethod
+    def mem_estimate(n, K, d):
         def n_psets(n, K, d):
             return sum(comb(n - 1, i) - comb(K, i) for i in range(1, d + 1))
 
@@ -334,14 +368,17 @@ class GadgetParameters:
         d = self.p["constraints"]["d"]
         # Decrement d until we're in budget.
         d_changed = False
-        while self._mem_estimate(n, K, d) > mem_budget and d > 0:
+        while (
+            self.mem_estimate(n, K, d) > mem_budget
+            and d > self.p["constraints"]["d_min"]
+        ):
             d -= 1
             d_changed = True
         # We might be way below budget.
         # Return if incrementing K by one brings us over the budget.
         if (
-            self._mem_estimate(n, K, d) < mem_budget
-            and self._mem_estimate(n, K + 1, d) > mem_budget
+            self.mem_estimate(n, K, d) < mem_budget
+            and self.mem_estimate(n, K + 1, d) > mem_budget
         ):
             self.p["constraints"]["d"] = d
             return
@@ -349,7 +386,10 @@ class GadgetParameters:
         # and decrement K until budget constraint met.
         if d_changed:
             d += 1
-        while self._mem_estimate(n, K, d) > mem_budget and K > 1:
+        while (
+            self.mem_estimate(n, K, d) > mem_budget
+            and K > self.p["constraints"]["K_min"]
+        ):
             K -= 1
         self.p["constraints"]["K"] = K
         self.p["constraints"]["d"] = d
@@ -367,22 +407,23 @@ class GadgetTimeBudget:
     def __init__(
         self,
         data,
-        t_budget,
-        cc_cache_size,
+        gadget_params,
         share={"candp": 1 / 9, "crs": 1 / 9, "ccs": 1 / 9, "mcmc": 2 / 3},
     ):
+
         # The preferred order is: predict d, predict K,
         # remaining precomp budget to candp.
         self.t0 = time.time()
         self.n = data.n
         self.data = data
-        self.cc_cache_size = cc_cache_size
+        self.p = gadget_params
+        self.cc_cache_size = self.p["catastrophic_cancellation"]["cache_size"]
         self.share = share
         # NOTE: After get_d and get_K the sum of budgets might exceed
         #       total, since remaining budget is adjusted upwards if previous
         #       phase is not predicted to use all of its budget.
         self.budget = dict()
-        self.budget["total"] = t_budget
+        self.budget["total"] = self.p["run_mode"]["params"]["t"]
         self.predicted = {phase: 0 for phase in share}
         self.used = {phase: 0 for phase in share}
         self._not_done = set(share)
@@ -536,8 +577,13 @@ class GadgetTimeBudget:
             for v in range(self.n)
         }
         C = {v: C[v][:K_max] for v in C}
-        ls = LocalScore(data=self.data)
-        d = 0
+        ls = LocalScore(
+            data=self.data,
+            score=self.p["score"],
+            prior=self.p["structure_prior"],
+            maxid=self.p["constraints"]["max_id"],
+        )
+
         t_d = 0
         t_budget = self.budget[phase]
 
@@ -547,9 +593,11 @@ class GadgetTimeBudget:
                 and t_d * comb(self.n, d + 1) / comb(self.n, d) * self.n
                 < t_budget
             )
+            d = self.p["constraints"]["d_min"]
         else:
             self.preset.add("d")
-            d_cond = lambda: d <= d_preset - 1
+            d_cond = lambda: d < d_preset
+            d = d_preset - 1
 
         while d_cond():
             d += 1
@@ -580,6 +628,7 @@ class GadgetTimeBudget:
         return sum(t)
 
     def get_and_pred_K(self, K_preset=None):
+
         phase = "crs"
         t0 = time.time()
         t_budget = self.budget[phase]
@@ -587,12 +636,12 @@ class GadgetTimeBudget:
         t_pred = 0
         if K_preset is None:
             K_cond = lambda: K < self.n and t_pred < t_budget
+            K = max(self.p["constraints"]["K_min"], max(self.prstats))
         else:
             K_cond = lambda: K < K_preset + 1
             K = K_preset
             self.preset.add("K")
 
-        K = max(self.prstats)
         while K_cond():
             t_pred = self._pred_K_time_use(K)
             K += 1
@@ -1343,7 +1392,7 @@ class Gadget:
         log.h("RUN PARAMETERS")
         log.dict(self.p.p)
         mem_use_estimate = round(
-            self.p._mem_estimate(
+            self.p.mem_estimate(
                 self.data.n,
                 self.p["constraints"]["K"],
                 self.p["constraints"]["d"],
@@ -1370,8 +1419,7 @@ class Gadget:
             and "t" in self.p["run_mode"]["params"]
             and "candidate_parent_algorithm" not in self.p.gb.preset
             and "candidate_parent_algorithm" in self.p
-            and self.p["candidate_parent_algorithm"]["name"]
-            == Defaults()["candidate_parent_algorithm"]["name"]
+            and self.p["candidate_parent_algorithm"]["name"] == "greedy"
         ):
             log.br()
             log(f"Adjusted for time budget: k = {stats['C']['k']}")
@@ -1839,12 +1887,13 @@ class LocalScore:
         *,
         data,
         score=None,
-        prior=Defaults()["structure_prior"],
-        maxid=Defaults()["constraints"]["max_id"],
+        prior={"name": "fair"},
+        maxid=-1,
     ):
         self.data = Data(data)
         self.score = score
         if score is None:
+            # TODO: decouple from Defaults
             self.score = Defaults()["score"](self.data.discrete)
         self.prior = prior
         self.priorf = {"fair": self._prior_fair, "unif": self._prior_unif}

@@ -372,7 +372,8 @@ _structure_prior_args.update(
 
 
 _constraints_args = {
-    "_arg_names": ["max_id", "K", "d", "pruning_eps", "score_sum_eps"]
+    "_arg_names":
+    ["max_id", "K", "d", "K_min", "d_min", "pruning_eps", "score_sum_eps"]
 }
 _constraints_args.update(
     {
@@ -399,6 +400,22 @@ _constraints_args.update(
         lambda p: is_nonneg_int(p["d"])
         if "d" in p
         else True,
+
+        "K_min should be a non-negative integer":
+        lambda p: is_nonneg_int(p["K_min"])
+        if "K_min" in p
+        else True,
+
+        "d_min should be a non-negative integer":
+        lambda p: is_nonneg_int(p["d_min"])
+        if "d_min" in p
+        else True,
+
+        "can give only one of K, K_min":
+        lambda p: not ("K" in p and "K_min" in p),
+
+        "can give only one of d, d_min":
+        lambda p: not ("d" in p and "d_min" in p),
 
         "pruning_eps should be a non-negative number":
         lambda p: is_nonneg_num(
