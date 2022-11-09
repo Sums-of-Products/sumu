@@ -377,31 +377,37 @@ class GadgetParameters:
         n = self.data.n
         K = self.p["constraints"]["K"]
         d = self.p["constraints"]["d"]
-        # Decrement d until we're in budget.
-        d_changed = False
-        while (
-            self.mem_estimate(n, K, d, n_cc(K)) > mem_budget
-            and d > self.p["constraints"]["d_min"]
-        ):
-            d -= 1
-            d_changed = True
-        # We might be way below budget.
-        # Return if incrementing K by one brings us over the budget.
-        if (
-            self.mem_estimate(n, K, d, n_cc(K)) < mem_budget
-            and self.mem_estimate(n, K + 1, d, n_cc(K)) > mem_budget
-        ):
-            self.p["constraints"]["d"] = d
-            return
-        # If not, increment d by one, if it was changed,
-        # and decrement K until budget constraint met.
-        if d_changed:
-            d += 1
-        while (
-            self.mem_estimate(n, K, d, n_cc(K)) > mem_budget
-            and K > self.p["constraints"]["K_min"]
-        ):
-            K -= 1
+
+        memtable = (
+            np.dstack(
+                np.meshgrid(np.arange(1, K + 1), np.arange(d + 1), 0)
+            ).reshape(-1, 3)
+            # .astype(np.float32)
+        )
+        for i in range(len(memtable)):
+            K, d, _ = memtable[i]
+            memtable[i, 2] = mem_budget - self.mem_estimate(n, K, d, n_cc(K))
+
+        conditions = list()
+        if "d" in self.init["constraints"]:
+            conditions.append(memtable[:, 1] == self.init["constraints"]["d"])
+        if "K" in self.init["constraints"]:
+            conditions.append(memtable[:, 0] == self.init["constraints"]["K"])
+        if "d_min" in self.p["constraints"]:
+            conditions.append(memtable[:, 1] >= self.p["constraints"]["d_min"])
+        if "K_min" in self.p["constraints"]:
+            conditions.append(memtable[:, 0] >= self.p["constraints"]["K_min"])
+
+        memtable = memtable[np.logical_and.reduce(conditions)]
+
+        if sum(memtable[:, 2] > 0) > 0:
+            memtable = memtable[memtable[:, 2] > 0]
+            memtable = memtable[memtable[:, 2].argsort()]
+            K, d, _ = memtable[0]
+        else:
+            memtable = memtable[memtable[:, 2].argsort()[::-1]]
+            K, d, _ = memtable[0]
+
         self.p["constraints"]["K"] = K
         self.p["constraints"]["d"] = d
 
@@ -548,33 +554,33 @@ class GadgetParameters:
             maxid=self.p["constraints"]["max_id"],
         )
 
-        t_d = 0
         t_budget = self.budget[phase]
-
         if d_preset is None:
-            d_cond = (
-                lambda: d < self.data.n - 1
-                and t_d
-                * comb(self.data.n, d + 1)
-                / comb(self.data.n, d)
-                * self.data.n
+            increment = (
+                lambda d, t_d: d < self.data.n - 1
+                and t_d * comb(self.data.n, d + 1) / comb(self.data.n, d)
                 < t_budget
             )
             d = self.p["constraints"]["d_min"]
         else:
+            increment = lambda d, t_d: False
             self.preset.add("d")
-            d_cond = lambda: d < d_preset
-            d = d_preset - 1
+            d = d_preset
 
-        while d_cond():
+        pred = dict()
+        t_d = time.time()
+        ls.complement_psets_and_scores(0, C, d)
+        pred[d] = (time.time() - t_d) * self.data.n
+
+        while increment(d, pred[d]):
             d += 1
             t_d = time.time()
             # This does not take into acount time used by initializing
             # IntersectSums, as it seemed negligible.
             ls.complement_psets_and_scores(0, C, d)
-            t_d = time.time() - t_d
+            pred[d] = (time.time() - t_d) * self.data.n
 
-        self.predicted["ccs"] = t_d * self.data.n
+        self.predicted["ccs"] = pred
         return d
 
     def _pred_K_time_use(self, K):
@@ -596,22 +602,21 @@ class GadgetParameters:
         phase = "crs"
         t_budget = self.budget[phase]
 
-        t_pred = 0
         if K_preset is None:
-            K_cond = lambda: K < self.data.n and t_pred < t_budget
-            K = max(self.p["constraints"]["K_min"], max(self.prstats))
+            increment = lambda K, t_K: K < self.data.n and t_K < t_budget
+            K = 1
         else:
-            K_cond = lambda: K < K_preset + 1
+            increment = lambda K, t_K: False
             K = K_preset
             self.preset.add("K")
 
-        while K_cond():
-            t_pred = self._pred_K_time_use(K)
+        pred = dict()
+        pred[K] = self._pred_K_time_use(K)
+        while increment(K, pred[K]):
             K += 1
-        K -= 1
-        t_pred = self._pred_K_time_use(K)
+            pred[K] = self._pred_K_time_use(K)
 
-        self.predicted["crs"] = t_pred
+        self.predicted["crs"] = pred
         return K
 
     def left(self):
@@ -1354,12 +1359,17 @@ class Gadget:
 
         log.h("RUN PARAMETERS")
         log.dict(self.p.p)
-        if not is_prerun:
+
+        if not is_prerun:  # p.est does not exist for prerun
+            precomp_time_estimate = round(
+                (time.time() - self.p.t0)
+                + self.p.predicted["crs"][self.p["constraints"]["K"]]
+                + self.p.predicted["ccs"][self.p["constraints"]["d"]]
+            )
             cc_estimate = sum(
                 self.p.est["n_cc_v"][v](self.p["constraints"]["K"])
                 for v in range(self.data.n)
             )
-            log(f"cc_estimate: {cc_estimate}")
             mem_use_estimate = round(
                 self.p.mem_estimate(
                     self.data.n,
@@ -1372,19 +1382,14 @@ class Gadget:
             if self.p["run_mode"]["name"] == "budget":
                 budget_exceeded_msg = list()
                 if "t" in self.p["run_mode"]["params"]:
-                    time_pred_precomputation = round(
-                        (time.time() - self.p.t0)
-                        + self.p.predicted["crs"]
-                        + self.p.predicted["ccs"]
-                    )
                     if (
-                        time_pred_precomputation
+                        precomp_time_estimate
                         > self.p["run_mode"]["params"]["t"]
                     ):
                         budget_exceeded_msg.append(
                             "estimated time use "
                             "for precomputations exceeds budget: "
-                            f"{time_pred_precomputation} > "
+                            f"{precomp_time_estimate} > "
                             f"{self.p['run_mode']['params']['t']}"
                         )
 
@@ -1403,8 +1408,12 @@ class Gadget:
                     log("terminating ...")
                     exit()
 
-            log(f"estimated memory use: {mem_use_estimate} MB")
-            log.br()
+                log(
+                    "estimated time use for precomputations: "
+                    f"{precomp_time_estimate} s"
+                )
+                log(f"estimated memory use: {mem_use_estimate} MB")
+                log.br()
 
         self.precomputations_done = False
 
