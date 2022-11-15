@@ -111,10 +111,19 @@ class Defaults:
             },
         }.get(True)
 
-        default["candidate_parent_algorithm"] = {
-            "name": "greedy",
-            "params": {"k": 6, "criterion": "score"},
-        }
+        default["candidate_parent_algorithm"] = lambda runmode: {
+            runmode
+            == "budget": {
+                "name": "greedy",
+                "params": {"criterion": "score"},
+            },
+            # TODO: Make sure this works with n < k
+            runmode
+            in ["normal", "anytime"]: {
+                "name": "greedy",
+                "params": {"k": 6, "criterion": "score"},
+            },
+        }.get(True)
 
         default["catastrophic_cancellation"] = {
             "tolerance": 2 ** -32,
@@ -282,6 +291,9 @@ class GadgetParameters:
         self.default["metropolis_coupling_scheme"] = self.default[
             "metropolis_coupling_scheme"
         ](self.p["metropolis_coupling_scheme"].get("name"))
+        self.default["candidate_parent_algorithm"] = self.default[
+            "candidate_parent_algorithm"
+        ](self.default["run_mode"]["name"])
 
     def _complete_user_given_parameters(self):
         for k in self.p:
