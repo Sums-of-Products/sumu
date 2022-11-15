@@ -272,6 +272,7 @@ class GadgetParameters:
                 or self.p["candidate_parent_algorithm"]["name"] == "rnd"
             ):
                 self.time_use_estimate["C"] = 0
+                return
             if self.p["candidate_parent_algorithm"]["name"] == "opt":
                 # TODO: something about this.
                 pass
@@ -280,9 +281,21 @@ class GadgetParameters:
                 self.time_use_estimate["C"] = (
                     1 / 9 * self.p["run_mode"]["params"]["t"]
                 )
+
+            estimate_candidate_search_time_use = False
             try:
                 # checking if k is given by user
                 self.init["candidate_parent_algorithm"]["params"]["k"]
+                estimate_candidate_search_time_use = True
+            except KeyError:
+                try:
+                    self.p["candidate_parent_algorithm"]["params"]["k"]
+                    if self.p["run_mode"]["name"] != "budget":
+                        estimate_candidate_search_time_use = True
+                except KeyError:
+                    pass
+
+            if estimate_candidate_search_time_use:
                 assert self.p["candidate_parent_algorithm"]["name"] == "greedy"
                 ls = LocalScore(
                     data=self.data,
@@ -304,9 +317,6 @@ class GadgetParameters:
                     - 2
                     - self.p["candidate_parent_algorithm"]["params"]["k"]
                 )
-            except KeyError:
-                # k is not set
-                pass
 
     def _validate_parameters(self):
         if self.init["initial_rootpartition"]:
