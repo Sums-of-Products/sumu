@@ -4,6 +4,7 @@
 
 import copy
 import datetime
+import gc
 import os
 import pathlib
 import sys
@@ -43,64 +44,101 @@ def DBUG(msg):
 
 class Defaults:
 
-    # default parameter values used by multiple classes
+    # default parameter values for Gadget
 
     def __init__(self):
-        self.default = {
-            "run_mode": {"name": "normal"},
-            "mcmc": {
-                "n_indep": 1,
-                "n_target_chain_iters": 20000,
-                "burn_in": 0.5,
-                "n_dags": 10000,
-                "move_weights": [1, 1, 2],
+
+        default = dict()
+
+        default["run_mode"] = lambda name: {
+            name != "budget": {"name": "normal" if name is None else name},
+            name == "budget": {"name": "budget", "params": {}},  # placeholder
+        }.get(True)
+
+        default["mcmc"] = {
+            "n_indep": 1,
+            # TODO: move to run_mode normal params
+            "n_target_chain_iters": 20000,
+            "burn_in": 0.5,
+            "n_dags": 10000,
+            "move_weights": [1, 1, 2],
+        }
+
+        default["metropolis_coupling_scheme"] = lambda name: {
+            name
+            == "adaptive": {
+                "name": name,
+                "params": {
+                    "M": 2,
+                    "p_target": 0.234,
+                    "delta_t_init": 0.5,
+                    "local_accept_history_size": 1000,
+                    "update_freq": 100,
+                    "smoothing": 2.0,
+                    "slowdown": 1.0,
+                },
             },
-            "metropolis_coupling_scheme": lambda name: {
-                name
-                == "adaptive": {
-                    "name": name,
-                    "params": {
-                        "M": 2,
-                        "p_target": 0.234,
-                        "delta_t_init": 0.5,
-                        "local_accept_history_size": 1000,
-                        "update_freq": 100,
-                        "smoothing": 2.0,
-                        "slowdown": 1.0,
-                    },
-                },
-                name
-                not in ("adaptive",): {
-                    "name": "linear" if name is None else name,
-                    "params": {"M": 16, "local_accept_history_size": 100},
-                },
-            }.get(True),
-            "score": lambda discrete: {"name": "bdeu", "params": {"ess": 10}}
+            name
+            != "adaptive": {
+                "name": "linear" if name is None else name,
+                "params": {"M": 16, "local_accept_history_size": 100},
+            },
+        }.get(True)
+
+        default["score"] = (
+            lambda discrete: {"name": "bdeu", "params": {"ess": 10}}
             if discrete
-            else {"name": "bge"},
-            "structure_prior": {"name": "fair"},
-            "constraints": {
+            else {"name": "bge"}
+        )
+
+        default["structure_prior"] = {"name": "fair"}
+
+        default["constraints"] = lambda runmode: {
+            runmode
+            in ["normal", "anytime"]: {
                 "max_id": -1,
                 "K": lambda n: min(n - 1, 16),
                 "d": lambda n: min(n - 1, 3),
                 "pruning_eps": 0.001,
                 "score_sum_eps": 0.1,
             },
-            "candidate_parent_algorithm": {
+            runmode
+            == "budget": {
+                "max_id": -1,
+                "K_min": 1,
+                "d_min": 2,
+                "pruning_eps": 0.001,
+                "score_sum_eps": 0.1,
+            },
+        }.get(True)
+
+        default["candidate_parent_algorithm"] = lambda runmode: {
+            runmode
+            == "budget": {
+                "name": "greedy",
+                "params": {"criterion": "score"},
+            },
+            # TODO: Make sure this works with n < k
+            runmode
+            in ["normal", "anytime"]: {
                 "name": "greedy",
                 "params": {"k": 6, "criterion": "score"},
             },
-            "catastrophic_cancellation": {
-                "tolerance": 2 ** -32,
-                "cache_size": 10 ** 7,
-            },
-            "logging": {
-                "silent": False,
-                "verbose_prefix": None,
-                "stats_period": 15,
-                "overwrite": False,
-            },
+        }.get(True)
+
+        default["catastrophic_cancellation"] = {
+            "tolerance": 2 ** -32,
+            "cache_size": 10 ** 7,
         }
+
+        default["logging"] = {
+            "silent": False,
+            "verbose_prefix": None,
+            "stats_period": 15,
+            "overwrite": False,
+        }
+
+        self.default = default
 
     def __call__(self):
         return self.default
@@ -127,12 +165,17 @@ class GadgetParameters:
         candidate_parents=None,
         catastrophic_cancellation=dict(),
         logging=dict(),
+        is_prerun=False,
     ):
         # Save parameters initially given by user.
         # locals() has to be the first thing called in __init__.
         self.init = dict(**locals())
         del self.init["self"]
         del self.init["data"]
+        del self.init["is_prerun"]
+
+        self.t0 = time.time()
+        self.data = Data(data)
 
         # useful to set this to False when developing new features
         if validate.is_boolean(
@@ -141,20 +184,139 @@ class GadgetParameters:
             self._validate_parameters()
         del self.init["validate_params"]
 
-        self.data = Data(data)
         self.default = Defaults()()
         self.p = copy.deepcopy(self.init)
 
         self._populate_default_parameters()
         self._complete_user_given_parameters()
 
-        # if self.p["run_mode"]["name"] == "normal":
-        #    self._adjust_inconsistent_parameters()
-        if self.p["run_mode"]["name"] == "budget":
-            if "t" in self.p["run_mode"]["params"]:
-                self._adjust_to_time_budget()
-            if "mem" in self.p["run_mode"]["params"]:
-                self._adjust_to_mem_budget()
+        # This is run regardless of run_mode, to estimate and log
+        # - time use
+        # - memory footprint (requires estimating number of cc)
+        if not is_prerun:
+
+            self.time_use_estimate = dict(K=dict(), d=dict())
+
+            K_prerun = min(15, self.data.n - 3)
+            if "K" in self.init["constraints"]:
+                K_prerun = max(
+                    2, min(self.init["constraints"]["K"] - 2, K_prerun)
+                )
+            self.prerun(K_prerun)
+
+            if self.p["run_mode"]["name"] == "budget":
+
+                # TODO: get rid of this
+                self.budget = dict()
+
+                if "K" in self.init["constraints"]:
+                    self.time_use_estimate["K"][
+                        self.init["constraints"]["K"]
+                    ] = self.pred_time_use_K(self.init["constraints"]["K"])
+                else:
+                    if "t" in self.p["run_mode"]["params"]:
+                        K, pred = self.adjust_to_time_budget_K(
+                            1 / 9 * self.p["run_mode"]["params"]["t"],
+                            self.p["constraints"]["K_min"],
+                        )
+                        self.p["constraints"]["K"] = K
+                        self.time_use_estimate["K"] = pred
+                if "d" in self.init["constraints"]:
+                    self.time_use_estimate["d"][
+                        self.init["constraints"]["d"]
+                    ] = self.pred_time_use_d(self.init["constraints"]["d"])
+                else:
+                    if "t" in self.p["run_mode"]["params"]:
+                        d, pred = self.adjust_to_time_budget_d(
+                            1 / 9 * self.p["run_mode"]["params"]["t"],
+                            self.p["constraints"]["d_min"],
+                        )
+                        self.p["constraints"]["d"] = d
+                        self.time_use_estimate["d"] = pred
+
+                if "mem" in self.p["run_mode"]["params"]:
+                    self._adjust_to_mem_budget(
+                        self.p["run_mode"]["params"]["mem"]
+                    )
+
+                # set budget for candidate parents search if k not set
+                if "t" in self.p["run_mode"]["params"]:
+                    budget = 1 / 9 * self.p["run_mode"]["params"]["t"]
+                    try:
+                        self.init["candidate_parent_algorithm"]["params"]["k"]
+                    except KeyError:
+                        try:
+                            self.p["candidate_parent_algorithm"]["params"][
+                                "t_budget"
+                            ] = budget
+                        except KeyError:
+                            self.p["candidate_parent_algorithm"]["params"] = {
+                                "t_budget": budget
+                            }
+
+            else:
+                self.time_use_estimate["K"][
+                    self.p["constraints"]["K"]
+                ] = self.pred_time_use_K(self.p["constraints"]["K"])
+                self.time_use_estimate["d"][
+                    self.p["constraints"]["d"]
+                ] = self.pred_time_use_d(self.p["constraints"]["d"])
+
+            # Now all params, except k if run_mode == budget, are fixed
+            # Estimate candidate parent search time use.
+            # NOTE: The parameters are validated before so we can assume
+            #       this does what its supposed to.
+            if (
+                "candidate_parents" in self.p
+                or "candidate_parents_path" in self.p
+                or self.p["candidate_parent_algorithm"]["name"] == "rnd"
+            ):
+                self.time_use_estimate["C"] = 0
+                return
+            if self.p["candidate_parent_algorithm"]["name"] == "opt":
+                # TODO: something about this.
+                pass
+            if self.p["run_mode"]["name"] == "budget":
+                assert "t" in self.p["run_mode"]["params"]
+                self.time_use_estimate["C"] = (
+                    1 / 9 * self.p["run_mode"]["params"]["t"]
+                )
+
+            estimate_candidate_search_time_use = False
+            try:
+                # checking if k is given by user
+                self.init["candidate_parent_algorithm"]["params"]["k"]
+                estimate_candidate_search_time_use = True
+            except KeyError:
+                try:
+                    self.p["candidate_parent_algorithm"]["params"]["k"]
+                    if self.p["run_mode"]["name"] != "budget":
+                        estimate_candidate_search_time_use = True
+                except KeyError:
+                    pass
+
+            if estimate_candidate_search_time_use:
+                assert self.p["candidate_parent_algorithm"]["name"] == "greedy"
+                ls = LocalScore(
+                    data=self.data,
+                    score=self.p["score"],
+                    prior=self.p["structure_prior"],
+                    maxid=self.p["constraints"]["max_id"],
+                )
+                t0 = time.time()
+                params = dict(self.p["candidate_parent_algorithm"]["params"])
+                params["k"] = self.p["constraints"]["K"] - 2
+                cpa["greedy"](
+                    self.p["constraints"]["K"],
+                    scores=ls,
+                    data=self.data,
+                    params=params,
+                )
+                self.time_use_estimate["C"] = (time.time() - t0) * 1.9 ** (
+                    self.p["constraints"]["K"]
+                    - 2
+                    - self.p["candidate_parent_algorithm"]["params"]["k"]
+                )
 
     def _validate_parameters(self):
         if self.init["initial_rootpartition"]:
@@ -212,18 +374,28 @@ class GadgetParameters:
             )
 
     def _populate_default_parameters(self):
-        # Some defaults are defined as functions of data.
+        # Some defaults are defined as functions of data or other parameters.
         # Evaluate the functions here.
-        self.default["constraints"]["K"] = self.default["constraints"]["K"](
-            self.data.n
+        self.default["run_mode"] = self.default["run_mode"](
+            self.p["run_mode"].get("name")
         )
-        self.default["constraints"]["d"] = self.default["constraints"]["d"](
-            self.data.n
+        self.default["constraints"] = self.default["constraints"](
+            self.default["run_mode"]["name"]
         )
+        if self.default["run_mode"]["name"] == "normal":
+            self.default["constraints"]["K"] = self.default["constraints"][
+                "K"
+            ](self.data.n)
+            self.default["constraints"]["d"] = self.default["constraints"][
+                "d"
+            ](self.data.n)
         self.default["score"] = self.default["score"](self.data.discrete)
         self.default["metropolis_coupling_scheme"] = self.default[
             "metropolis_coupling_scheme"
         ](self.p["metropolis_coupling_scheme"].get("name"))
+        self.default["candidate_parent_algorithm"] = self.default[
+            "candidate_parent_algorithm"
+        ](self.default["run_mode"]["name"])
 
     def _complete_user_given_parameters(self):
         for k in self.p:
@@ -259,148 +431,58 @@ class GadgetParameters:
     #         self.p["mcmc"]["n_dags"] != n_dags,
     #     )
 
-    def _adjust_to_time_budget(self):
-        self.gb = GadgetTimeBudget(
-            self.data,
-            self.p["run_mode"]["params"]["t"],
-            self.p["catastrophic_cancellation"]["cache_size"],
-        )
-        self.gb.prerun(min(15, self.data.n - 3))
-        params_to_predict = ["d", "K"]
-        # dict of preset values for params if any
-        preset_params = dict(
-            i
-            for i in (
-                (k, self.init["constraints"].get(k)) for k in params_to_predict
-            )
-            if i[1] is not None
-        )
-
-        # params needs to be copied because of the remove below
-        for k in list(params_to_predict):
-            if k in preset_params:
-                self.p["constraints"][k] = self.gb.get_and_pred(
-                    k, preset_params[k]
-                )
-                params_to_predict.remove(k)
-        for k in params_to_predict:
-            self.p["constraints"][k] = self.gb.get_and_pred(k)
-
-        if (
-            "candidate_parents" in self.init
-            or "candidate_parents_path" in self.init
-        ):
-            return
-
-        candidate_parent_algorithm_is_given = (
-            "candidate_parent_algorithm" in self.init
-            and self.init["candidate_parent_algorithm"] != dict()
-        )
-        candidate_parent_algorithm_is_greedy = (
-            candidate_parent_algorithm_is_given
-            and self.init["candidate_parent_algorithm"]["name"]
-            == Defaults()["candidate_parent_algorithm"]["name"]
-        )
-        candidate_parent_algorithm_params_is_given = (
-            candidate_parent_algorithm_is_given
-            and "params" in self.init["candidate_parent_algorithm"]
-        )
-        candidate_parent_algorithm_k_is_preset = (
-            candidate_parent_algorithm_is_greedy
-            and candidate_parent_algorithm_params_is_given
-            and "k" in self.init["candidate_parent_algorithm"]["params"]
-        )
-        if candidate_parent_algorithm_k_is_preset:
-            self.gb.preset.add("candidate_parent_algorithm")
-        else:
-            if not candidate_parent_algorithm_params_is_given:
-                self.p["candidate_parent_algorithm"]["params"] = self.default[
-                    "candidate_parent_algorithm"
-                ]["params"]
-            self.p["candidate_parent_algorithm"]["params"]["t_budget"] = int(
-                self.gb.budget["candp"]
-            )
-
-    def _mem_estimate(self, n, K, d):
+    @staticmethod
+    def mem_estimate(
+        n, K, d, n_cc, a=4.43449129e02, b=3.22309337e-05, c=4.98862512e-04
+    ):
         def n_psets(n, K, d):
             return sum(comb(n - 1, i) - comb(K, i) for i in range(1, d + 1))
 
-        return n * 6e-5 * (n_psets(n, K, d) + 2 ** K) + 71
+        return a + b * n * (n_psets(n, K, d) + 2 ** K) + c * n_cc
 
-    def _adjust_to_mem_budget(self):
-        mem_budget = self.p["run_mode"]["params"]["mem"]
+    def _adjust_to_mem_budget(self, budget):
+
+        # BUG: Doesn't work if d==0 (or K==0?)
+
+        def n_cc(K):
+            return sum(self.est["n_cc_v"][v](K) for v in range(self.data.n))
+
         n = self.data.n
         K = self.p["constraints"]["K"]
         d = self.p["constraints"]["d"]
-        # Decrement d until we're in budget.
-        d_changed = False
-        while self._mem_estimate(n, K, d) > mem_budget and d > 0:
-            d -= 1
-            d_changed = True
-        # We might be way below budget.
-        # Return if incrementing K by one brings us over the budget.
-        if (
-            self._mem_estimate(n, K, d) < mem_budget
-            and self._mem_estimate(n, K + 1, d) > mem_budget
-        ):
-            self.p["constraints"]["d"] = d
-            return
-        # If not, increment d by one, if it was changed,
-        # and decrement K until budget constraint met.
-        if d_changed:
-            d += 1
-        while self._mem_estimate(n, K, d) > mem_budget and K > 1:
-            K -= 1
+
+        memtable = (
+            np.dstack(
+                np.meshgrid(np.arange(1, K + 1), np.arange(d + 1), 0)
+            ).reshape(-1, 3)
+            # .astype(np.float32)
+        )
+        for i in range(len(memtable)):
+            K, d, _ = memtable[i]
+            memtable[i, 2] = budget - self.mem_estimate(n, K, d, n_cc(K))
+
+        conditions = list()
+        if "d" in self.init["constraints"]:
+            conditions.append(memtable[:, 1] == self.init["constraints"]["d"])
+        elif "d_min" in self.p["constraints"]:
+            conditions.append(memtable[:, 1] >= self.p["constraints"]["d_min"])
+        if "K" in self.init["constraints"]:
+            conditions.append(memtable[:, 0] == self.init["constraints"]["K"])
+        elif "K_min" in self.p["constraints"]:
+            conditions.append(memtable[:, 0] >= self.p["constraints"]["K_min"])
+
+        memtable = memtable[np.logical_and.reduce(conditions)]
+
+        if sum(memtable[:, 2] > 0) > 0:
+            memtable = memtable[memtable[:, 2] > 0]
+            memtable = memtable[memtable[:, 2].argsort()]
+            K, d, _ = memtable[0]
+        else:
+            memtable = memtable[memtable[:, 2].argsort()[::-1]]
+            K, d, _ = memtable[0]
+
         self.p["constraints"]["K"] = K
         self.p["constraints"]["d"] = d
-
-    def __getitem__(self, key):
-        return self.p[key]
-
-    def __contains__(self, key):
-        return key in self.p
-
-
-class GadgetTimeBudget:
-    """Class for predicting run times."""
-
-    def __init__(
-        self,
-        data,
-        t_budget,
-        cc_cache_size,
-        share={"candp": 1 / 9, "crs": 1 / 9, "ccs": 1 / 9, "mcmc": 2 / 3},
-    ):
-        # The preferred order is: predict d, predict K,
-        # remaining precomp budget to candp.
-        self.t0 = time.time()
-        self.n = data.n
-        self.data = data
-        self.cc_cache_size = cc_cache_size
-        self.share = share
-        # NOTE: After get_d and get_K the sum of budgets might exceed
-        #       total, since remaining budget is adjusted upwards if previous
-        #       phase is not predicted to use all of its budget.
-        self.budget = dict()
-        self.budget["total"] = t_budget
-        self.predicted = {phase: 0 for phase in share}
-        self.used = {phase: 0 for phase in share}
-        self._not_done = set(share)
-        self._not_done.remove("mcmc")
-        self._update_precomp_budgets()
-        self.preset = set()
-
-    def _update_precomp_budgets(self):
-        precomp_budget_left = self.budget["total"]
-        precomp_budget_left *= 1 - self.share["mcmc"]
-        precomp_budget_left -= sum(self.predicted.values()) - sum(
-            self.used.values()
-        )
-        normalizer = sum(self.share[phase] for phase in self._not_done)
-        for phase in self._not_done:
-            self.budget[phase] = (
-                self.share[phase] / normalizer * precomp_budget_left
-            )
 
     def prerun(self, K_max):
         self.prstats = dict()
@@ -411,7 +493,7 @@ class GadgetTimeBudget:
                 "candidate_parent_algorithm": {"name": "rnd"},
                 "logging": {"silent": True},
             }
-            g = Gadget(data=self.data, **params)
+            g = Gadget(data=self.data, **params, is_prerun=True)
             g._find_candidate_parents()
             t1 = time.perf_counter_ns()
             g._precompute_scores_for_all_candidate_psets()
@@ -434,6 +516,17 @@ class GadgetTimeBudget:
             self.prstats[K]["t_score_sums"] = t3
             self.prstats[K]["t_cc_basecases"] = t4
             self.prstats[K]["t_cc"] = t5
+        # NOTE: This is an attempt to fix some sort of a memory/cython related
+        # bug that causes self.c_r_score.sum(v, U_bm, T_bm) to sometimes output
+        # strange values (e.g. 90278873608348.86) presumably due to some kind
+        # of memory overflow problem. The problem at least in some runs also
+        # seemed to disappaear from sight after adding prints that really
+        # should not solve anything (e.g. print(self.score_array) or prints to
+        # see whether Cython and/or C++ constructors/destructors are
+        # called). I'm guessing it might have something to do with memory not
+        # freed properly, so trying explicit garbage collection. Also this
+        # seemed to fix the issue, but whether it really did is unsure.
+        gc.collect()
         DBUG(f"prerun : self.prstats = {self.prstats}")
         self._init_pred(1, K_max)
 
@@ -446,8 +539,10 @@ class GadgetTimeBudget:
             t_cc=2.2,
             cc_total=2.2,
         )
-        n = self.n
-        cc_max = np.floor(self.cc_cache_size / n)
+        n = self.data.n
+        cc_max = np.floor(
+            self.p["catastrophic_cancellation"]["cache_size"] / n
+        )
         Ks = np.arange(K_low, K_high + 1)
         prerun = self.prstats
 
@@ -469,7 +564,8 @@ class GadgetTimeBudget:
 
         est["t_cc_basecases_v"] = dict()
         est["t_cc_v"] = dict()
-        for v in range(self.n):
+        est["n_cc_v"] = dict()
+        for v in range(n):
             y = np.array([prerun[K]["t_cc_basecases"][v] for K in Ks])
             f_t_cc_bc = fit_linreg(
                 Ks, y, lambda K: exp_base["t_cc_basecases"] ** K
@@ -501,6 +597,7 @@ class GadgetTimeBudget:
             f_n_cc = (lambda f_tmp: lambda K: max(0.0, min(cc_max, f_tmp(K))))(
                 f_tmp
             )
+            est["n_cc_v"][v] = f_n_cc
 
             f_n_cc_nonbc = (
                 lambda f_n_cc, f_n_cc_bc: lambda K: f_n_cc(K) - f_n_cc_bc(K)
@@ -520,52 +617,56 @@ class GadgetTimeBudget:
         est["t_cc"] = lambda K: sum([est["t_cc_v"][v](K) for v in range(n)])
         self.est = est
 
-    def get_and_pred(self, param, preset_value=None):
-        # if preset_value given only the time use is predicted
-        if param == "d":
-            return self.get_and_pred_d(preset_value)
-        elif param == "K":
-            return self.get_and_pred_K(preset_value)
+    def __getitem__(self, key):
+        return self.p[key]
 
-    def get_and_pred_d(self, d_preset=None):
-        phase = "ccs"
-        t0 = time.time()
+    def __contains__(self, key):
+        return key in self.p
+
+    def pred_time_use_d(self, d):
+        # predicts time use for d by extrapolating from d-1
+        if d == 0:
+            return 0
+
         K_max = 25
         C = {
-            v: tuple([u for u in range(self.n) if u != v])
-            for v in range(self.n)
+            v: tuple([u for u in range(self.data.n) if u != v])
+            for v in range(self.data.n)
         }
         C = {v: C[v][:K_max] for v in C}
-        ls = LocalScore(data=self.data)
-        d = 0
-        t_d = 0
-        t_budget = self.budget[phase]
+        ls = LocalScore(
+            data=self.data,
+            score=self.p["score"],
+            prior=self.p["structure_prior"],
+            maxid=self.p["constraints"]["max_id"],
+        )
 
-        if d_preset is None:
-            d_cond = (
-                lambda: d < self.n - 1
-                and t_d * comb(self.n, d + 1) / comb(self.n, d) * self.n
-                < t_budget
-            )
-        else:
-            self.preset.add("d")
-            d_cond = lambda: d <= d_preset - 1
+        t0 = time.time()
 
-        while d_cond():
-            d += 1
-            t_d = time.time()
-            # This does not take into acount time used by initializing
-            # IntersectSums, as it seemed negligible.
+        if d == 1:
             ls.complement_psets_and_scores(0, C, d)
-            t_d = time.time() - t_d
+            return (time.time() - t0) * self.data.n
 
-        self.predicted["ccs"] = t_d * self.n
-        self.used["ccs"] = time.time() - t0
-        self._not_done.remove(phase)
-        self._update_precomp_budgets()
-        return d
+        ls.complement_psets_and_scores(0, C, d - 1)
+        return (
+            (time.time() - t0)
+            * comb(self.data.n, d)
+            / comb(self.data.n, d - 1)
+            * self.data.n
+        )
 
-    def _pred_K_time_use(self, K):
+    def adjust_to_time_budget_d(self, budget, d_min=0):
+        pred = dict()
+        d = max(0, d_min)
+        pred[d] = self.pred_time_use_d(d)
+        pred_next = self.pred_time_use_d(d + 1)
+        while d + 1 < self.data.n and pred_next < budget:
+            d += 1
+            pred[d] = pred_next
+            pred_next = self.pred_time_use_d(d + 1)
+        return d, pred
+
+    def pred_time_use_K(self, K):
         t = [
             self.est[k](K)
             for k in [
@@ -579,34 +680,19 @@ class GadgetTimeBudget:
         DBUG(f"_pred_K_time_use : K = {K}, t = {t}")
         return sum(t)
 
-    def get_and_pred_K(self, K_preset=None):
-        phase = "crs"
-        t0 = time.time()
-        t_budget = self.budget[phase]
-
-        t_pred = 0
-        if K_preset is None:
-            K_cond = lambda: K < self.n and t_pred < t_budget
-        else:
-            K_cond = lambda: K < K_preset + 1
-            K = K_preset
-            self.preset.add("K")
-
-        K = max(self.prstats)
-        while K_cond():
-            t_pred = self._pred_K_time_use(K)
+    def adjust_to_time_budget_K(self, budget, K_min=1):
+        pred = dict()
+        K = max(1, K_min)
+        pred[K] = self.pred_time_use_K(K)
+        pred_next = self.pred_time_use_K(K + 1)
+        while K + 1 < self.data.n and pred_next < budget:
             K += 1
-        K -= 1
-        t_pred = self._pred_K_time_use(K)
-
-        self.predicted["crs"] = t_pred
-        self.used["crs"] = time.time() - t0
-        self._not_done.remove(phase)
-        self._update_precomp_budgets()
-        return K
+            pred[K] = pred_next
+            pred_next = self.pred_time_use_K(K + 1)
+        return K, pred
 
     def left(self):
-        return self.budget["total"] - (time.time() - self.t0)
+        return self.p["run_mode"]["params"]["t"] - (time.time() - self.t0)
 
 
 class Logger:
@@ -936,7 +1022,7 @@ class GadgetLogger(Logger):
             percentage = round(
                 100
                 * (time.time() - self.g._stats["mcmc"]["time_start"])
-                / self.g.p.gb.budget["mcmc"]
+                / self.g.p.budget["mcmc"]
             )
 
         self.h(
@@ -1258,6 +1344,7 @@ class Gadget:
         data,
         initial_rootpartition=None,
         validate_params=True,
+        is_prerun=False,
         run_mode=dict(),
         mcmc=dict(),
         metropolis_coupling_scheme=dict(),
@@ -1274,6 +1361,8 @@ class Gadget:
         # locals() has to be the first thing called in __init__.
         user_given_parameters = locals()
         del user_given_parameters["self"]
+
+        self.t0 = time.time()
 
         self.p = GadgetParameters(**user_given_parameters)
         self.data = self.p.data
@@ -1342,21 +1431,70 @@ class Gadget:
 
         log.h("RUN PARAMETERS")
         log.dict(self.p.p)
-        mem_use_estimate = round(
-            self.p._mem_estimate(
-                self.data.n,
-                self.p["constraints"]["K"],
-                self.p["constraints"]["d"],
+
+        if not is_prerun:  # p.est does not exist for prerun
+            precomp_time_estimate = round(
+                (time.time() - self.p.t0)
+                + self.p.time_use_estimate["K"][self.p["constraints"]["K"]]
+                + self.p.time_use_estimate["d"][self.p["constraints"]["d"]]
+                + self.p.time_use_estimate["C"]
             )
-        )
-        log(f"Estimated memory use: {mem_use_estimate}MB")
-        log.br()
+            cc_estimate = sum(
+                self.p.est["n_cc_v"][v](self.p["constraints"]["K"])
+                for v in range(self.data.n)
+            )
+            mem_use_estimate = round(
+                self.p.mem_estimate(
+                    self.data.n,
+                    self.p["constraints"]["K"],
+                    self.p["constraints"]["d"],
+                    cc_estimate,
+                )
+            )
+
+            if self.p["run_mode"]["name"] == "budget":
+                budget_exceeded_msg = list()
+                if "t" in self.p["run_mode"]["params"]:
+                    if (
+                        precomp_time_estimate
+                        > self.p["run_mode"]["params"]["t"]
+                    ):
+                        budget_exceeded_msg.append(
+                            "estimated time use "
+                            "for precomputations exceeds budget: "
+                            f"{precomp_time_estimate} > "
+                            f"{self.p['run_mode']['params']['t']}"
+                        )
+
+                if "mem" in self.p["run_mode"]["params"]:
+                    if mem_use_estimate > self.p["run_mode"]["params"]["mem"]:
+                        budget_exceeded_msg.append(
+                            "estimated memory use exceeds budget: "
+                            f"{mem_use_estimate} > "
+                            f"{self.p['run_mode']['params']['mem']}"
+                        )
+
+                for msg in budget_exceeded_msg:
+                    log(msg)
+                if len(budget_exceeded_msg) > 0:
+                    log.br()
+                    log("terminating ...")
+                    exit()
+
+            log(
+                "estimated time use for precomputations: "
+                f"{precomp_time_estimate} s"
+            )
+            log(f"estimated memory use: {mem_use_estimate} MB")
+            log.br()
 
         self.precomputations_done = False
 
     def precompute(self):
 
         log = self.log
+        K = self.p["constraints"]["K"]
+        d = self.p["constraints"]["d"]
 
         log.h("FINDING CANDIDATE PARENTS")
         self._stats["candp"]["time_start"] = time.time()
@@ -1365,19 +1503,19 @@ class Gadget:
             time.time() - self._stats["candp"]["time_start"]
         )
         log.numpy(self.C_array, "%i")
-        if (
-            self.p["run_mode"]["name"] == "budget"
-            and "t" in self.p["run_mode"]["params"]
-            and "candidate_parent_algorithm" not in self.p.gb.preset
-            and "candidate_parent_algorithm" in self.p
-            and self.p["candidate_parent_algorithm"]["name"]
-            == Defaults()["candidate_parent_algorithm"]["name"]
-        ):
-            log.br()
-            log(f"Adjusted for time budget: k = {stats['C']['k']}")
-            k = "candidate_parent_algorithm"  # to shorten next row
-            log(f"time budgeted: {round(self.p[k]['params']['t_budget'])}s")
         log.br()
+        try:
+            # trying if all nested keys set
+            self.p.init["candidate_parent_algorithm"]["params"]["k"]
+            log(f"time predicted: {round(self.p.time_use_estimate['C'])}s")
+        except KeyError:
+            if self.p["run_mode"]["name"] == "budget":
+                log.br()
+                log(f"Adjusted for time budget: k = {stats['C']['k']}")
+                k = "candidate_parent_algorithm"  # to shorten next row
+                log(
+                    f"time budgeted: {round(self.p[k]['params']['t_budget'])}s"
+                )
         log(f"time used: {round(self._stats['candp']['time_used'])}s")
         log.br(2)
 
@@ -1392,11 +1530,7 @@ class Gadget:
         self._stats["crscore"]["time_used"] = (
             time.time() - self._stats["crscore"]["time_start"]
         )
-        if (
-            self.p["run_mode"]["name"] == "budget"
-            and "t" in self.p["run_mode"]["params"]
-        ):
-            log(f"time predicted: {round(self.p.gb.predicted['crs'])}s")
+        log(f"time predicted: {round(self.p.time_use_estimate['K'][K])}s")
         log(f"time used: {round(self._stats['crscore']['time_used'])}s")
         log.br(2)
 
@@ -1406,11 +1540,7 @@ class Gadget:
         self._stats["ccscore"]["time_used"] = (
             time.time() - self._stats["ccscore"]["time_start"]
         )
-        if (
-            self.p["run_mode"]["name"] == "budget"
-            and "t" in self.p["run_mode"]["params"]
-        ):
-            log(f"time predicted: {round(self.p.gb.predicted['ccs'])}s")
+        log(f"time predicted: {round(self.p.time_use_estimate['d'][d])}s")
         log(f"time used: {round(self._stats['ccscore']['time_used'])}s")
         log.br(2)
 
@@ -1632,10 +1762,10 @@ class Gadget:
 
     def _mcmc_run_time_budget(self):
         self._stats["burnin"]["deadline"] = (
-            time.time() + self.p.gb.left() * self.p["mcmc"]["burn_in"]
+            time.time() + self.p.left() * self.p["mcmc"]["burn_in"]
         )
-        self._stats["mcmc"]["deadline"] = time.time() + self.p.gb.left()
-        self.p.gb.budget["mcmc"] = self.p.gb.left()
+        self._stats["mcmc"]["deadline"] = time.time() + self.p.left()
+        self.p.budget["mcmc"] = self.p.left()
 
         def burn_in_cond():
             return time.time() < self._stats["burnin"]["deadline"]
@@ -1839,12 +1969,13 @@ class LocalScore:
         *,
         data,
         score=None,
-        prior=Defaults()["structure_prior"],
-        maxid=Defaults()["constraints"]["max_id"],
+        prior={"name": "fair"},
+        maxid=-1,
     ):
         self.data = Data(data)
         self.score = score
         if score is None:
+            # TODO: decouple from Defaults
             self.score = Defaults()["score"](self.data.discrete)
         self.prior = prior
         self.priorf = {"fair": self._prior_fair, "unif": self._prior_unif}
