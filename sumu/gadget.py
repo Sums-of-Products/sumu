@@ -52,7 +52,13 @@ class Defaults:
 
         default["run_mode"] = lambda name: {
             name != "budget": {"name": "normal" if name is None else name},
-            name == "budget": {"name": "budget", "params": {}},  # placeholder
+            name
+            == "budget": {
+                "name": "budget",
+                "params": {
+                    "t_share": {"C": 1 / 9, "K": 1 / 9, "d": 1 / 9},
+                },
+            },
         }.get(True)
 
         default["mcmc"] = {
@@ -216,7 +222,8 @@ class GadgetParameters:
                 else:
                     if "t" in self.p["run_mode"]["params"]:
                         K, pred = self.adjust_to_time_budget_K(
-                            1 / 9 * self.p["run_mode"]["params"]["t"],
+                            self.p["run_mode"]["params"]["t_share"]["K"]
+                            * self.p["run_mode"]["params"]["t"],
                             self.p["constraints"]["K_min"],
                         )
                         self.p["constraints"]["K"] = K
@@ -228,7 +235,8 @@ class GadgetParameters:
                 else:
                     if "t" in self.p["run_mode"]["params"]:
                         d, pred = self.adjust_to_time_budget_d(
-                            1 / 9 * self.p["run_mode"]["params"]["t"],
+                            self.p["run_mode"]["params"]["t_share"]["d"]
+                            * self.p["run_mode"]["params"]["t"],
                             self.p["constraints"]["d_min"],
                         )
                         self.p["constraints"]["d"] = d
@@ -241,7 +249,10 @@ class GadgetParameters:
 
                 # set budget for candidate parents search if k not set
                 if "t" in self.p["run_mode"]["params"]:
-                    budget = 1 / 9 * self.p["run_mode"]["params"]["t"]
+                    budget = (
+                        self.p["run_mode"]["params"]["t_share"]["C"]
+                        * self.p["run_mode"]["params"]["t"]
+                    )
                     try:
                         self.init["candidate_parent_algorithm"]["params"]["k"]
                     except KeyError:
@@ -279,7 +290,8 @@ class GadgetParameters:
             if self.p["run_mode"]["name"] == "budget":
                 assert "t" in self.p["run_mode"]["params"]
                 self.time_use_estimate["C"] = (
-                    1 / 9 * self.p["run_mode"]["params"]["t"]
+                    self.p["run_mode"]["params"]["t_share"]["C"]
+                    * self.p["run_mode"]["params"]["t"]
                 )
 
             estimate_candidate_search_time_use = False
@@ -398,6 +410,14 @@ class GadgetParameters:
         ](self.default["run_mode"]["name"])
 
     def _complete_user_given_parameters(self):
+        def complete(default, p):
+            if all(type(p[k]) != dict for k in p):
+                return dict(default, **p)
+            for k in p:
+                if type(p[k]) == dict:
+                    p[k] = complete(default[k], p[k])
+            return dict(default, **p)
+
         for k in self.p:
             if k in {
                 "initial_rootpartition",
@@ -410,12 +430,8 @@ class GadgetParameters:
                 and self.p[k]["name"] != self.default[k]["name"]
             ):
                 continue
-            # if validate.candidates_is_valid(self.p[k]):
-            #     continue
-            self.p[k] = dict(self.default[k], **self.p[k])
-            for k2 in self.p[k]:
-                if type(self.p[k][k2]) == dict:
-                    self.p[k][k2] = dict(self.default[k][k2], **self.p[k][k2])
+
+            self.p[k] = complete(self.default[k], self.p[k])
 
     # def _adjust_inconsistent_parameters(self):
     #     iters = self.p["mcmc"]["iters"]

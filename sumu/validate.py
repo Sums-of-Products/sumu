@@ -114,7 +114,10 @@ def max_n_truthy(n, items):
 _run_mode_args = {
     "_arg_names": ["name", "params"],
     "_names": ["normal", "budget", "anytime"],
-    "_params_keys": {"normal": [], "anytime": [], "budget": ["t", "mem"]},
+    "_params_keys": {
+        "normal": [],
+        "anytime": [],
+        "budget": ["t", "t_share", "mem"]},
 }
 _run_mode_args.update(
     {
