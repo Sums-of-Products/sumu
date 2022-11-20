@@ -109,7 +109,7 @@ class Defaults:
                 "K": lambda n: min(n - 1, 16),
                 "d": lambda n: min(n - 1, 3),
                 "pruning_eps": 0.001,
-                "score_sum_eps": 0.1,
+                "score_sum_eps": 0.01,
             },
             runmode
             == "budget": {
@@ -117,7 +117,7 @@ class Defaults:
                 "K_min": 1,
                 "d_min": 2,
                 "pruning_eps": 0.001,
-                "score_sum_eps": 0.1,
+                "score_sum_eps": 0.01,
             },
         }.get(True)
 
@@ -125,13 +125,13 @@ class Defaults:
             runmode
             == "budget": {
                 "name": "greedy",
-                "params": {"criterion": "score"},
+                "params": {"criterion": "gain"},
             },
             # TODO: Make sure this works with n < k
             runmode
             in ["normal", "anytime"]: {
                 "name": "greedy",
-                "params": {"k": 6, "criterion": "score"},
+                "params": {"k": 6, "criterion": "gain"},
             },
         }.get(True)
 
