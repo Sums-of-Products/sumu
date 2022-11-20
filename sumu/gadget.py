@@ -1528,12 +1528,15 @@ class Gadget:
             self.p.init["candidate_parent_algorithm"]["params"]["k"]
             log(f"time predicted: {round(self.p.time_use_estimate['C'])}s")
         except KeyError:
-            if self.p["run_mode"]["name"] == "budget":
+            c = "candidate_parent_algorithm"  # to shorten next rows
+            if (
+                self.p["run_mode"]["name"] == "budget"
+                and self.p[c]["name"] == "greedy"
+            ):
                 log.br()
                 log(f"Adjusted for time budget: k = {stats['C']['k']}")
-                k = "candidate_parent_algorithm"  # to shorten next row
                 log(
-                    f"time budgeted: {round(self.p[k]['params']['t_budget'])}s"
+                    f"time budgeted: {round(self.p[c]['params']['t_budget'])}s"
                 )
         log(f"time used: {round(self._stats['candp']['time_used'])}s")
         log.br(2)
