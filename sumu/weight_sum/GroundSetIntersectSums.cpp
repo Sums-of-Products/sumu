@@ -10,24 +10,24 @@ bool decr_ws32(ws32 x, ws32 y) { return x.weight > y.weight; }
 void sort_ws32(vector<ws32> &c){ sort(c.begin(), c.end(), decr_ws32); }
 
 GroundSetIntersectSums::GroundSetIntersectSums(int K0, double *w, double eps0){
-  K = K0; eps = eps0;
-  if (eps > 0) {prune(w);} else {init(w);}
-  sort_ws32(s);
+	K = K0; eps = eps0;
+	if (eps > 0) {prune(w);} else {init(w);}
+	sort_ws32(s);
 }
 
 GroundSetIntersectSums::~GroundSetIntersectSums(){ }
 void GroundSetIntersectSums::init(double *w){
 	bm32 l = 1L << K;
-    Treal* c = new Treal[l];
+	Treal* c = new Treal[l];
 	for (bm32 S = 0; S < l; ++S){ c[S].set_log(w[S]); s.push_back({ S, c[S] });}
 	delete[] c;
 }
 
 void GroundSetIntersectSums::prune(double *w){
-//	Pruning rule: given a tolerance of relative error eps > 0, prune S if
-//		w(S) < eps \sum_{j in R subset of S} w(R) 2^{|R| - K} for all j in S.
-//	(The RHS can be efficiently computed for all S by fast zeta transform.)
-//	Note: We assume the input argument w actually represents the values  ln w(S).
+	//	Pruning rule: given a tolerance of relative error eps > 0, prune S if
+	//		w(S) < eps \sum_{j in R subset of S} w(R) 2^{|R| - K} for all j in S.
+	//	(The RHS can be efficiently computed for all S by fast zeta transform.)
+	//	Note: We assume the input argument w actually represents the values  ln w(S).
 	bm32 l = 1L << K; int tol = (int) -log(eps)/log(2.0);
 	Treal* a = new Treal[l], * b = new Treal[l], * c = new Treal[l]; bool* keepit = new bool[l];
 	for (bm32 S = 1; S < l; ++S){ keepit[S] = false; } keepit[0] = true;
@@ -73,21 +73,21 @@ pair<bm32, double> GroundSetIntersectSums::scan_rnd(bm32 U, bm32 T, double wcum)
 	Treal target; target.set_log(wcum);
 	int i = 0; int P_i = 0; bm32 P = 0L;
 	for (; i < m; ++i){
-	  P = s[i].set;
-	  if ( subseteq(P, U) && intersects(P, T) ) {
-		P_i = i;
-		sum = s[i].weight; ++i;
-		if (sum > target) i = m;
-		break;
-	  }
+		P = s[i].set;
+		if ( subseteq(P, U) && intersects(P, T) ) {
+			P_i = i;
+			sum = s[i].weight; ++i;
+			if (sum > target) i = m;
+			break;
+		}
 	}
 	for (; i < m; ++i){
-	  P = s[i].set;
-	  if ( subseteq(P, U) && intersects(P, T) ) {
-		P_i = i;
-		Treal score = s[i].weight; sum += score;
-		if (sum > target) break;
-	  }
+		P = s[i].set;
+		if ( subseteq(P, U) && intersects(P, T) ) {
+			P_i = i;
+			Treal score = s[i].weight; sum += score;
+			if (sum > target) break;
+		}
 	}
 	return make_pair(s[P_i].set, s[P_i].weight.get_log());
 }
@@ -124,18 +124,18 @@ pair<bm32, double> GroundSetIntersectSums::scan_rnd(bm32 U, double wcum){
 	for (; i < m; ++i){
 		P = s[i].set;
 		if ( subseteq(P, U) ) {
-		  P_i = i;
-		  sum = s[i].weight; ++i;
-		  if (sum > target) i = m;
-		  break;
+			P_i = i;
+			sum = s[i].weight; ++i;
+			if (sum > target) i = m;
+			break;
 		}
 	}
 	for (; i < m; ++i){
 		P = s[i].set;
 		if ( subseteq(P, U) ) {
-		  P_i = i;
-		  Treal score = s[i].weight; sum += score;
-		  if (sum > target) break;
+			P_i = i;
+			Treal score = s[i].weight; sum += score;
+			if (sum > target) break;
 		}
 	}
 	return make_pair(s[P_i].set, s[P_i].weight.get_log());

@@ -13,3 +13,6 @@ dc29f6da14c3a11e9f523001ef7c79be8832ad9c
 
 # PR 11: Use isort (and a bit of black)
 8fe07a70bd5dd104bee44405cf9a35ec388420a5
+
+# Use tabs for c++ indentation consistently
+c46d5467b3109c93a103795080a20416f7fdb0a9
