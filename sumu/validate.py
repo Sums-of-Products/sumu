@@ -115,7 +115,7 @@ _run_mode_args = {
     "_arg_names": ["name", "params"],
     "_names": ["normal", "budget", "anytime"],
     "_params_keys": {
-        "normal": [],
+        "normal": ["n_target_chain_iters"],
         "anytime": [],
         "budget": ["t", "t_share", "mem"]},
 }
@@ -141,6 +141,16 @@ _run_mode_args.update(
             _run_mode_args["_params_keys"][p["name"]], *p["params"]
         ),
 
+        "n_target_chain_iters should be non-negative integer":
+        lambda p:
+        not nested_in_dict(p, "params", "n_target_chain_iters") or
+        is_nonneg_int(p["params"]["n_target_chain_iters"]),
+
+        "t parameter (number of seconds) required":
+        lambda p:
+        "name" not in p or p["name"] != "budget" or
+        nested_in_dict(p, "params", "t")
+
     }
 )
 
@@ -148,7 +158,6 @@ _run_mode_args.update(
 _mcmc_args = {
     "_arg_names": [
         "n_indep",
-        "n_target_chain_iters",
         "burn_in",
         "n_dags",
         "move_weights",
@@ -165,13 +174,6 @@ _mcmc_args.update(
         lambda p:
         "n_indep" not in p
         or is_nonneg_int(p["n_indep"]),
-
-        "n_target_chain_iters should be non-negative integer":
-        lambda p:
-        "n_target_chain_iters" not in p or
-        is_nonneg_int(
-            p["n_target_chain_iters"]
-        ),
 
         "burn_in should be a float in range [0, 1]":
         lambda p:

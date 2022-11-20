@@ -11,19 +11,25 @@ np.random.seed(0)
 sumu.gadget.DEBUG = 1
 
 minimal_mcmc = {
-    "n_target_chain_iters": 200,
-    "burn_in": 0.5,
-    "n_dags": 50,
+    "run_mode": {"name": "normal", "params": {"n_target_chain_iters": 200}},
+    "mcmc": {
+        "burn_in": 0.5,
+        "n_dags": 50,
+    },
 }
 
 
 def test_Gadget_empirical_edge_prob_error_decreases(discrete_bn):
 
     params = {
+        # run mode specific parameters
+        "run_mode": {
+            "name": "normal",
+            "params": {"n_target_chain_iters": 50000},
+        },
         # generic MCMC parameters
         "mcmc": {
             "n_indep": 1,
-            "n_target_chain_iters": 50000,
             "burn_in": 0.5,
             "n_dags": 10000,
             "move_weights": [1, 1, 16],
@@ -80,14 +86,10 @@ def test_Gadget_runs_n_between_2_and_64(discrete_bn):
     # NOTE: This does not test all numbers of variables up to 64
     g = sumu.Gadget(
         data=discrete_bn["sachs"].sample(200),
-        mcmc={
-            "n_target_chain_iters": 200,
-            "burn_in": 0.5,
-            "n_dags": 50,
-        },
         metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
         candidate_parent_algorithm={"name": "rnd"},
         constraints={"K": 10, "d": 2},
+        **minimal_mcmc,
     )
     g.sample()
     assert True
@@ -97,14 +99,10 @@ def test_Gadget_runs_n_between_65_and_128(discrete_bn):
     # NOTE: This does not test all numbers of variables between 65 and 128
     g = sumu.Gadget(
         data=discrete_bn["hepar2"].sample(1000),
-        mcmc={
-            "n_target_chain_iters": 200,
-            "burn_in": 0.5,
-            "n_dags": 50,
-        },
         metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
         candidate_parent_algorithm={"name": "rnd"},
         constraints={"K": 10, "d": 2},
+        **minimal_mcmc,
     )
     g.sample()
     assert True
@@ -114,14 +112,10 @@ def test_Gadget_runs_n_between_129_and_192(discrete_bn):
     # NOTE: This does not test all numbers of variables between 129 and 192
     g = sumu.Gadget(
         data=discrete_bn["munin1"].sample(200),
-        mcmc={
-            "n_target_chain_iters": 200,
-            "burn_in": 0.5,
-            "n_dags": 50,
-        },
         metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
         candidate_parent_algorithm={"name": "rnd"},
         constraints={"K": 10, "d": 2},
+        **minimal_mcmc,
     )
     g.sample()
     assert True
@@ -131,14 +125,10 @@ def test_Gadget_runs_n_between_193_and_256(discrete_bn):
     # NOTE: This does not test all numbers of variables between 193 and 256
     g = sumu.Gadget(
         data=discrete_bn["andes"].sample(200),
-        mcmc={
-            "n_target_chain_iters": 200,
-            "burn_in": 0.5,
-            "n_dags": 50,
-        },
         metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
         candidate_parent_algorithm={"name": "rnd"},
         constraints={"K": 10, "d": 2},
+        **minimal_mcmc,
     )
     g.sample()
     assert True
@@ -146,9 +136,7 @@ def test_Gadget_runs_n_between_193_and_256(discrete_bn):
 
 def test_Gadget_runs_continuous_data():
     data = np.random.rand(200, 10)
-    sumu.Gadget(
-        data=data, mcmc={"n_target_chain_iters": 200}, constraints={"K": 8}
-    ).sample()
+    sumu.Gadget(data=data, constraints={"K": 8}, **minimal_mcmc).sample()
     assert True
 
 
@@ -156,14 +144,10 @@ def test_Gadget_runs_n_greater_than_256_continuous():
     data = np.random.rand(600, 300)
     sumu.Gadget(
         data=data,
-        mcmc={
-            "n_target_chain_iters": 200,
-            "burn_in": 0.5,
-            "n_dags": 50,
-        },
         metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
         candidate_parent_algorithm={"name": "rnd"},
         constraints={"K": 8, "d": 1},
+        **minimal_mcmc,
     ).sample()
     assert True
 
@@ -171,14 +155,10 @@ def test_Gadget_runs_n_greater_than_256_continuous():
 def test_Gadget_runs_n_greater_than_256_discrete(discrete_bn):
     sumu.Gadget(
         data=discrete_bn["pigs"].sample(1000),
-        mcmc={
-            "n_target_chain_iters": 200,
-            "burn_in": 0.5,
-            "n_dags": 50,
-        },
         metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
         candidate_parent_algorithm={"name": "rnd"},
         constraints={"K": 8, "d": 1},
+        **minimal_mcmc,
     ).sample()
     assert True
 
@@ -187,14 +167,10 @@ def test_Gadget_runs_empty_data_continuous():
     data = np.array([], dtype=np.float64).reshape(0, 14)
     sumu.Gadget(
         data=data,
-        mcmc={
-            "n_target_chain_iters": 200,
-            "burn_in": 0.5,
-            "n_dags": 50,
-        },
         metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
         candidate_parent_algorithm={"name": "rnd"},
         constraints={"K": 8, "d": 1},
+        **minimal_mcmc,
     ).sample()
     assert True
 
@@ -203,14 +179,10 @@ def test_Gadget_runs_empty_data_discrete():
     data = np.array([], dtype=np.int32).reshape(0, 14)
     sumu.Gadget(
         data=data,
-        mcmc={
-            "n_target_chain_iters": 200,
-            "burn_in": 0.5,
-            "n_dags": 50,
-        },
         metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
         candidate_parent_algorithm={"name": "rnd"},
         constraints={"K": 8, "d": 1},
+        **minimal_mcmc,
     ).sample()
     assert True
 
@@ -270,9 +242,7 @@ def test_Gadget_stays_in_mem_budget():
 data = np.random.randint(4, size=(200, 40), dtype=np.int32)
 sumu.Gadget(
 data=data,
-run_mode={"name": "budget", "params": {"mem": 1000}},
-constraints={"K": 20, "d": 2},
-mcmc={"n_target_chain_iters": 100},
+run_mode={"name": "budget", "params": {"mem": 1000, "t": 30}},
 metropolis_coupling_scheme={"name": "linear", "params": {"M": 1}},
 candidate_parent_algorithm={"name": "rnd"},
 ).sample()"""
@@ -298,7 +268,6 @@ def test_adaptive_tempering(discrete_bn):
     g = sumu.Gadget(
         data=discrete_bn["sachs"].sample(n),
         run_mode={"name": "budget", "params": {"t": t}},
-        # mcmc={"iters": 30000},
         metropolis_coupling_scheme={
             "name": "adaptive",
             "params": {
@@ -321,8 +290,11 @@ def test_Gadget_runs_without_Metropolis():
     data = np.random.rand(200, 10)
     sumu.Gadget(
         data=data,
+        run_mode={
+            "name": "normal",
+            "params": {"n_target_chain_iters": 100000},
+        },
         constraints={"K": 8},
-        mcmc={"n_target_chain_iters": 100000},
         metropolis_coupling_scheme={"params": {"M": 1}},
         logging={"verbose_prefix": "M1/M1", "overwrite": True},
     ).sample()
@@ -333,7 +305,7 @@ def test_Gadget_runs_without_Metropolis():
 def test_Gadget_runs_with_preset_candidate_parents(discrete_bn):
     data = discrete_bn["sachs"].sample(100)
     C = sumu.candidates.candidate_parent_algorithm["rnd"](5, data=data)[0]
-    g = sumu.Gadget(data=data, candidate_parents=C, mcmc=minimal_mcmc)
+    g = sumu.Gadget(data=data, candidate_parents=C, **minimal_mcmc)
     g.sample()
     assert g.C == C
 
@@ -350,7 +322,7 @@ def test_Gadget_reads_candidate_parents_from_file(discrete_bn, tmp_path):
     g = sumu.Gadget(
         data=data,
         candidate_parents_path=str(tmp_path / "C"),
-        mcmc=minimal_mcmc,
+        **minimal_mcmc,
     )
     g.sample()
     assert (C_array == g.C_array).all()
@@ -360,7 +332,7 @@ def test_Gadget_runs_initial_rootpartition(discrete_bn):
     g = sumu.Gadget(
         initial_rootpartition=sumu.bnet.partition(discrete_bn["sachs"].dag),
         data=discrete_bn["sachs"].sample(200),
-        mcmc=minimal_mcmc,
+        **minimal_mcmc,
         metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
         candidate_parent_algorithm={"name": "rnd"},
         constraints={"K": 10, "d": 2},

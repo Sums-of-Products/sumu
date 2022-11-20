@@ -51,10 +51,15 @@ class Defaults:
         default = dict()
 
         default["run_mode"] = lambda name: {
-            name != "budget": {"name": "normal" if name is None else name},
+            name
+            in {"normal", None}: {
+                "name": "normal",
+                "params": {"n_target_chain_iters": 20000},
+            },
+            name == "anytime": {"name": name},
             name
             == "budget": {
-                "name": "budget",
+                "name": name,
                 "params": {
                     "t_share": {"C": 1 / 9, "K": 1 / 9, "d": 1 / 9},
                 },
@@ -63,8 +68,6 @@ class Defaults:
 
         default["mcmc"] = {
             "n_indep": 1,
-            # TODO: move to run_mode normal params
-            "n_target_chain_iters": 20000,
             "burn_in": 0.5,
             "n_dags": 10000,
             "move_weights": [1, 1, 2],
@@ -1025,14 +1028,14 @@ class GadgetLogger(Logger):
 
         percentage = ""
         # stats = self.g._stats
-        if self.g.p["run_mode"]["name"] == "normal" or (
-            self.g.p["run_mode"]["name"] == "budget"
-            and "t" not in self.g.p["run_mode"]["params"]
-        ):
+        if self.g.p["run_mode"]["name"] == "normal":
             percentage = round(
                 100
                 * target_chain_iter_count
-                / (self.g.p["mcmc"]["n_target_chain_iters"] * n_indep)
+                / (
+                    self.g.p["run_mode"]["params"]["n_target_chain_iters"]
+                    * n_indep
+                )
             )
         elif self.g.p["run_mode"]["name"] == "budget":
             percentage = round(
@@ -1746,21 +1749,21 @@ class Gadget:
         def burn_in_cond():
             return (
                 self._stats["mcmc"]["target_chain_iter_count"]
-                < self.p["mcmc"]["n_target_chain_iters"]
+                < self.p["run_mode"]["params"]["n_target_chain_iters"]
                 * self.p["mcmc"]["burn_in"]
             )
 
         def mcmc_cond():
             return (
                 self._stats["mcmc"]["target_chain_iter_count"]
-                < self.p["mcmc"]["n_target_chain_iters"]
+                < self.p["run_mode"]["params"]["n_target_chain_iters"]
             )
 
         def dag_sampling_cond():
             return (
                 self._stats["after_burnin"]["target_chain_iter_count"]
             ) >= (
-                self.p["mcmc"]["n_target_chain_iters"]
+                self.p["run_mode"]["params"]["n_target_chain_iters"]
                 * (1 - self.p["mcmc"]["burn_in"])
             ) / self.p[
                 "mcmc"
