@@ -424,11 +424,7 @@ class GadgetParameters:
             return dict(default, **p)
 
         for k in self.p:
-            if k in {
-                "initial_rootpartition",
-                "candidate_parents_path",
-                "candidate_parents",
-            }:
+            if k not in self.default:
                 continue
             if (
                 "name" in self.p[k]
