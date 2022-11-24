@@ -178,10 +178,10 @@ class GadgetParameters:
     ):
         # Save parameters initially given by user.
         # locals() has to be the first thing called in __init__.
-        self.init = dict(**locals())
-        del self.init["self"]
-        del self.init["data"]
-        del self.init["is_prerun"]
+        self.p_user = dict(**locals())
+        del self.p_user["self"]
+        del self.p_user["data"]
+        del self.p_user["is_prerun"]
 
         self.t0 = time.time()
         self.data = Data(data)
@@ -191,10 +191,10 @@ class GadgetParameters:
             validate_params, msg="'validate_params' should be boolean"
         ):
             self._validate_parameters()
-        del self.init["validate_params"]
+        del self.p_user["validate_params"]
 
         self.default = Defaults()()
-        self.p = copy.deepcopy(self.init)
+        self.p = copy.deepcopy(self.p_user)
 
         self._populate_default_parameters()
         self._complete_user_given_parameters()
@@ -207,9 +207,9 @@ class GadgetParameters:
             self.time_use_estimate = dict(K=dict(), d=dict())
 
             K_prerun = min(15, self.data.n - 3)
-            if "K" in self.init["constraints"]:
+            if "K" in self.p_user["constraints"]:
                 K_prerun = max(
-                    2, min(self.init["constraints"]["K"] - 2, K_prerun)
+                    2, min(self.p_user["constraints"]["K"] - 2, K_prerun)
                 )
             self.prerun(K_prerun)
 
@@ -218,10 +218,10 @@ class GadgetParameters:
                 # TODO: get rid of this
                 self.budget = dict()
 
-                if "K" in self.init["constraints"]:
+                if "K" in self.p_user["constraints"]:
                     self.time_use_estimate["K"][
-                        self.init["constraints"]["K"]
-                    ] = self.pred_time_use_K(self.init["constraints"]["K"])
+                        self.p_user["constraints"]["K"]
+                    ] = self.pred_time_use_K(self.p_user["constraints"]["K"])
                 else:
                     if "t" in self.p["run_mode"]["params"]:
                         K, pred = self.adjust_to_time_budget_K(
@@ -231,10 +231,10 @@ class GadgetParameters:
                         )
                         self.p["constraints"]["K"] = K
                         self.time_use_estimate["K"] = pred
-                if "d" in self.init["constraints"]:
+                if "d" in self.p_user["constraints"]:
                     self.time_use_estimate["d"][
-                        self.init["constraints"]["d"]
-                    ] = self.pred_time_use_d(self.init["constraints"]["d"])
+                        self.p_user["constraints"]["d"]
+                    ] = self.pred_time_use_d(self.p_user["constraints"]["d"])
                 else:
                     if "t" in self.p["run_mode"]["params"]:
                         d, pred = self.adjust_to_time_budget_d(
@@ -257,7 +257,9 @@ class GadgetParameters:
                         * self.p["run_mode"]["params"]["t"]
                     )
                     try:
-                        self.init["candidate_parent_algorithm"]["params"]["k"]
+                        self.p_user["candidate_parent_algorithm"]["params"][
+                            "k"
+                        ]
                     except KeyError:
                         try:
                             self.p["candidate_parent_algorithm"]["params"][
@@ -300,7 +302,7 @@ class GadgetParameters:
             estimate_candidate_search_time_use = False
             try:
                 # checking if k is given by user
-                self.init["candidate_parent_algorithm"]["params"]["k"]
+                self.p_user["candidate_parent_algorithm"]["params"]["k"]
                 estimate_candidate_search_time_use = True
             except KeyError:
                 try:
@@ -334,22 +336,22 @@ class GadgetParameters:
                 )
 
     def _validate_parameters(self):
-        if self.init["initial_rootpartition"]:
-            validate.rootpartition(self.init["initial_rootpartition"])
-        validate.run_mode_args(self.init["run_mode"])
-        validate.mcmc_args(self.init["mcmc"])
+        if self.p_user["initial_rootpartition"]:
+            validate.rootpartition(self.p_user["initial_rootpartition"])
+        validate.run_mode_args(self.p_user["run_mode"])
+        validate.mcmc_args(self.p_user["mcmc"])
         validate.metropolis_coupling_scheme_args(
-            self.init["metropolis_coupling_scheme"]
+            self.p_user["metropolis_coupling_scheme"]
         )
-        validate.score_args(self.init["score"])
-        validate.structure_prior_args(self.init["structure_prior"])
-        validate.constraints_args(self.init["constraints"])
+        validate.score_args(self.p_user["score"])
+        validate.structure_prior_args(self.p_user["structure_prior"])
+        validate.constraints_args(self.p_user["constraints"])
         validate.catastrophic_cancellation_args(
-            self.init["catastrophic_cancellation"]
+            self.p_user["catastrophic_cancellation"]
         )
-        validate.logging_args(self.init["logging"])
+        validate.logging_args(self.p_user["logging"])
         # Ensure candidate parents are set only by one of the three ways and
-        # remove all except the used param from self.init.
+        # remove all except the used param from self.p_user.
         # If none of the ways are set use the defaults for
         # candidate_parent_algorithm.
         # Finally, validate the used way.
@@ -360,32 +362,32 @@ class GadgetParameters:
         ]
         validate.max_n_truthy(
             1,
-            [self.init[k] for k in alt_candp_params],
+            [self.p_user[k] for k in alt_candp_params],
             msg=f"only one of {alt_candp_params} can be set",
         )
         removed = list()
         for k in alt_candp_params:
-            if not bool(self.init[k]):
-                del self.init[k]
+            if not bool(self.p_user[k]):
+                del self.p_user[k]
                 removed.append(k)
         if len(removed) == 3:
-            self.init[alt_candp_params[0]] = dict()
-        if alt_candp_params[0] in self.init:
+            self.p_user[alt_candp_params[0]] = dict()
+        if alt_candp_params[0] in self.p_user:
             validate.candidate_parent_algorithm_args(
-                self.init[alt_candp_params[0]]
+                self.p_user[alt_candp_params[0]]
             )
-        if alt_candp_params[1] in self.init:
+        if alt_candp_params[1] in self.p_user:
             validate.is_string(
-                self.init[alt_candp_params[1]],
+                self.p_user[alt_candp_params[1]],
                 msg=f"'{alt_candp_params[1]}' should be string",
             )
-            self.init["constraints"]["K"] = len(
-                read_candidates(self.init[alt_candp_params[1]])[0]
+            self.p_user["constraints"]["K"] = len(
+                read_candidates(self.p_user[alt_candp_params[1]])[0]
             )
-        if alt_candp_params[2] in self.init:
-            validate.candidates(self.init[alt_candp_params[2]])
-            self.init["constraints"]["K"] = len(
-                self.init[alt_candp_params[2]][0]
+        if alt_candp_params[2] in self.p_user:
+            validate.candidates(self.p_user[alt_candp_params[2]])
+            self.p_user["constraints"]["K"] = len(
+                self.p_user[alt_candp_params[2]][0]
             )
 
     def _populate_default_parameters(self):
@@ -481,12 +483,16 @@ class GadgetParameters:
             memtable[i, 2] = budget - self.mem_estimate(n, K, d, n_cc(K))
 
         conditions = list()
-        if "d" in self.init["constraints"]:
-            conditions.append(memtable[:, 1] == self.init["constraints"]["d"])
+        if "d" in self.p_user["constraints"]:
+            conditions.append(
+                memtable[:, 1] == self.p_user["constraints"]["d"]
+            )
         elif "d_min" in self.p["constraints"]:
             conditions.append(memtable[:, 1] >= self.p["constraints"]["d_min"])
-        if "K" in self.init["constraints"]:
-            conditions.append(memtable[:, 0] == self.init["constraints"]["K"])
+        if "K" in self.p_user["constraints"]:
+            conditions.append(
+                memtable[:, 0] == self.p_user["constraints"]["K"]
+            )
         elif "K_min" in self.p["constraints"]:
             conditions.append(memtable[:, 0] >= self.p["constraints"]["K_min"])
 
@@ -1525,7 +1531,7 @@ class Gadget:
         log.br()
         try:
             # trying if all nested keys set
-            self.p.init["candidate_parent_algorithm"]["params"]["k"]
+            self.p.p_user["candidate_parent_algorithm"]["params"]["k"]
             log(f"time predicted: {round(self.p.time_use_estimate['C'])}s")
         except KeyError:
             c = "candidate_parent_algorithm"  # to shorten next rows
