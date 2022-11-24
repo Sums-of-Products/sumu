@@ -28,7 +28,8 @@ cdef extern from "CandidateRestrictedScore.hpp":
     cdef cppclass CppCandidateRestrictedScore "CandidateRestrictedScore":
 
         CppCandidateRestrictedScore(double* w, int* C, int n, int K,
-                                    int cc_limit, double cc_tol, double isum_tol,
+                                    int cc_limit, double cc_tol,
+                                    double pruning_eps, double score_sum_eps,
                                     bool silent, int debug
                                     )
         void precompute_tau_simple()
@@ -79,7 +80,7 @@ cdef class CandidateRestrictedScore:
     cdef int n
 
     def __cinit__(self, *, score_array, C, K, cc_cache_size, cc_tolerance,
-                  pruning_eps, logfile="", silent, debug):
+                  pruning_eps, score_sum_eps, logfile="", silent, debug):
 
         cdef double[:, ::1] memview_score_array
         memview_score_array = score_array
@@ -92,7 +93,8 @@ cdef class CandidateRestrictedScore:
                                                        & memview_C[0, 0],
                                                        score_array.shape[0],
                                                        K, cc_cache_size,
-                                                       cc_tolerance, pruning_eps,
+                                                       cc_tolerance,
+                                                       pruning_eps, score_sum_eps,
                                                        silent, debug
                                                        )
 

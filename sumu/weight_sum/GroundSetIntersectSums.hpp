@@ -20,7 +20,7 @@ inline int  popcount  (bm32 S){ int c = 0; while (S) { c += (S & 1L); S >>= 1; }
 class GroundSetIntersectSums {
 
 public:
-	GroundSetIntersectSums(int K0, double* w, double eps0);
+	GroundSetIntersectSums(int K0, double* w, double eps_pruning, double eps_score_sum);
 	~GroundSetIntersectSums();
 	Treal scan_sum(bm32 U, bm32 T);
 	Treal scan_sum(bm32 U);
@@ -30,7 +30,8 @@ public:
 
 private:
 	int				K;	// Size of the ground set.
-	double 			eps;// Tolerated relative error.
+	double 			eps_pruning;// Tolerated relative error.
+	double 			eps_score_sum;
 	void prune(double *w);
 	void init(double *w);
 };

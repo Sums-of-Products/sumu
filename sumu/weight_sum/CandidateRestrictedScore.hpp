@@ -27,7 +27,7 @@ public:
 	Treal m_cc_tol;
 	int m_cc_limit;
 
-	CandidateRestrictedScore(double* scores, int* C, int n, int K, int cc_limit, double cc_tol, double isum_tol,
+	CandidateRestrictedScore(double* scores, int* C, int n, int K, int cc_limit, double cc_tol, double pruning_eps, double score_sum_eps,
 	                         bool silent, int debug
 		);
 	~CandidateRestrictedScore();

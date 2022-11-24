@@ -1662,6 +1662,7 @@ class Gadget:
             cc_tolerance=self.p["catastrophic_cancellation"]["tolerance"],
             cc_cache_size=self.p["catastrophic_cancellation"]["cache_size"],
             pruning_eps=self.p["constraints"]["pruning_eps"],
+            score_sum_eps=self.p["constraints"]["score_sum_eps"],
             silent=self.log.silent(),
             debug=DEBUG,
         )

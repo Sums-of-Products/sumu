@@ -9,9 +9,9 @@ using std::make_pair;
 bool decr_ws32(ws32 x, ws32 y) { return x.weight > y.weight; }
 void sort_ws32(vector<ws32> &c){ sort(c.begin(), c.end(), decr_ws32); }
 
-GroundSetIntersectSums::GroundSetIntersectSums(int K0, double *w, double eps0){
-	K = K0; eps = eps0;
-	if (eps > 0) {prune(w);} else {init(w);}
+GroundSetIntersectSums::GroundSetIntersectSums(int K0, double *w, double eps_pruning0, double eps_score_sum0){
+	K = K0; eps_pruning = eps_pruning0; eps_score_sum = eps_score_sum0;
+	if (eps_pruning > 0) {prune(w);} else {init(w);}
 	sort_ws32(s);
 }
 
@@ -28,7 +28,7 @@ void GroundSetIntersectSums::prune(double *w){
 	//		w(S) < eps \sum_{j in R subset of S} w(R) 2^{|R| - K} for all j in S.
 	//	(The RHS can be efficiently computed for all S by fast zeta transform.)
 	//	Note: We assume the input argument w actually represents the values  ln w(S).
-	bm32 l = 1L << K; int tol = (int) -log(eps)/log(2.0);
+	bm32 l = 1L << K; int tol = (int) -log(eps_pruning)/log(2.0);
 	Treal* a = new Treal[l], * b = new Treal[l], * c = new Treal[l]; bool* keepit = new bool[l];
 	for (bm32 S = 1; S < l; ++S){ keepit[S] = false; } keepit[0] = true;
 	for (bm32 R = 0; R < l; ++R){ a[R].set_log(w[R]); c[R] = a[R]; a[R] >>= K - popcount(R); c[R] <<= tol; }
@@ -46,7 +46,7 @@ void GroundSetIntersectSums::prune(double *w){
 Treal GroundSetIntersectSums::scan_sum(bm32 U, bm32 T){
 	int m = s.size(); int count = 0;
 	Treal sum; sum = 0.0;
-	Treal slack; slack = eps/m;
+	Treal slack; slack = eps_score_sum/m;
 	Treal factor; factor = 0.0;
 	int i = 0;
 	for (; i < m; ++i){
@@ -95,7 +95,7 @@ pair<bm32, double> GroundSetIntersectSums::scan_rnd(bm32 U, bm32 T, double wcum)
 Treal GroundSetIntersectSums::scan_sum(bm32 U){
 	int m = s.size(); int count = 0;
 	Treal sum; sum = 0.0;
-	Treal slack; slack = eps/m;
+	Treal slack; slack = eps_score_sum/m;
 	Treal factor; factor = 0.0;
 	int i = 0;
 	for (; i < m; ++i){

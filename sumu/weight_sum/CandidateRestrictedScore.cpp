@@ -21,7 +21,7 @@ using std::vector;
 CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
                                                    int* C, int n, int K,
                                                    int cc_limit, double cc_tol,
-                                                   double isum_tol,
+                                                   double pruning_eps, double score_sum_eps,
                                                    bool silent, int debug) {
 
 	timer = Timer();
@@ -57,7 +57,7 @@ CandidateRestrictedScore::CandidateRestrictedScore(double* score_array,
 		m_tau_simple[v] = new Treal[ (bm32) 1 << K];
 		m_tau_cc[v] = unordered_map< bm64, Treal >();
 		m_C[v] = new int[K];
-		isums[v] = new GroundSetIntersectSums(K, &score_array[v * ((bm64) 1 << K)], isum_tol);
+		isums[v] = new GroundSetIntersectSums(K, &score_array[v * ((bm64) 1 << K)], pruning_eps, score_sum_eps);
 
 		cout << v << "\t" << isums[v]->s.size() << "\t" << (double) isums[v]->s.size() / (1L << K) << endl;
 
