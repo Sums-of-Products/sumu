@@ -32,7 +32,11 @@ def test_Gadget_empirical_edge_prob_error_decreases(discrete_bn):
             "n_indep": 1,
             "burn_in": 0.5,
             "n_dags": 10000,
-            "move_weights": [1, 1, 16],
+            "move_weights": {
+                "R_split_merge": 1,
+                "R_swap_node_pair": 1,
+                "DAG_edge_reversal": 16,
+            },
         },
         # Metropolis coupling
         "metropolis_coupling_scheme": {

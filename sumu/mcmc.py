@@ -4,7 +4,7 @@ import warnings
 import numpy as np
 
 from .bnet import partition
-from .mcmc_moves import DAG_edgerev, R_basic_move, R_swap_any
+from .mcmc_moves import DAG_edge_reversal, R_split_merge, R_swap_node_pair
 from .stats import Describable
 
 
@@ -18,7 +18,11 @@ class PartitionMCMC(Describable):
         score,
         d,
         inv_temp=1.0,
-        move_weights=[1, 1, 2],
+        move_weights={
+            "R_split_merge": 1,
+            "R_swap_node_pair": 1,
+            "DAG_edge_reversal": 2,
+        },
         R=None,
     ):
 
@@ -29,11 +33,11 @@ class PartitionMCMC(Describable):
         self.d = d
         self.stay_prob = 0.01
         self._all_moves = [
-            self.R_basic_move,
-            self.R_swap_any,
-            self.DAG_edgerev,
+            self.R_split_merge,
+            self.R_swap_node_pair,
+            self.DAG_edge_reversal,
         ]
-        self._move_weights = list(move_weights)
+        self._move_weights = move_weights
 
         # These should be in self._stats
         self.proposed = {move.__name__: 0 for move in self._all_moves}
@@ -66,9 +70,14 @@ class PartitionMCMC(Describable):
 
     def _init_moves(self):
         # This needs to be called if self.inv_temp changes from/to 1.0
-        move_weights = self._move_weights
+        move_weights = [
+            self._move_weights[k.__name__] for k in self._all_moves
+        ]
         if self.inv_temp != 1:
-            move_weights = self._move_weights[:-1]
+            # NOTE: dropping edge reversal. This now depends on the order in
+            #       self._all_moves .
+            # TODO: refactor to something less fragile.
+            move_weights = move_weights[:-1]
         # Each move is repeated weights[move] times to allow uniform sampling
         # from the list (np.random.choice can be very slow).
         self._moves = [
@@ -85,15 +94,15 @@ class PartitionMCMC(Describable):
             R=self.R,
         )
 
-    def R_basic_move(self, **kwargs):
+    def R_split_merge(self, **kwargs):
         # NOTE: Is there value in having these as methods?
-        return R_basic_move(**kwargs)
+        return R_split_merge(**kwargs)
 
-    def R_swap_any(self, **kwargs):
-        return R_swap_any(**kwargs)
+    def R_swap_node_pair(self, **kwargs):
+        return R_swap_node_pair(**kwargs)
 
-    def DAG_edgerev(self, **kwargs):
-        return DAG_edgerev(**kwargs)
+    def DAG_edge_reversal(self, **kwargs):
+        return DAG_edge_reversal(**kwargs)
 
     def _valid(self, R):
         if sum(len(R[i]) for i in range(len(R))) != self.n:
@@ -223,7 +232,7 @@ class PartitionMCMC(Describable):
         # NOTE: Multiple points of return, consider refactoring.
         if np.random.rand() > self.stay_prob:
             move = self._moves[np.random.randint(len(self._moves))]
-            if move.__name__ == "DAG_edgerev":
+            if move == self.DAG_edge_reversal:
                 DAG, _ = self.score.sample_DAG(self.R)
                 # NOTE: DAG equals DAG_prime after this, since no copy
                 #       is made. If necessary, make one.
@@ -241,7 +250,7 @@ class PartitionMCMC(Describable):
                     rescore=self._rescore(self.R, R_prime),
                 )
 
-            elif move.__name__[0] == "R":
+            elif move in {self.R_split_merge, self.R_swap_node_pair}:
                 return_value = move(R=self.R)
                 if return_value is False:
                     return [self.R], np.array([self.R_score])

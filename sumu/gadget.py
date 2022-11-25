@@ -70,7 +70,11 @@ class Defaults:
             "n_indep": 1,
             "burn_in": 0.5,
             "n_dags": 10000,
-            "move_weights": [1, 1, 2],
+            "move_weights": {
+                "R_split_merge": 1,
+                "R_swap_node_pair": 1,
+                "DAG_edge_reversal": 2,
+            },
         }
 
         default["metropolis_coupling_scheme"] = lambda name: {
@@ -892,8 +896,8 @@ class GadgetLogger(Logger):
         self.h("Move acceptance probabilities", secnum=False)
         for i, s in enumerate(stats):
             self(f"Chain {i+1}:")
-            self(" " * 15 + "inv_temp")
-            msg_tmpl = "{:<12.12} |" + " {:<5.5}" * s["M"]
+            self(" " * 20 + "inv_temp")
+            msg_tmpl = "{:<17.17} |" + " {:<5.5}" * s["M"]
             temps = [1.0]
             temps_labels = [1.0]
             temps = sorted(s["inv_temp"], reverse=True)
@@ -902,7 +906,7 @@ class GadgetLogger(Logger):
             msg = msg_tmpl.format("move", *temps_labels) + "\n"
             msg = msg.replace("|", " ")
             hr = ["-"] * self._linewidth
-            hr[13] = "+"
+            hr[18] = "+"
             hr = "".join(hr)
             msg += hr
             self(msg)

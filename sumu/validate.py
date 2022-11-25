@@ -185,14 +185,21 @@ _mcmc_args.update(
         "n_dags" not in p or
         is_nonneg_int(p["n_dags"]),
 
-        "move_weights should be a list of 3 non-negative integers":
+        (
+            "move_weights should be a dictionary of 3 non-negative integers"
+            "under the keys R_split_merge, R_swap_node_pair, DAG_edge_reversal"
+        ):
         lambda p:
         "move_weights" not in p or
         all(
             [
-                type(p["move_weights"]) == list,
-                len(p["move_weights"]) == 3,
-                all([is_nonneg_int(w) for w in p["move_weights"]]),
+                type(p["move_weights"]) == dict,
+                set(p["move_weights"]) == {
+                    "R_split_merge",
+                    "R_swap_node_pair",
+                    "DAG_edge_reversal"
+                },
+                all([is_nonneg_int(w) for w in p["move_weights"].values()]),
             ]
         ),
 
