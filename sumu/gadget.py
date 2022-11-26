@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import psutil
 
 try:
     import plotext as plt
@@ -52,15 +53,20 @@ class Defaults:
 
         default["run_mode"] = lambda name: {
             name
-            in {"normal", None}: {
+            == "normal": {
                 "name": "normal",
                 "params": {"n_target_chain_iters": 20000},
             },
             name == "anytime": {"name": name},
             name
-            == "budget": {
-                "name": name,
+            in {"budget", None}: {
+                "name": "budget",
                 "params": {
+                    # TODO: some sensible default for t parameter
+                    "t": 60,
+                    "mem": int(
+                        psutil.virtual_memory().available / 1024.0 ** 2
+                    ),
                     "t_share": {"C": 1 / 9, "K": 1 / 9, "d": 1 / 9},
                 },
             },
