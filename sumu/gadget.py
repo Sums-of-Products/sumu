@@ -62,8 +62,12 @@ class Defaults:
             in {"budget", None}: {
                 "name": "budget",
                 "params": {
-                    # TODO: some sensible default for t parameter
-                    "t": 60,
+                    "t": lambda data: int(
+                        min(1.0, 0.01 * data.n)
+                        * np.multiply(*data.shape)
+                        * 3300
+                        / psutil.cpu_freq().max
+                    ),
                     "mem": int(
                         psutil.virtual_memory().available / 1024.0 ** 2
                     ),
@@ -406,6 +410,10 @@ class GadgetParameters:
         self.default["run_mode"] = self.default["run_mode"](
             self.p["run_mode"].get("name")
         )
+        if self.default["run_mode"]["name"] == "budget":
+            self.default["run_mode"]["params"]["t"] = self.default["run_mode"][
+                "params"
+            ]["t"](self.data)
         self.default["constraints"] = self.default["constraints"](
             self.default["run_mode"]["name"]
         )
