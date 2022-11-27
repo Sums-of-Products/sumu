@@ -146,10 +146,28 @@ _run_mode_args.update(
         not nested_in_dict(p, "params", "n_target_chain_iters") or
         is_nonneg_int(p["params"]["n_target_chain_iters"]),
 
-        "t parameter (number of seconds) required":
+        "t parameter (number of seconds) should be a non-negative integer":
         lambda p:
-        "name" not in p or p["name"] != "budget" or
-        nested_in_dict(p, "params", "t")
+        not nested_in_dict(p, "params", "t") or
+        is_nonneg_int(p["params"]["t"]),
+
+        "mem parameter (megabytes) should be a non-negative integer":
+        lambda p:
+        not nested_in_dict(p, "params", "mem") or
+        is_nonneg_int(p["params"]["mem"]),
+
+        (
+            "t_share should be a dict with a subset of the keys C, K, d "
+            "holding float values in the range (0, 1) "
+            "that also sum the to the range"
+        ):
+        lambda p:
+        not nested_in_dict(p, "params", "t_share") or
+        type(p["params"]["t_share"]) == dict and
+        set(p["params"]["t_share"]).issubset({"C", "K", "d"}) and
+        all(type(v) == float for v in p["params"]["t_share"].values()) and
+        all((v > 0 and v < 1) for v in p["params"]["t_share"].values()) and
+        sum(p["params"]["t_share"].values()) < 1
 
     }
 )
