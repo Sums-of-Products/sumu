@@ -66,9 +66,9 @@ class Defaults:
                         min(1.0, 0.01 * data.n)
                         * np.multiply(*data.shape)
                         * 3300
-                        # cpu_freq sometimes returns inf
+                        # cpu_freq.max sometimes returns 0
                         / [psutil.cpu_freq().max, 3300][
-                            psutil.cpu_freq().max == np.inf
+                            psutil.cpu_freq().max == 0
                         ]
                     ),
                     "mem": int(
