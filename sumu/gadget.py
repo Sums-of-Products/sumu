@@ -480,9 +480,6 @@ class GadgetParameters:
         return a + b * n * (n_psets(n, K, d) + 2 ** K) + c * n_cc
 
     def _adjust_to_mem_budget(self, budget):
-
-        # BUG: Doesn't work if d==0 (or K==0?)
-
         def n_cc(K):
             return sum(self.est["n_cc_v"][v](K) for v in range(self.data.n))
 
