@@ -409,6 +409,8 @@ class GadgetParameters:
     def _populate_default_parameters(self):
         # Some defaults are defined as functions of data or other parameters.
         # Evaluate the functions here.
+        DBUG(str(psutil.cpu_freq()))
+        DBUG(str(psutil.virtual_memory()))
         self.default["run_mode"] = self.default["run_mode"](
             self.p["run_mode"].get("name")
         )
