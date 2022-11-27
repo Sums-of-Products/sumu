@@ -109,8 +109,8 @@ class Defaults:
         }.get(True)
 
         default["score"] = (
-            lambda discrete: {"name": "bdeu", "params": {"ess": 10}}
-            if discrete
+            lambda data: {"name": "bdeu", "params": {"ess": 10}}
+            if data.discrete
             else {"name": "bge"}
         )
 
@@ -120,8 +120,8 @@ class Defaults:
             runmode
             in ["normal", "anytime"]: {
                 "max_id": -1,
-                "K": lambda n: min(n - 1, 16),
-                "d": lambda n: min(n - 1, 3),
+                "K": lambda data: min(data.n - 1, 16),
+                "d": lambda data: min(data.n - 1, 3),
                 "pruning_eps": 0.001,
                 "score_sum_eps": 0.01,
             },
@@ -141,7 +141,6 @@ class Defaults:
                 "name": "greedy",
                 "params": {"criterion": "gain"},
             },
-            # TODO: Make sure this works with n < k
             runmode
             in ["normal", "anytime"]: {
                 "name": "greedy",
@@ -420,11 +419,11 @@ class GadgetParameters:
         if self.default["run_mode"]["name"] == "normal":
             self.default["constraints"]["K"] = self.default["constraints"][
                 "K"
-            ](self.data.n)
+            ](self.data)
             self.default["constraints"]["d"] = self.default["constraints"][
                 "d"
-            ](self.data.n)
-        self.default["score"] = self.default["score"](self.data.discrete)
+            ](self.data)
+        self.default["score"] = self.default["score"](self.data)
         self.default["metropolis_coupling_scheme"] = self.default[
             "metropolis_coupling_scheme"
         ](self.p["metropolis_coupling_scheme"].get("name"))
@@ -2019,7 +2018,7 @@ class LocalScore:
         self.score = score
         if score is None:
             # TODO: decouple from Defaults
-            self.score = Defaults()["score"](self.data.discrete)
+            self.score = Defaults()["score"](self.data)
         self.prior = prior
         self.priorf = {"fair": self._prior_fair, "unif": self._prior_unif}
         self.maxid = maxid
