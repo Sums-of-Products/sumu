@@ -53,18 +53,18 @@ def greedy(
     K,
     *,
     scores,
-    params={"k": 6, "t_budget": None, "criterion": "score"},
+    params={"K_f": 6, "t_budget": None, "association_measure": "score"},
     **kwargs,
 ):
-    k = params.get("k")
+    k = params.get("K_f")
     if k is not None:
         k = min(k, K)
     t_budget = params.get("t_budget")
-    criterion = params.get("criterion")
-    assert criterion in ("score", "gain")
-    if criterion == "score":
+    association_measure = params.get("association_measure")
+    assert association_measure in ("score", "gain")
+    if association_measure == "score":
         goodness = lambda v, S, u: scores._local(v, np.array(S + (u,)))
-    elif criterion == "gain":
+    elif association_measure == "gain":
         goodness = lambda v, S, u: scores._local(
             v, np.array(S + (u,))
         ) - scores._local(v, np.array(S))
@@ -136,7 +136,7 @@ def greedy(
         C[v] = tuple(C[v])
         scores.clear_cache()
 
-    return C, {"k": k}
+    return C, {"K_f": k}
 
 
-candidate_parent_algorithm = {"opt": opt, "rnd": rnd, "greedy": greedy}
+candidate_parent_algorithm = {"optimal": opt, "random": rnd, "greedy": greedy}

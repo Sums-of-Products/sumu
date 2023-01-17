@@ -13,7 +13,7 @@ sumu.gadget.DEBUG = 1
 minimal_mcmc = {
     "run_mode": {"name": "normal", "params": {"n_target_chain_iters": 200}},
     "mcmc": {
-        "burn_in": 0.5,
+        "burnin": 0.5,
         "n_dags": 50,
     },
 }
@@ -29,8 +29,8 @@ def test_Gadget_empirical_edge_prob_error_decreases(discrete_bn):
         },
         # generic MCMC parameters
         "mcmc": {
-            "n_indep": 1,
-            "burn_in": 0.5,
+            "n_independent": 1,
+            "burnin": 0.5,
             "n_dags": 10000,
             "move_weights": {
                 "R_split_merge": 1,
@@ -39,14 +39,14 @@ def test_Gadget_empirical_edge_prob_error_decreases(discrete_bn):
             },
         },
         # Metropolis coupling
-        "metropolis_coupling_scheme": {
+        "metropolis_coupling": {
             "name": "adaptive",
             "params": {
                 "M": 2,
                 "p_target": 0.234,
-                "delta_t_init": 0.5,
-                "local_accept_history_size": 1000,
-                "update_freq": 100,
+                "delta_init": 0.5,
+                "sliding_window": 1000,
+                "update_n": 100,
             },
         },
         # score to use and its parameters
@@ -54,9 +54,15 @@ def test_Gadget_empirical_edge_prob_error_decreases(discrete_bn):
         # modular structure prior and its parameters
         "structure_prior": {"name": "fair"},
         # constraints on the DAG space
-        "constraints": {"max_id": -1, "K": 8, "d": 3, "pruning_eps": 0.001},
+        "constraints": {
+            "max_id": -1,
+            "K": 8,
+            "d": 3,
+        },
+        "pruning_tolerance": 0.001,
+        "scoresum_tolerance": 0.1,
         # algorithm to use for finding candidate parents
-        "candidate_parent_algorithm": {"name": "greedy", "params": {"k": 6}},
+        "candidate_parent_algorithm": {"name": "greedy", "params": {"K_f": 6}},
         # preparing for catastrofic cancellations
         "catastrophic_cancellation": {
             "tolerance": 2 ** -32,
@@ -64,7 +70,7 @@ def test_Gadget_empirical_edge_prob_error_decreases(discrete_bn):
         },
         # Logging
         "logging": {
-            "stats_period": 15,
+            "period": 15,
         },
     }
 
@@ -90,8 +96,11 @@ def test_Gadget_runs_n_between_2_and_64(discrete_bn):
     # NOTE: This does not test all numbers of variables up to 64
     g = sumu.Gadget(
         data=discrete_bn["sachs"].sample(200),
-        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
-        candidate_parent_algorithm={"name": "rnd"},
+        metropolis_coupling={
+            "name": "static",
+            "params": {"M": 2, "heating": "linear"},
+        },
+        candidate_parent_algorithm={"name": "random"},
         constraints={"K": 10, "d": 2},
         **minimal_mcmc,
     )
@@ -103,8 +112,11 @@ def test_Gadget_runs_n_between_65_and_128(discrete_bn):
     # NOTE: This does not test all numbers of variables between 65 and 128
     g = sumu.Gadget(
         data=discrete_bn["hepar2"].sample(1000),
-        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
-        candidate_parent_algorithm={"name": "rnd"},
+        metropolis_coupling={
+            "name": "static",
+            "params": {"M": 2, "heating": "linear"},
+        },
+        candidate_parent_algorithm={"name": "random"},
         constraints={"K": 10, "d": 2},
         **minimal_mcmc,
     )
@@ -116,8 +128,11 @@ def test_Gadget_runs_n_between_129_and_192(discrete_bn):
     # NOTE: This does not test all numbers of variables between 129 and 192
     g = sumu.Gadget(
         data=discrete_bn["munin1"].sample(200),
-        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
-        candidate_parent_algorithm={"name": "rnd"},
+        metropolis_coupling={
+            "name": "static",
+            "params": {"M": 2, "heating": "linear"},
+        },
+        candidate_parent_algorithm={"name": "random"},
         constraints={"K": 10, "d": 2},
         **minimal_mcmc,
     )
@@ -129,8 +144,11 @@ def test_Gadget_runs_n_between_193_and_256(discrete_bn):
     # NOTE: This does not test all numbers of variables between 193 and 256
     g = sumu.Gadget(
         data=discrete_bn["andes"].sample(200),
-        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
-        candidate_parent_algorithm={"name": "rnd"},
+        metropolis_coupling={
+            "name": "static",
+            "params": {"M": 2, "heating": "linear"},
+        },
+        candidate_parent_algorithm={"name": "random"},
         constraints={"K": 10, "d": 2},
         **minimal_mcmc,
     )
@@ -148,8 +166,11 @@ def test_Gadget_runs_n_greater_than_256_continuous():
     data = np.random.rand(600, 300)
     sumu.Gadget(
         data=data,
-        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
-        candidate_parent_algorithm={"name": "rnd"},
+        metropolis_coupling={
+            "name": "static",
+            "params": {"M": 2, "heating": "linear"},
+        },
+        candidate_parent_algorithm={"name": "random"},
         constraints={"K": 8, "d": 1},
         **minimal_mcmc,
     ).sample()
@@ -159,8 +180,11 @@ def test_Gadget_runs_n_greater_than_256_continuous():
 def test_Gadget_runs_n_greater_than_256_discrete(discrete_bn):
     sumu.Gadget(
         data=discrete_bn["pigs"].sample(1000),
-        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
-        candidate_parent_algorithm={"name": "rnd"},
+        metropolis_coupling={
+            "name": "static",
+            "params": {"M": 2, "heating": "linear"},
+        },
+        candidate_parent_algorithm={"name": "random"},
         constraints={"K": 8, "d": 1},
         **minimal_mcmc,
     ).sample()
@@ -171,8 +195,11 @@ def test_Gadget_runs_empty_data_continuous():
     data = np.array([], dtype=np.float64).reshape(0, 14)
     sumu.Gadget(
         data=data,
-        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
-        candidate_parent_algorithm={"name": "rnd"},
+        metropolis_coupling={
+            "name": "static",
+            "params": {"M": 2, "heating": "linear"},
+        },
+        candidate_parent_algorithm={"name": "random"},
         constraints={"K": 8, "d": 1},
         **minimal_mcmc,
     ).sample()
@@ -183,8 +210,11 @@ def test_Gadget_runs_empty_data_discrete():
     data = np.array([], dtype=np.int32).reshape(0, 14)
     sumu.Gadget(
         data=data,
-        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
-        candidate_parent_algorithm={"name": "rnd"},
+        metropolis_coupling={
+            "name": "static",
+            "params": {"M": 2, "heating": "linear"},
+        },
+        candidate_parent_algorithm={"name": "random"},
         constraints={"K": 8, "d": 1},
         **minimal_mcmc,
     ).sample()
@@ -206,8 +236,11 @@ def test_Gadget_runs_with_anytime_mode(discrete_bn):
             data=discrete_bn["sachs"].sample(200),
             run_mode={"name": "anytime"},
             mcmc={"n_dags": 50},
-            metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
-            candidate_parent_algorithm={"name": "rnd"},
+            metropolis_coupling={
+                "name": "static",
+                "params": {"M": 2, "heating": "linear"},
+            },
+            candidate_parent_algorithm={"name": "random"},
             constraints={"K": 6, "d": 2},
         )
         return g.sample()
@@ -247,8 +280,8 @@ data = np.random.randint(4, size=(200, 40), dtype=np.int32)
 sumu.Gadget(
 data=data,
 run_mode={"name": "budget", "params": {"mem": 1000, "t": 30}},
-metropolis_coupling_scheme={"name": "linear", "params": {"M": 1}},
-candidate_parent_algorithm={"name": "rnd"},
+metropolis_coupling={"params": {"M": 1}},
+candidate_parent_algorithm={"name": "random"},
 ).sample()"""
 
     # TODO: should be subprocess.run(..., check=True)
@@ -272,14 +305,14 @@ def test_adaptive_tempering(discrete_bn):
     g = sumu.Gadget(
         data=discrete_bn["sachs"].sample(n),
         run_mode={"name": "budget", "params": {"t": t}},
-        metropolis_coupling_scheme={
+        metropolis_coupling={
             "name": "adaptive",
             "params": {
                 "M": 2,
                 "p_target": p_target,
-                "delta_t_init": 0.5,
-                "local_accept_history_size": 1000,
-                "update_freq": 100,
+                "delta_init": 0.5,
+                "sliding_window": 1000,
+                "update_n": 100,
                 "smoothing": 2.0,
             },
         },
@@ -299,7 +332,7 @@ def test_Gadget_runs_without_Metropolis():
             "params": {"n_target_chain_iters": 100000},
         },
         constraints={"K": 8},
-        metropolis_coupling_scheme={"params": {"M": 1}},
+        metropolis_coupling={"params": {"M": 1}},
         logging={"verbose_prefix": "M1/M1", "overwrite": True},
     ).sample()
     assert True
@@ -308,7 +341,7 @@ def test_Gadget_runs_without_Metropolis():
 @pytest.mark.select
 def test_Gadget_runs_with_preset_candidate_parents(discrete_bn):
     data = discrete_bn["sachs"].sample(100)
-    C = sumu.candidates.candidate_parent_algorithm["rnd"](5, data=data)[0]
+    C = sumu.candidates.candidate_parent_algorithm["random"](5, data=data)[0]
     g = sumu.Gadget(data=data, candidate_parents=C, **minimal_mcmc)
     g.sample()
     assert g.C == C
@@ -317,7 +350,7 @@ def test_Gadget_runs_with_preset_candidate_parents(discrete_bn):
 def test_Gadget_reads_candidate_parents_from_file(discrete_bn, tmp_path):
     K = 5
     data = discrete_bn["sachs"].sample(100)
-    C = sumu.candidates.candidate_parent_algorithm["rnd"](K, data=data)[0]
+    C = sumu.candidates.candidate_parent_algorithm["random"](K, data=data)[0]
     C_array = np.empty((data.n, K), dtype=np.int32)
     for v in C:
         C_array[v] = C[v]
@@ -333,12 +366,18 @@ def test_Gadget_reads_candidate_parents_from_file(discrete_bn, tmp_path):
 
 
 def test_Gadget_runs_initial_rootpartition(discrete_bn):
+    minimal_params = dict(minimal_mcmc)
+    minimal_params["mcmc"]["initial_rootpartition"] = sumu.bnet.partition(
+        discrete_bn["sachs"].dag
+    )
     g = sumu.Gadget(
-        initial_rootpartition=sumu.bnet.partition(discrete_bn["sachs"].dag),
         data=discrete_bn["sachs"].sample(200),
-        **minimal_mcmc,
-        metropolis_coupling_scheme={"name": "linear", "params": {"M": 2}},
-        candidate_parent_algorithm={"name": "rnd"},
+        **minimal_params,
+        metropolis_coupling={
+            "name": "static",
+            "params": {"M": 2, "heating": "linear"},
+        },
+        candidate_parent_algorithm={"name": "random"},
         constraints={"K": 10, "d": 2},
     )
     g.sample()
@@ -348,7 +387,7 @@ def test_Gadget_runs_initial_rootpartition(discrete_bn):
 def test_Gadget_utility_for_rootpartition_score(discrete_bn):
     g = sumu.Gadget(
         data=discrete_bn["sachs"].sample(200),
-        candidate_parent_algorithm={"name": "rnd"},
+        candidate_parent_algorithm={"name": "random"},
         constraints={"K": 1, "d": 1},
     )
     g.precompute()

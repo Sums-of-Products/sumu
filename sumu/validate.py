@@ -175,8 +175,9 @@ _run_mode_args.update(
 
 _mcmc_args = {
     "_arg_names": [
-        "n_indep",
-        "burn_in",
+        "initial_rootpartition",
+        "n_independent",
+        "burnin",
         "n_dags",
         "move_weights",
     ]
@@ -188,10 +189,10 @@ _mcmc_args.update(
         lambda p:
         keys_in_list_error_if_not(_mcmc_args["_arg_names"], *p),
 
-        "n_indep should be non-negative integer":
+        "n_independent should be non-negative integer":
         lambda p:
-        "n_indep" not in p
-        or is_nonneg_int(p["n_indep"]),
+        "n_independent" not in p
+        or is_nonneg_int(p["n_independent"]),
 
         "burn_in should be a float in range [0, 1]":
         lambda p:
@@ -225,49 +226,52 @@ _mcmc_args.update(
 )
 
 
-_metropolis_coupling_scheme_args = {
-    "_arg_names": {
-        "name": ["adaptive", "linear", "inv_linear", "quadratic", "sigmoid"],
-        "params": [
+_metropolis_coupling_args = {
+    "_arg_names": ["name", "params"],
+    "_name": ["adaptive", "static"],
+    "_params_keys": {
+        "adaptive": [
             "M",
             "p_target",
-            "delta_t_init",
-            "local_accept_history_size",
-            "update_freq",
+            "delta_init",
+            "sliding_window",
+            "update_n",
             "smoothing",
             "slowdown",
         ],
-    }
+        "static": ["M", "heating", "sliding_window"],
+    },
 }
-_metropolis_coupling_scheme_args.update(
+
+_metropolis_coupling_args.update(
     {
 
         (
             f"parameters should be in "
-            f"{list(_metropolis_coupling_scheme_args['_arg_names'].keys())}"):
+            f"{_metropolis_coupling_args['_arg_names']}"):
         lambda p:
         keys_in_list_error_if_not(
-            list(_metropolis_coupling_scheme_args["_arg_names"]), *p
+            _metropolis_coupling_args["_arg_names"], *p
         ),
 
         (
             f"name should be in "
-            f"{_metropolis_coupling_scheme_args['_arg_names']['name']}"
+            f"{_metropolis_coupling_args['_name']}"
         ):
         lambda p:
         "name" not in p or
         keys_in_list_error_if_not(
-            _metropolis_coupling_scheme_args["_arg_names"]["name"], p["name"]
+            _metropolis_coupling_args["_name"], p["name"]
         ),
 
         (
-            f"'params' keys should be in "
-            f"{list(_metropolis_coupling_scheme_args['_arg_names']['params'])}"
+            f"valid 'params' keys for different mc^3 modes are "
+            f"{_metropolis_coupling_args['_params_keys']}"
         ):
         lambda p:
-        "params" not in p or
+        "name" not in p or "params" not in p or
         keys_in_list_error_if_not(
-            _metropolis_coupling_scheme_args["_arg_names"]["params"],
+            _metropolis_coupling_args["_params_keys"][p["name"]],
             *p["params"]
         ),
 
@@ -276,23 +280,28 @@ _metropolis_coupling_scheme_args.update(
         not nested_in_dict(p, "params", "M") or
         is_nonneg_int(p["params"]["M"]),
 
+        "heating should be in 'linear', 'quadratic' or 'sigmoid'":
+        lambda p:
+        not nested_in_dict(p, "params", "heating") or
+        p["params"]["heating"] in ['linear', 'quadratic', 'sigmoid'],
+
         "p_target should be a float in range [0, 1]":
         lambda p:
         not nested_in_dict(p, "params", "p_target") or
         is_float(p["params"]["p_target"])
         and in_range(p["params"]["p_target"], 0, 1),
 
-        "delta_t_init should be a positive number":
+        "delta_init should be a positive number":
         lambda p:
         not nested_in_dict(p, "params", "delta_t_init") or
         is_pos_num(p["params"]["delta_t_init"]),
 
-        "local_accept_history_size should be a positive integer":
+        "sliding_window should be a positive integer":
         lambda p:
         not nested_in_dict(p, "params", "local_accept_history_size") or
         is_pos_int(p["params"]["local_accept_history_size"]),
 
-        "update_freq should be a positive integer":
+        "update_n should be a positive integer":
         lambda p:
         not nested_in_dict(p, "params", "update_freq") or
         is_pos_int(p["params"]["update_freq"]),
@@ -445,8 +454,12 @@ _constraints_args.update(
 
 _candidate_parent_algorithm_args = {
     "_arg_names": ["name", "params"],
-    "_names": ["greedy", "opt", "rnd"],
-    "_params_keys": {"greedy": ["k", "criterion"], "opt": [], "rnd": []},
+    "_names": ["greedy", "optimal", "random"],
+    "_params_keys": {
+        "greedy": ["K_f", "association_measure"],
+        "optimal": [],
+        "random": []
+    },
 }
 _candidate_parent_algorithm_args.update(
     {
@@ -515,7 +528,7 @@ _catastrophic_cancellation_args.update(
 
 
 _logging_args = {
-    "_arg_names": ["silent", "verbose_prefix", "stats_period", "overwrite"]
+    "_arg_names": ["silent", "verbose_prefix", "period", "overwrite"]
 }
 _logging_args.update(
     {
@@ -541,10 +554,10 @@ _logging_args.update(
         "overwrite" not in p or
         type(p["overwrite"]) == bool,
 
-        "stats_period should be a positive number":
+        "period should be a positive number":
         lambda p:
-        "stats_period" not in p or
-        is_pos_num(p["stats_period"]),
+        "period" not in p or
+        is_pos_num(p["period"]),
 
     }
 )

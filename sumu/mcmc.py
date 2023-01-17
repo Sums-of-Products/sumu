@@ -293,7 +293,7 @@ class PartitionMCMC(Describable):
 
 
 class MC3(Describable):
-    def __init__(self, chains, scheme, **params):
+    def __init__(self, chains, mode, **params):
 
         self._stats = {
             "target_chain_iter_count": 0,
@@ -301,14 +301,14 @@ class MC3(Describable):
             "proposed": np.array([0 for c in chains[:-1]]),
             "accepted": np.array([0 for c in chains[:-1]]),
             "local_accept_history": [
-                np.zeros(params["local_accept_history_size"], dtype=np.int8)
+                np.zeros(params["sliding_window"], dtype=np.int8)
                 for c in chains[:-1]
             ],
         }
 
         self.chains = chains
         self.params = params
-        self.scheme = scheme
+        self.mode = mode
         self.__dict__.update(params)
 
     def describe(self):
@@ -353,7 +353,7 @@ class MC3(Describable):
                                 )
                             )
                             / np.minimum(
-                                self.params["local_accept_history_size"],
+                                self.params["sliding_window"],
                                 self._stats["proposed"],
                             )
                         ),
@@ -379,7 +379,7 @@ class MC3(Describable):
         return np.array([c.inv_temp for c in self.chains])
 
     @staticmethod
-    def get_inv_temperatures(scheme, M, step=1):
+    def get_inv_temperatures(heating, M, step=1):
         """Returns the inverse temperatures in descending order."""
         linear = [i / (M - 1) for i in range(M)]
         quadratic = [1 - ((M - 1 - i) / (M - 1)) ** 2 for i in range(M)]
@@ -392,7 +392,7 @@ class MC3(Describable):
             + [1.0]
         )
         inv_linear = [1 / (1 + (M - 1 - i) * step) for i in range(M)]
-        return locals()[scheme][::-1]
+        return locals()[heating][::-1]
 
     @staticmethod
     def get_swap_acceptance_prob(chains, i, j):
@@ -423,7 +423,7 @@ class MC3(Describable):
         self._stats["proposed"] = np.append(self._stats["proposed"], 0)
         self._stats["accepted"] = np.append(self._stats["accepted"], 0)
         self._stats["local_accept_history"].append(
-            np.zeros(self.local_accept_history_size, dtype=np.int8)
+            np.zeros(self.sliding_window, dtype=np.int8)
         )
 
     def _decrement_chains(self):
@@ -467,8 +467,7 @@ class MC3(Describable):
 
     def sample(self):
         local_history_index = (
-            self._stats["target_chain_iter_count"]
-            % self.local_accept_history_size
+            self._stats["target_chain_iter_count"] % self.sliding_window
         )
         self._stats["target_chain_iter_count"] += 1
         for c in self.chains:
@@ -485,11 +484,11 @@ class MC3(Describable):
             self._stats["local_accept_history"][i][local_history_index] = 0
 
         if (
-            self.scheme == "adaptive"
-            and self._stats["target_chain_iter_count"] % self.update_freq == 0
+            self.mode == "adaptive"
+            and self._stats["target_chain_iter_count"] % self.update_n == 0
         ):
             self.adapt_temperatures()
-            self.update_freq = round(self.slowdown * self.update_freq)
+            self.update_n = round(self.slowdown * self.update_n)
 
         return [c.R for c in self.chains], np.array(
             [sum(c.R_node_scores) for c in self.chains]
