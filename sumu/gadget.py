@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import psutil
 
 try:
     import plotext as plt
@@ -51,49 +52,73 @@ class Defaults:
         default = dict()
 
         default["run_mode"] = lambda name: {
-            name != "budget": {"name": "normal" if name is None else name},
             name
-            == "budget": {
+            == "normal": {
+                "name": "normal",
+                "params": {"n_target_chain_iters": 20000},
+            },
+            name == "anytime": {"name": name},
+            name
+            in {"budget", None}: {
                 "name": "budget",
                 "params": {
+                    "t": lambda data: int(
+                        min(1.0, 0.01 * data.n)
+                        * np.multiply(*data.shape)
+                        * 3300
+                        # cpu_freq.max sometimes returns 0
+                        / [psutil.cpu_freq().max, 3300][
+                            psutil.cpu_freq().max == 0
+                        ]
+                    ),
+                    "mem": int(
+                        psutil.virtual_memory().available / 1024.0 ** 2
+                    ),
                     "t_share": {"C": 1 / 9, "K": 1 / 9, "d": 1 / 9},
                 },
             },
         }.get(True)
 
         default["mcmc"] = {
-            "n_indep": 1,
-            # TODO: move to run_mode normal params
-            "n_target_chain_iters": 20000,
-            "burn_in": 0.5,
+            "initial_rootpartition": None,
+            "n_independent": 1,
+            "burnin": 0.5,
             "n_dags": 10000,
-            "move_weights": [1, 1, 2],
+            "move_weights": {
+                "R_split_merge": 1,
+                "R_swap_node_pair": 1,
+                "DAG_edge_reversal": 2,
+            },
         }
 
-        default["metropolis_coupling_scheme"] = lambda name: {
+        default["metropolis_coupling"] = lambda name: {
             name
             == "adaptive": {
                 "name": name,
                 "params": {
                     "M": 2,
                     "p_target": 0.234,
-                    "delta_t_init": 0.5,
-                    "local_accept_history_size": 1000,
-                    "update_freq": 100,
+                    "delta_init": 0.5,
+                    "sliding_window": 1000,
+                    "update_n": 100,
                     "smoothing": 2.0,
                     "slowdown": 1.0,
                 },
             },
             name
             != "adaptive": {
-                "name": "linear" if name is None else name,
-                "params": {"M": 16, "local_accept_history_size": 100},
+                "name": "static",
+                "params": {
+                    "M": 16,
+                    "heating": "linear",
+                    "sliding_window": 100,
+                },
             },
         }.get(True)
 
         default["score"] = (
-            lambda discrete: {"name": "bdeu", "params": {"ess": 10}}
-            if discrete
+            lambda data: {"name": "bdeu", "params": {"ess": 10}}
+            if data.discrete
             else {"name": "bge"}
         )
 
@@ -103,18 +128,14 @@ class Defaults:
             runmode
             in ["normal", "anytime"]: {
                 "max_id": -1,
-                "K": lambda n: min(n - 1, 16),
-                "d": lambda n: min(n - 1, 3),
-                "pruning_eps": 0.001,
-                "score_sum_eps": 0.1,
+                "K": lambda data: min(data.n - 1, 16),
+                "d": lambda data: min(data.n - 1, 3),
             },
             runmode
             == "budget": {
                 "max_id": -1,
                 "K_min": 1,
                 "d_min": 2,
-                "pruning_eps": 0.001,
-                "score_sum_eps": 0.1,
             },
         }.get(True)
 
@@ -122,13 +143,12 @@ class Defaults:
             runmode
             == "budget": {
                 "name": "greedy",
-                "params": {"criterion": "score"},
+                "params": {"association_measure": "gain"},
             },
-            # TODO: Make sure this works with n < k
             runmode
             in ["normal", "anytime"]: {
                 "name": "greedy",
-                "params": {"k": 6, "criterion": "score"},
+                "params": {"K_f": 6, "association_measure": "gain"},
             },
         }.get(True)
 
@@ -137,10 +157,14 @@ class Defaults:
             "cache_size": 10 ** 7,
         }
 
+        default["pruning_tolerance"] = 0.001
+
+        default["scoresum_tolerance"] = 0.01
+
         default["logging"] = {
             "silent": False,
             "verbose_prefix": None,
-            "stats_period": 15,
+            "period": 15,
             "overwrite": False,
         }
 
@@ -159,26 +183,27 @@ class GadgetParameters:
         *,
         data,
         validate_params=True,
-        initial_rootpartition=None,
+        is_prerun=False,
         run_mode=dict(),
         mcmc=dict(),
-        metropolis_coupling_scheme=dict(),
         score=dict(),
         structure_prior=dict(),
         constraints=dict(),
         candidate_parent_algorithm=dict(),
+        metropolis_coupling=dict(),
+        catastrophic_cancellation=dict(),
+        pruning_tolerance=None,
+        scoresum_tolerance=None,
         candidate_parents_path=None,
         candidate_parents=None,
-        catastrophic_cancellation=dict(),
         logging=dict(),
-        is_prerun=False,
     ):
         # Save parameters initially given by user.
         # locals() has to be the first thing called in __init__.
-        self.init = dict(**locals())
-        del self.init["self"]
-        del self.init["data"]
-        del self.init["is_prerun"]
+        self.p_user = dict(**locals())
+        del self.p_user["self"]
+        del self.p_user["data"]
+        del self.p_user["is_prerun"]
 
         self.t0 = time.time()
         self.data = Data(data)
@@ -188,10 +213,10 @@ class GadgetParameters:
             validate_params, msg="'validate_params' should be boolean"
         ):
             self._validate_parameters()
-        del self.init["validate_params"]
+        del self.p_user["validate_params"]
 
         self.default = Defaults()()
-        self.p = copy.deepcopy(self.init)
+        self.p = copy.deepcopy(self.p_user)
 
         self._populate_default_parameters()
         self._complete_user_given_parameters()
@@ -204,9 +229,9 @@ class GadgetParameters:
             self.time_use_estimate = dict(K=dict(), d=dict())
 
             K_prerun = min(15, self.data.n - 3)
-            if "K" in self.init["constraints"]:
+            if "K" in self.p_user["constraints"]:
                 K_prerun = max(
-                    2, min(self.init["constraints"]["K"] - 2, K_prerun)
+                    2, min(self.p_user["constraints"]["K"] - 2, K_prerun)
                 )
             self.prerun(K_prerun)
 
@@ -215,10 +240,10 @@ class GadgetParameters:
                 # TODO: get rid of this
                 self.budget = dict()
 
-                if "K" in self.init["constraints"]:
+                if "K" in self.p_user["constraints"]:
                     self.time_use_estimate["K"][
-                        self.init["constraints"]["K"]
-                    ] = self.pred_time_use_K(self.init["constraints"]["K"])
+                        self.p_user["constraints"]["K"]
+                    ] = self.pred_time_use_K(self.p_user["constraints"]["K"])
                 else:
                     if "t" in self.p["run_mode"]["params"]:
                         K, pred = self.adjust_to_time_budget_K(
@@ -228,10 +253,10 @@ class GadgetParameters:
                         )
                         self.p["constraints"]["K"] = K
                         self.time_use_estimate["K"] = pred
-                if "d" in self.init["constraints"]:
+                if "d" in self.p_user["constraints"]:
                     self.time_use_estimate["d"][
-                        self.init["constraints"]["d"]
-                    ] = self.pred_time_use_d(self.init["constraints"]["d"])
+                        self.p_user["constraints"]["d"]
+                    ] = self.pred_time_use_d(self.p_user["constraints"]["d"])
                 else:
                     if "t" in self.p["run_mode"]["params"]:
                         d, pred = self.adjust_to_time_budget_d(
@@ -243,6 +268,7 @@ class GadgetParameters:
                         self.time_use_estimate["d"] = pred
 
                 if "mem" in self.p["run_mode"]["params"]:
+                    DBUG("adjusting to mem_budget")
                     self._adjust_to_mem_budget(
                         self.p["run_mode"]["params"]["mem"]
                     )
@@ -254,7 +280,9 @@ class GadgetParameters:
                         * self.p["run_mode"]["params"]["t"]
                     )
                     try:
-                        self.init["candidate_parent_algorithm"]["params"]["k"]
+                        self.p_user["candidate_parent_algorithm"]["params"][
+                            "K_f"
+                        ]
                     except KeyError:
                         try:
                             self.p["candidate_parent_algorithm"]["params"][
@@ -280,11 +308,11 @@ class GadgetParameters:
             if (
                 "candidate_parents" in self.p
                 or "candidate_parents_path" in self.p
-                or self.p["candidate_parent_algorithm"]["name"] == "rnd"
+                or self.p["candidate_parent_algorithm"]["name"] == "random"
             ):
                 self.time_use_estimate["C"] = 0
                 return
-            if self.p["candidate_parent_algorithm"]["name"] == "opt":
+            if self.p["candidate_parent_algorithm"]["name"] == "optimal":
                 # TODO: something about this.
                 pass
             if self.p["run_mode"]["name"] == "budget":
@@ -297,11 +325,11 @@ class GadgetParameters:
             estimate_candidate_search_time_use = False
             try:
                 # checking if k is given by user
-                self.init["candidate_parent_algorithm"]["params"]["k"]
+                self.p_user["candidate_parent_algorithm"]["params"]["K_f"]
                 estimate_candidate_search_time_use = True
             except KeyError:
                 try:
-                    self.p["candidate_parent_algorithm"]["params"]["k"]
+                    self.p["candidate_parent_algorithm"]["params"]["K_f"]
                     if self.p["run_mode"]["name"] != "budget":
                         estimate_candidate_search_time_use = True
                 except KeyError:
@@ -317,7 +345,7 @@ class GadgetParameters:
                 )
                 t0 = time.time()
                 params = dict(self.p["candidate_parent_algorithm"]["params"])
-                params["k"] = self.p["constraints"]["K"] - 2
+                params["K_f"] = self.p["constraints"]["K"] - 2
                 cpa["greedy"](
                     self.p["constraints"]["K"],
                     scores=ls,
@@ -327,26 +355,29 @@ class GadgetParameters:
                 self.time_use_estimate["C"] = (time.time() - t0) * 1.9 ** (
                     self.p["constraints"]["K"]
                     - 2
-                    - self.p["candidate_parent_algorithm"]["params"]["k"]
+                    - self.p["candidate_parent_algorithm"]["params"]["K_f"]
                 )
 
     def _validate_parameters(self):
-        if self.init["initial_rootpartition"]:
-            validate.rootpartition(self.init["initial_rootpartition"])
-        validate.run_mode_args(self.init["run_mode"])
-        validate.mcmc_args(self.init["mcmc"])
-        validate.metropolis_coupling_scheme_args(
-            self.init["metropolis_coupling_scheme"]
-        )
-        validate.score_args(self.init["score"])
-        validate.structure_prior_args(self.init["structure_prior"])
-        validate.constraints_args(self.init["constraints"])
+        try:
+            self.p_user["mcmc"]["initial_rootpartition"]
+            validate.rootpartition(
+                self.p_user["mcmc"]["initial_rootpartition"]
+            )
+        except KeyError:
+            pass
+        validate.run_mode_args(self.p_user["run_mode"])
+        validate.mcmc_args(self.p_user["mcmc"])
+        validate.metropolis_coupling_args(self.p_user["metropolis_coupling"])
+        validate.score_args(self.p_user["score"])
+        validate.structure_prior_args(self.p_user["structure_prior"])
+        validate.constraints_args(self.p_user["constraints"])
         validate.catastrophic_cancellation_args(
-            self.init["catastrophic_cancellation"]
+            self.p_user["catastrophic_cancellation"]
         )
-        validate.logging_args(self.init["logging"])
+        validate.logging_args(self.p_user["logging"])
         # Ensure candidate parents are set only by one of the three ways and
-        # remove all except the used param from self.init.
+        # remove all except the used param from self.p_user.
         # If none of the ways are set use the defaults for
         # candidate_parent_algorithm.
         # Finally, validate the used way.
@@ -357,54 +388,60 @@ class GadgetParameters:
         ]
         validate.max_n_truthy(
             1,
-            [self.init[k] for k in alt_candp_params],
+            [self.p_user[k] for k in alt_candp_params],
             msg=f"only one of {alt_candp_params} can be set",
         )
         removed = list()
         for k in alt_candp_params:
-            if not bool(self.init[k]):
-                del self.init[k]
+            if not bool(self.p_user[k]):
+                del self.p_user[k]
                 removed.append(k)
         if len(removed) == 3:
-            self.init[alt_candp_params[0]] = dict()
-        if alt_candp_params[0] in self.init:
+            self.p_user[alt_candp_params[0]] = dict()
+        if alt_candp_params[0] in self.p_user:
             validate.candidate_parent_algorithm_args(
-                self.init[alt_candp_params[0]]
+                self.p_user[alt_candp_params[0]]
             )
-        if alt_candp_params[1] in self.init:
+        if alt_candp_params[1] in self.p_user:
             validate.is_string(
-                self.init[alt_candp_params[1]],
+                self.p_user[alt_candp_params[1]],
                 msg=f"'{alt_candp_params[1]}' should be string",
             )
-            self.init["constraints"]["K"] = len(
-                read_candidates(self.init[alt_candp_params[1]])[0]
+            self.p_user["constraints"]["K"] = len(
+                read_candidates(self.p_user[alt_candp_params[1]])[0]
             )
-        if alt_candp_params[2] in self.init:
-            validate.candidates(self.init[alt_candp_params[2]])
-            self.init["constraints"]["K"] = len(
-                self.init[alt_candp_params[2]][0]
+        if alt_candp_params[2] in self.p_user:
+            validate.candidates(self.p_user[alt_candp_params[2]])
+            self.p_user["constraints"]["K"] = len(
+                self.p_user[alt_candp_params[2]][0]
             )
 
     def _populate_default_parameters(self):
         # Some defaults are defined as functions of data or other parameters.
         # Evaluate the functions here.
+        DBUG(str(psutil.cpu_freq()))
+        DBUG(str(psutil.virtual_memory()))
         self.default["run_mode"] = self.default["run_mode"](
             self.p["run_mode"].get("name")
         )
+        if self.default["run_mode"]["name"] == "budget":
+            self.default["run_mode"]["params"]["t"] = self.default["run_mode"][
+                "params"
+            ]["t"](self.data)
         self.default["constraints"] = self.default["constraints"](
             self.default["run_mode"]["name"]
         )
         if self.default["run_mode"]["name"] == "normal":
             self.default["constraints"]["K"] = self.default["constraints"][
                 "K"
-            ](self.data.n)
+            ](self.data)
             self.default["constraints"]["d"] = self.default["constraints"][
                 "d"
-            ](self.data.n)
-        self.default["score"] = self.default["score"](self.data.discrete)
-        self.default["metropolis_coupling_scheme"] = self.default[
-            "metropolis_coupling_scheme"
-        ](self.p["metropolis_coupling_scheme"].get("name"))
+            ](self.data)
+        self.default["score"] = self.default["score"](self.data)
+        self.default["metropolis_coupling"] = self.default[
+            "metropolis_coupling"
+        ](self.p["metropolis_coupling"].get("name"))
         self.default["candidate_parent_algorithm"] = self.default[
             "candidate_parent_algorithm"
         ](self.default["run_mode"]["name"])
@@ -419,28 +456,27 @@ class GadgetParameters:
             return dict(default, **p)
 
         for k in self.p:
-            if k in {
-                "initial_rootpartition",
-                "candidate_parents_path",
-                "candidate_parents",
-            }:
+            if k not in self.default:
                 continue
             if (
-                "name" in self.p[k]
+                type(self.p[k]) == dict
+                and "name" in self.p[k]
                 and self.p[k]["name"] != self.default[k]["name"]
             ):
                 continue
-
-            self.p[k] = complete(self.default[k], self.p[k])
+            if type(self.p[k]) == dict:
+                self.p[k] = complete(self.default[k], self.p[k])
+            elif self.p[k] is None:
+                self.p[k] = self.default[k]
 
     # def _adjust_inconsistent_parameters(self):
     #     iters = self.p["mcmc"]["iters"]
     #     M = self.p["mc3"].get("M", 1)
-    #     burn_in = self.p["mcmc"]["burn_in"]
+    #     burnin = self.p["mcmc"]["burnin"]
     #     n_dags = self.p["mcmc"]["n_dags"]
     #     self.p["mcmc"]["iters"] = iters // M * M
     #     self.p["mcmc"]["n_dags"] = min(
-    #         (iters - int(iters * burn_in)) // M, n_dags
+    #         (iters - int(iters * burnin)) // M, n_dags
     #     )
     #     self.adjusted = (
     #         self.p["mcmc"]["iters"] != iters,
@@ -457,9 +493,6 @@ class GadgetParameters:
         return a + b * n * (n_psets(n, K, d) + 2 ** K) + c * n_cc
 
     def _adjust_to_mem_budget(self, budget):
-
-        # BUG: Doesn't work if d==0 (or K==0?)
-
         def n_cc(K):
             return sum(self.est["n_cc_v"][v](K) for v in range(self.data.n))
 
@@ -478,16 +511,21 @@ class GadgetParameters:
             memtable[i, 2] = budget - self.mem_estimate(n, K, d, n_cc(K))
 
         conditions = list()
-        if "d" in self.init["constraints"]:
-            conditions.append(memtable[:, 1] == self.init["constraints"]["d"])
+        if "d" in self.p_user["constraints"]:
+            conditions.append(
+                memtable[:, 1] == self.p_user["constraints"]["d"]
+            )
         elif "d_min" in self.p["constraints"]:
             conditions.append(memtable[:, 1] >= self.p["constraints"]["d_min"])
-        if "K" in self.init["constraints"]:
-            conditions.append(memtable[:, 0] == self.init["constraints"]["K"])
+        if "K" in self.p_user["constraints"]:
+            conditions.append(
+                memtable[:, 0] == self.p_user["constraints"]["K"]
+            )
         elif "K_min" in self.p["constraints"]:
             conditions.append(memtable[:, 0] >= self.p["constraints"]["K_min"])
 
         memtable = memtable[np.logical_and.reduce(conditions)]
+        DBUG(str(memtable))
 
         if sum(memtable[:, 2] > 0) > 0:
             memtable = memtable[memtable[:, 2] > 0]
@@ -506,7 +544,7 @@ class GadgetParameters:
         for K in range(1, K_max + 1):
             params = {
                 "constraints": {"K": K},
-                "candidate_parent_algorithm": {"name": "rnd"},
+                "candidate_parent_algorithm": {"name": "random"},
                 "logging": {"silent": True},
             }
             g = Gadget(data=self.data, **params, is_prerun=True)
@@ -799,7 +837,7 @@ class GadgetLogger(Logger):
             "mc3_local_swap_prob",
         ]:
             self.verbose_logger[verbose_output] = dict()
-            for i in range(gadget.p["mcmc"]["n_indep"]):
+            for i in range(gadget.p["mcmc"]["n_independent"]):
                 if log_params["verbose_prefix"] is not None:
                     verbose_log_path = Path(
                         str(Path(log_params["verbose_prefix"]).absolute())
@@ -828,7 +866,7 @@ class GadgetLogger(Logger):
     def finalize(self):
         if self.g.p["logging"]["verbose_prefix"] is None:
             return
-        for i in range(self.g.p["mcmc"]["n_indep"]):
+        for i in range(self.g.p["mcmc"]["n_independent"]):
             M_max = 0
 
             with open(self.verbose_logger["score"][i]._logfile, "r") as f:
@@ -865,7 +903,7 @@ class GadgetLogger(Logger):
 
         if (
             time.time() - self._time_last_periodic_stats
-            < self.g.p["logging"]["stats_period"]
+            < self.g.p["logging"]["period"]
         ):
             return False
 
@@ -887,8 +925,8 @@ class GadgetLogger(Logger):
         self.h("Move acceptance probabilities", secnum=False)
         for i, s in enumerate(stats):
             self(f"Chain {i+1}:")
-            self(" " * 15 + "inv_temp")
-            msg_tmpl = "{:<12.12} |" + " {:<5.5}" * s["M"]
+            self(" " * 20 + "inv_temp")
+            msg_tmpl = "{:<17.17} |" + " {:<5.5}" * s["M"]
             temps = [1.0]
             temps_labels = [1.0]
             temps = sorted(s["inv_temp"], reverse=True)
@@ -897,7 +935,7 @@ class GadgetLogger(Logger):
             msg = msg_tmpl.format("move", *temps_labels) + "\n"
             msg = msg.replace("|", " ")
             hr = ["-"] * self._linewidth
-            hr[13] = "+"
+            hr[18] = "+"
             hr = "".join(hr)
             msg += hr
             self(msg)
@@ -1021,18 +1059,18 @@ class GadgetLogger(Logger):
             s["target_chain_iter_count"] for s in stats
         )
         iter_count = sum(s["iter_count"] for s in stats)
-        n_indep = self.g.p["mcmc"]["n_indep"]
+        n_independent = self.g.p["mcmc"]["n_independent"]
 
         percentage = ""
         # stats = self.g._stats
-        if self.g.p["run_mode"]["name"] == "normal" or (
-            self.g.p["run_mode"]["name"] == "budget"
-            and "t" not in self.g.p["run_mode"]["params"]
-        ):
+        if self.g.p["run_mode"]["name"] == "normal":
             percentage = round(
                 100
                 * target_chain_iter_count
-                / (self.g.p["mcmc"]["n_target_chain_iters"] * n_indep)
+                / (
+                    self.g.p["run_mode"]["params"]["n_target_chain_iters"]
+                    * n_independent
+                )
             )
         elif self.g.p["run_mode"]["name"] == "budget":
             percentage = round(
@@ -1053,7 +1091,7 @@ class GadgetLogger(Logger):
 
     def last_root_partition_scores(self):
         self.h("Last root-partition scores", secnum=False)
-        for i in range(self.g.p["mcmc"]["n_indep"]):
+        for i in range(self.g.p["mcmc"]["n_independent"]):
             score = self.g._verbose["score"][i][
                 self.g._stats["mcmc"]["target_chain_iter_count"]
                 % self.g._verbose_len
@@ -1072,7 +1110,7 @@ class GadgetLogger(Logger):
         r = self.g._verbose_len
         R_scores = self.g._verbose["score"]
         plt.clear_plot()
-        for i in range(self.g.p["mcmc"]["n_indep"]):
+        for i in range(self.g.p["mcmc"]["n_independent"]):
             if t < r:
                 to_plot = np.array([s[0] for s in R_scores[i][:t]])
                 plt.scatter(
@@ -1113,264 +1151,542 @@ class Gadget:
     the structure posterior of DAG models. The user interface consists
     of:
 
-    1. The constructor for setting all the parameters.
+    1. Constructor for setting all the parameters.
     2. :py:meth:`.sample()` method which runs the MCMC chain and
-       returns the sampled DAGs and their scores.
+       returns the sampled DAGs along with meta data.
 
     All the constructor arguments are keyword arguments, i.e., the
     **data** argument should be given as ``data=data``, etc. Only the
     data argument is required; other arguments have some more or less
     sensible defaults.
 
-    There is a lot of parameters that can be adjusted. To make
-    managing the parameters easier, they are grouped into dict-objects
-    around some common theme, except the **data** argument which
-    accepts any valid constructor argument for a :py:class:`.Data`
-    object.
+    There are many parameters that can be adjusted. To make managing the
+    parameters easier, most of them are grouped into dictionary objects around
+    some common theme.
 
-    The (nested) lists in the following description reflect the
-    structure of the dict objects. For example, to set the equivalent
-    sample size for BDeu score to some value :math:`a`, you should
-    construct the object as
+    In this documentation nested parameters within the dictionaries are
+    referenced as **outer:inner** (e.g., ``silent`` in ``logging={'silent':
+    True}``, corresponds to **logging:silent**) or as:
 
-    >>> Gadget(data=data, score={"name": "bdeu", "params": {"ess": a}}).
+    - **outer**
 
-    To only adjust some parameter within a dict-argument while keeping
-    the others at default, it suffices to set the one parameter. For
-    example, to set the number of candidate parents :math:`K` to some
-    value :math:`k`, you should construct the object as
+      - **inner**
 
-    >>> Gadget(data=data, cons={"K": k}).
+    Some of the parameters have the keys **name** and **params** (i.e.,
+    ``foo={'name': 'bar', 'params': {'baz': 'qux'}}``), **params** being a
+    dictionary the structure of which depends on the value of
+    **name**. When describing such a parameter the following style is used:
 
-    In this documentation nested parameters are referenced as
-    **outer:inner**, e.g., the ``ess`` parameter can be referenced as
-    **score:params:ess**.
+    - **foo**
 
-    - **run_mode**: Which mode to run Gadget in.
+      *Default*: ``bar``
 
-      - **name**: Name of the mode: ``normal``, ``budget`` or ``anytime``.
+      - **name**: ``bar``
 
-        - **Default**: ``normal``.
+        General description of ``bar``.
 
-        ``normal``: All parameters are set manually.
+        **params**
 
-        ``budget``: Gadget is run until a given time budget is used
-        up. **cons:K**, **cons:d**, **mcmc:iters** and **candp** are set
-        automatically, so that approximately one third of the budget is
-        used on precomputations and the rest on MCMC sampling. The
-        precomputation budget is split between
+        - **baz**: Description of the parameter **baz**.
 
-        - (1) finding candidate parents;
-        - (2) precomputing candidate restricted scoring structures;
-        - (3) precomputing complementary scoring structures.
+    To only adjust some parameter within a dictionary argument while
+    keeping the others at default, it suffices to set the one
+    parameter. For example, to set the number of candidate parents
+    **constraints:K** to some value :math:`K` but let the maximum size of
+    arbitrary parent sets **constraints:d** be determined automatically you
+    should construct the **constraints** parameter as
 
-        The time required by the third phase is factorial in **cons:d**
-        (there are approximately :math:`\\binom{n}{d}` scores complementary
-        to those restricted to candidate parents), so the amount of
-        additional time required going from :math:`d` to :math:`d+1` can be
-        very large. Therefore, as a first step :math:`d` is set to a value
-        with which phase (3) is predicted to use at most :math:`1/3` of the
-        precomputation budget (i.e., :math:`1/9` of the total). Then the
-        remaining precomputation budget is adjusted to be the original
-        subtracted by the predicted time use for phase (3) and the (small)
-        amount of time required for the prediction itself.
+    >>> Gadget(data=data, constraints={"K": K}).
 
-        As a second step **cons:K** is set to a value with which phase (2)
-        is predicted to use at most :math:`1/2` of the remaining
-        precomputation budget. Again, the predicted time use and the amount
-        of time required for the prediction of this phase is subtracted
-        from the remaining precomputation budget.
+    The following describes all Gadget constructor parameters.
 
-        Then, the candidate parent selection algorithm (**candp**) is set
-        to ``greedy-lite``, and its parameter :math:`k` is dynamically set
-        during the running of the algorithm to a value for which
-        :math:`k-1` is predicted to overuse the remaining precomputation
-        budget.
+    - **data**
 
-        Finally, the MCMC phase uses the amount of budget that remains. The
-        **mcmc:burn_in** parameter in this mode sets fraction of *time* to
-        be used on the burn-in phase, rather than the fraction of
-        iterations.
+      Data to run the MCMC simulation on. Accepts any valid constructor
+      argument for a :py:class:`.Data` object.
 
-        Overrides **mcmc:iters**, **cons:K**, **cons:d** and **candp**.
+    - **run_mode**
 
-        - **params**:
+      Which mode to run Gadget in.
 
-          - **t**: The time budget in seconds.
+      *Default*: ``budget``.
 
-        ``anytime``: If ran in this mode the first CTRL-C after calling
-        sample() stops the burn-in phase and starts sampling DAGs, and the
-        second CTRL-C stops the sampling. DAG sampling first accumulates up to
-        2 * **mcmc**:**n_dags** - 1 DAGs with thinning 1 (i.e., a DAG is
-        sampled for each sampled root-partition), then each time the number of
-        DAGs reaches 2 x **mcmc**:**n_dags** the thinning is doubled and every
-        2nd already sampled DAG is deleted. Overrides **mcmc**:**iters** and
-        **mcmc**:**burn_in**.
+      - **name**: ``normal``
 
-    - **mcmc**: General Markov Chain Monte Carlo arguments.
+        MCMC simulation is run for a predetermined number of iteration steps.
 
-      - **n_indep**: Number of independent chains to run (each multiplied by
-        **mc3**).  DAGs are sampled evenly from each.
+        **params**
 
-        **Default**: 4.
+        - **n_target_chain_iters**: For how many iterations to run the
+          target chain (i.e., the unheated chain; see
+          **metropolis_coupling**).
 
-      - **iters**: The total number of iterations across all the Metropolis
-        coupled chains, i.e., if the number of coupled chains is :math:`k`
-        then each runs for **iters/k** iterations. If the given **iters**
-        is not a multiple of the number of chains it is adjusted downwards.
+      - **name**: ``budget``
 
-        **Default**: 320000.
+        MCMC simulation is run until a given time budget is used up. A
+        fraction of the time budget is allocated for precomputations, with
+        the remainder being used on the Markov chain simulation itself.
 
-      - **mc3**: The number of of Metropolis coupled chains. The
-        temperatures of the chains are spread evenly between uniform
-        and the target distribution.
+        There are three precomputation phases:
 
-        **Default**: 16.
+        1. Selecting candidate parents.
+        2. Building score sum data structures given the candidate parents.
+        3. Computing scores of the parent sets for which we allow nodes
+           outside of the candidates.
 
-      - **burn_in**: Ratio of how much of the iterations to use for burn-in
-        (0.5 is 50%).
+        The parameters principally governing the time use for each part
+        are, correspondingly, the number of nodes to add at the final step
+        of the greedy candidate selection algorithm
+        (**candidate_parent_algorithm:params:K_f**), the number of
+        candidate parents (**constraints:K**), and the maximum size of the
+        parent sets for which nodes outside the chosen candidates are
+        permitted (**constraints:d**). In budget mode, these parameters are
+        set automatically, so as to use a predetermined fraction of the
+        budget on each precomputation phase.
 
-        **Default**: 0.5.
+        With big time budgets the automatically selected parameters might
+        result in infeasibly large memory requirements. To avoid this there is
+        an additional memory budget parameter to cap **constraints:K** and
+        **constraints:d**.
 
-      - **n_dags**: Number of DAGs to sample. The maximum number of
-        DAGs that can be sampled is **iters/mc3*(1-burn_in)**; if the given
-        **n_dags** is higher than the maximum, it is adjusted
-        downwards.
+        If any of the parameters **constraints:K**, **constraints:d** or
+        **candidate_parent_algorithm:params:K_f** are explicitly set, that
+        parameter will not be programmatically adjusted. The parameters
+        **constraints:min_K** and **constraints:min_d** can be used to set
+        the minimum values for **constraints:K** and **constraints:d**,
+        respectively.
 
-        **Default**: 10000.
+        **params**
 
-    - **score**: The score to use.
+        - **t**: Time budget in seconds.
 
-      - **name**: Name of the score.
+          *Default*: Roughly sensible amount of time as a function of data
+          shape.
 
-        **Default**: ``bdeu`` (i.e., Bayesian Dirichlet equivalent
-        uniform) for discrete data, and ``bge`` (i.e., Bayesian
-        Gaussian equivalent) for continuous data.
+        - **mem**: Memory budget in megabytes.
 
-      - **params**: A dict of parameters for the score.
+          *Default*: Amount of memory available.
 
-        **Default**: ``{"ess": 10}`` for ``bdeu``.
+        - **t_share**: Dictionary with the keys ``C``, ``K``, and ``d``
+          corresponding to the above precomputation phases 1-3,
+          respectively, with float values determining the fraction of the
+          overall budget to use on the particular phase.
 
-    - **structure_prior**: Modular structure prior to use.
+          *Default*: ``{'C': 1 / 9, 'K': 1 / 9, 'd': 1 / 9}``
 
-      - **name**: Structure prior: *fair* or *unif*
-        :footcite:`eggeling:2019`.
+      - **name**: ``anytime``
 
-        **Default**: fair.
+        If ran in this mode the first ``CTRL-C`` after calling
+        :py:meth:`.sample()` stops the burn-in phase and starts sampling
+        DAGs. The second ``CTRL-C`` stops the sampling. DAG sampling first
+        accumulates up to 2 :math:`\\cdot` **mcmc**:**n_dags** - 1 DAGs with
+        thinning 1 (i.e., a DAG is sampled for each sampled root-partition),
+        then each time the number of DAGs reaches 2 :math:`\\cdot`
+        **mcmc**:**n_dags** the thinning is doubled and every 2nd already
+        sampled DAG is deleted.
 
-    - **cons**: Constraints on the explored DAG space.
+    - **mcmc**
+
+      General Markov Chain Monte Carlo arguments.
+
+      - **initial_rootpartition**
+
+        The root-partition to initialize the MCMC chain(s) with. If not set
+        the chains will start from a random state.
+
+        The root-partition format is a list partitioning integers 0..n to
+        sets.
+
+        *Default*: Not set.
+
+      - **n_independent**: Number of independent chains to run. For each
+        independent chain there will be **metropolis_coupling:M**
+        coupled chains run in logical parallel. The DAGs are sampled evenly
+        from each unheated chain (see **metropolis_coupling**).
+
+        Values greater than 1 are mostly useful for analyzing mixing.
+
+        *Default*: 1
+
+      - **burnin**: The fraction of **run_mode:params:n_target_chain_iters**
+        (**run_mode** ``normal``), or the fraction of time budget
+        remaining after precomputations (**run_mode** ``budget``) to use
+        on burn-in.
+
+        *Default*: 0.5
+
+      - **n_dags**: The (approximate) number of DAGs to sample.
+
+        *Default*: 10 000
+
+      - **move_weights**: Dictionary with the keys ``R_split_merge``,
+        ``R_swap_node_pair`` and ``DAG_edge_reversal``. The values are
+        integer weights specifying the unnormalized probability
+        distribution from which the type of each proposed move is sampled.
+
+        Note that when employing Metropolis coupling the edge reversal move
+        is only available for the unheated chain (in heated chains its
+        weight will be 0), and that the state swap move is proposed
+        uniformly at random for any two adjacent chains always after each
+        chain has first progressed by one step (i.e., its proposal
+        probability cannot be adjusted).
+
+        *Default*: ``{'R_split_merge': 1, 'R_swap_node_pair': 1,
+        'DAG_edge_reversal': 2}``
+
+    - **score**
+
+      The score to use.
+
+      *Default*: ``bdeu`` for discrete and ``bge`` for continuous data.
+
+      - **name**: ``bdeu``
+
+        Bayesian Dirichlet equivalent uniform.
+
+        **params**
+
+        - **ess**: Equivalent sample size.
+
+          *Default*: 10
+
+      - **name**: ``bge``
+
+        Bayesian Gaussian equivalent.
+
+    - **structure_prior**
+
+      The modular structure prior to use. Modular structure priors are
+      composed as a product of local factors, i.e., the prior for graph
+      :math:`G` factorizes as
+
+      .. math::
+
+         P(G) \\propto \\prod_{i=1}^{n}\\rho_i(\\mathit{pa}(i)),
+
+      where :math:`\\rho_i` are node specific factors, and
+      :math:`\\mathit{pa}(i)` are the parents of node :math:`i` in :math:`G`.
+
+      Two types of factors are implemented, dubbed ``fair`` and ``unif``.
+      See :footcite:`eggeling:2019`.
+
+      *Default*: ``fair``.
+
+      - **name**: ``fair``
+
+        Balances the probabilities of different indegrees (i.e., of
+        :math:`|\\mathit{pa}(i)|`), with the factors taking the form
+
+        .. math::
+
+           \\rho_i(S) = 1\\big/\\binom{n-1}{|S|}.
+
+      - **name**: ``unif``
+
+        Uniform over different graphs, i.e., the factors are simply
+
+        .. math::
+
+           \\rho_i(S) = 1.
+
+    - **constraints**
+
+      Constraints on the explored DAG space.
 
       - **K**: Number of candidate parents per node.
 
-        **Default**: :math:`\min(n-1, 16)`, where :math:`n` is the number
-        of nodes.
+        *Default*: :math:`\min(n-1,16)`, where :math:`n` is the number of
+        nodes (**run_mode** ``normal`` or ``anytime``), or parameter not
+        set (**run_mode** ``budget``).
 
-      - **d**: Maximum size of parent sets that are not subsets of the
-        candidate parents.
+      - **K_min**: Sets the minimum level for **K** if using **run_mode**
+        ``budget``.
 
-        **Default**: :math:`\min(n-1, 3)`, where :math:`n` is the number of
-        nodes.
+        *Default*: 1 (**run_mode** ``budget``), or parameter not
+        set (**run_mode** ``normal`` or ``anytime``).
+
+      - **d**: Maximum size of parent sets for which nodes outside of the
+        candidates are allowed.
+
+        *Default*: :math:`\min(n-1, 3)`, where :math:`n` is the number of
+        nodes (**run_mode** ``normal`` or ``anytime``) or parameter not
+        set (**run_mode** ``budget``).
+
+      - **d_min**: Sets the minimum level for **d** if using **run_mode**
+        ``budget``.
+
+        *Default*: 2 (**run_mode** ``budget``), or parameter not
+        set (**run_mode** ``normal`` or ``anytime``).
 
       - **max_id**: Maximum size of parent sets that are subsets of
-        candidates. There should be no reason to change this from
-        the default.
+        the candidate parents. Set to -1 for unlimited. There should
+        be no reason to limit the size.
 
-        **Default**: -1, i.e., unlimited.
+        *Default*: -1
 
-      - **pruning_eps**: Allowed relative error for a root-partition
-        node score sum. Setting this to some value :math:`>0` allows
-        some candidate parent sets to be pruned, expediting parent
-        set sampling.
+    - **candidate_parent_algorithm**
 
-        **Default**: 0.001.
+      Algorithm to use for finding the candidate parents :math:`C = C_1C_2
+      \\ldots C_n`, where :math:`C_i` is the set of candidates for node
+      :math:`i`.
 
-      - **score_sum_eps**: Tolerated relative error when computing
-        score sums from parent sets that are not subsets of the
-        candidate parents.
+      Implemented algorithms are ``greedy``, ``random`` and ``optimal``.
 
-        **Default**: 0.1.
+      *Default*: ``greedy``
 
-    - **candp**: Algorithm to use for finding candidate parents.
+      - **name**: ``greedy``
 
-      - **name**: Name of the algorithm.
+        Iteratively, add a best node to the initially empty :math:`C_i`
+        (given the already added ones), until :math:`|C_i|=K-K_f`. Finally
+        add the :math:`K_f` best nodes.
 
-        **Default**: ``greedy-lite``.
+        **params**
 
-      - **params**: A dict of parameters for the algorithm.
+        - **association_measure**: The measure for *goodness* of a
+          candidate parent :math:`j`. One of
 
-        **Default**: ``{"k": 6}``. The default algorithm
-        :py:func:`~sumu.candidates.greedy_lite` has one parameter,
-        :math:`k`, determining the number of parents to add during
-        the last iteration of the algorithm. The candidate selection
-        phase can be made faster by incrementing this value.
+          - ``score``: :math:`\\max_{S \\subseteq C_i}
+            \\pi_i(S\\cup\{j\})`
 
-      - **path**: Path to precomputed file storing the candidate
-        parents. The format is such that the row number determines the
-        node in question, and on each row there are the :math:`K`
-        space separated candidate parents. If path is given no
-        computations are done.
+          - ``gain``: :math:`\\max_{S \\subseteq C_i} \\pi_i(S\\cup\{j\})
+            - \\pi_i(S)`,
 
-        **Default**: ``None``.
+          where :math:`\\pi_i(S)` is the local score of the parent set
+          :math:`S` for node :math:`i`.
 
-    - **catastrophic_cancellation**: Parameters determining how catastrofic
-      cancellations are handled. Catastrofic cancellation occurs when a score
-      sum :math:`\\tau_i(U,T)` computed as :math:`\\tau_i(U) - \\tau_i(U
-      \setminus T)` evaluates to zero due to numerical reasons.
+          *Default*: ``gain``.
+
+        - **K_f**: The number of nodes to add at the final step of the
+          algorithm. Higher values result in faster computation.
+
+      - **name**: ``random``
+
+        Select the candidates uniformly at random.
+
+      - **name**: ``optimal``
+
+        Select the candidates so as to maximize the posterior probability
+        that :math:`\\mathit{pa}(i) \\subseteq C_i`. Only feasible up to a
+        couple of dozen variables.
+
+    - **metropolis_coupling**
+
+      Metropolis coupling is implemented by running :math:`M` "heated" chains
+      in parallel with their stationary distributions proportional to the
+      :math:`\\beta_i\\text{th}` power of the posterior, with some appropriate
+      *inverse temperatures* :math:`1 = \\beta_1 > \\beta_2 > \\ldots >
+      \\beta_M \\geq 0`. Periodically, a swap of states between two adjacent
+      chains is proposed and accepted with a certain probability.
+
+      Two modes available: ``static`` and ``adaptive``. To *not use*
+      Metropolis coupling use ``static`` with **params:M** set to 1.
+
+      *Default*: ``adaptive``.
+
+      - **name**: ``static``
+
+        Metropolis coupling with fixed number of chains and temperatures. The
+        lowest inverse temperature is exactly zero, corresponding to the
+        uniform distribution.
+
+        **params**
+
+        - **M**: The number of coupled chains to run. Set to 1 to disable
+          Metropolis coupling.
+
+          *Default*: 16
+
+        - **heating**: The functional form of the sequence of inverse
+          temperatures. One of:
+
+          - ``linear``: :math:`\\beta_i = (M - i) \\big/ (M - 1)`
+
+          - ``quadratic``: :math:`\\beta_i = 1- ((i-1) \\big/ (M - 1))^2`
+
+          - ``sigmoid``: :math:`\\beta_1=1,\\beta_{i:i\\not\\in \{1,M\}} =
+            \\frac{1}{1+e^{(M-1)/2-(M-i)}},\\beta_M=0`
+
+          *Default*: ``linear``
+
+        - **sliding_window**: The number of the most recent swap proposals from
+          which a local swap probability is computed.
+
+          *Default*: 1000
+
+      - **name**: ``adaptive``
+
+        The number of chains is initialized to :math:`M=2` (**params:M**). The
+        inverse temperatures are defined as
+
+        .. math::
+
+               \\beta_k = 1 / (1 + \\sum_{k`=1}^{k-1}{\\delta_{k`}}),
+
+        where :math:`\\delta_k, k = 1,...,M-1` are auxiliary temperature delta
+        variables with an initial value :math:`\\delta_1 = 0.5`
+        (**params:delta_init**) yielding :math:`\\beta_1 = 1` and
+        :math:`\\beta_2 \\approx 0.67`. Then, the following process to adjust
+        :math:`M` and :math:`\\beta_1,\\beta_2,\\ldots,\\beta_M` is repeated
+        indefinitely:
+
+        1. Each of the chains are sampled for a specific number of iterations
+        (**params:update_n**), with the number multiplied on each cycle by a
+        *slowdown factor* (**params:slowdown**). Then the empirical probability
+        :math:`p_{s}(k)` for a proposed swap between chains :math:`k` and
+        :math:`k+1` to have been accepted is computed. In addition to computing
+        the probability given the full history of the chain it is also computed
+        for a specific number of the most recent proposals
+        (**params:sliding_window**), with the latter probablity
+        denoted by :math:`p_{sw}(k)`.
+
+        2. The temperature delta variables for :math:`k=1,...,M-1` are updated
+        as
+
+        .. math::
+
+               \\delta_k := \\delta_k (1 + \\frac{p_{sw}(k) - p_{t}}{s}),
+
+        where :math:`p_{t}` (**params:p_target**) is the target
+        swap probability, and :math:`s` is a *smoothing factor*
+        (**params:smoothing**).
+
+        3. Finally, denoting the number of chains for which :math:`p_{s}(k) >
+        0.9` by :math:`r`, either
+
+        - a new chain is added (if :math:`r = 0`),
+        - the number of chains remains unchanged (if :math:`r = 1`),
+        - a chain is deleted (if :math:`r > 1` and :math:`M` > 2).
+
+        On addition the new chain takes the index position :math:`M+1`, its
+        state is initialized to that of chain :math:`M` and :math:`t_M` is set
+        to value :math:`2(M+1)`. On deletion the chain at the index position
+        :math:`M` is removed. Here :math:`M` refers to the number of chains
+        prior to the addition or removal.
+
+        **params**
+
+        - **M**: The initial number of coupled chains to run.
+
+          *Default*: 2
+
+        - **p_target**: Target local swap probability
+
+          *Default*: 0.234 :footcite:`roberts:1997`
+
+        - **delta_init**: The initial temperature difference between adjacent
+          chains.
+
+          *Default*: 0.5
+
+        - **sliding_window**: The number of most recent swap proposals from
+          which the local swap probability is computed.
+
+         *Default*: 1000
+
+        - **update_n**: Temperatures are updated every nth iteration, with
+          n set by this parameter. **update_n** is multiplied by **slowdown**
+          on every temperature update event.
+
+          *Default*: 100
+
+        - **smoothing**: A parameter with effect on the magnitude of change in
+          temperature update. See description above.
+
+          *Default*: 1
+
+        - **slowdown**: A parameter with effect on the frequency of temperature
+          updates. See description above and **update_n**.
+
+          *Default*: 1
+
+    - **catastrophic_cancellation**: Catastrophic cancellation occurs when a
+      score sum :math:`\\tau_i(U,T)` computed as :math:`\\tau_i(U) -
+      \\tau_i(U \\setminus T)` evaluates to zero due to numerical reasons.
 
       - **tolerance**: how small should the absolute difference
         between two log score sums be in order for the subtraction
         to be determined to lead to catastrofic cancellation.
 
-        **Default**: :math:`2^{-32}`.
+        *Default*: :math:`2^{-32}`.
 
       - **cache_size**: Maximum amount of score sums that cannot be
         computed through subtraction to be stored separately. If there is a
         lot of catastrofic cancellations, setting this value high can
         have a big impact on memory use.
 
-        **Default**: :math:`10^7`
+        *Default*: :math:`10^7`
 
-    - **logging**: Parameters determining the logging output during
-      running of the sampler.
+    - **pruning_tolerance**: Allowed relative error for a root-partition
+      node score sum. Setting this to a positive value allows
+      some candidate parent sets to be pruned, expediting parent
+      set sampling.
 
-      - **silent**: Whether to print output to ``sys.stdout`` or not.
+      *Default*: 0.001.
 
-        **Default**: ``False``.
+    - **scoresum_tolerance**: Tolerated relative error when computing
+      score sums from individual parent set local scores.
 
-      - **stats_period**: Interval in seconds for printing more statistics.
+      *Default*: 0.01.
 
-        **Default**: 15.
+    - **candidate_parents_path**
+
+      Alternatively to **candidate_parent_algorithm** the candidate parents
+      can be precomputed and read from a file, with the path given under
+      this parameter.
+
+      In the expected format row numbers determine the nodes, while
+      :math:`K` space separated numbers on the rows identify the candidate
+      parents.
+
+    - **candidate_parents**
+
+      Alternatively to **candidate_parent_algorithm** the candidate parents
+      can be precomputed and read from a Python dictionary given under this
+      parameter.
+
+      In the expected format integer keys determine the nodes, while the
+      values are tuples with :math:`K` integers identifying the parents.
+
+    - **logging**: Parameters determining the logging output.
+
+      - **silent**: Whether to suppress logging output or not.
+
+        *Default*: ``False``.
+
+      - **period**: Interval in seconds for printing more statistics.
+
+        *Default*: 15.
 
       - **verbose_prefix**: If set, more verbose output is created in files at
-        <working directory>/prefix. For example prefix ``x/y`` would create
-        files whose name starts with ``y`` in directory ``x``.
+        ``<working directory>/prefix``. For example prefix ``x/y`` would create
+        files with names starting with ``y`` in directory ``x``.
 
-        **Default**: ``None``.
+        *Default*: ``None``.
 
       - **overwrite**: If ``True`` files in ``verbose_prefix`` are
         overwritten if they exist.
 
-        **Default**: ``False``.
-
+        *Default*: ``False``.
     """
 
     def __init__(
         self,
         *,
         data,
-        initial_rootpartition=None,
         validate_params=True,
         is_prerun=False,
         run_mode=dict(),
         mcmc=dict(),
-        metropolis_coupling_scheme=dict(),
         score=dict(),
         structure_prior=dict(),
         constraints=dict(),
         candidate_parent_algorithm=dict(),
+        metropolis_coupling=dict(),
+        catastrophic_cancellation=dict(),
+        pruning_tolerance=None,
+        scoresum_tolerance=None,
         candidate_parents_path=None,
         candidate_parents=None,
-        catastrophic_cancellation=dict(),
         logging=dict(),
     ):
 
@@ -1431,7 +1747,7 @@ class Gadget:
         ]:
             self._verbose[verbose_output] = {
                 c: [np.array([]) for i in range(self._verbose_len)]
-                for c in range(self.p["mcmc"]["n_indep"])
+                for c in range(self.p["mcmc"]["n_independent"])
             }
 
         self.dags = list()
@@ -1522,15 +1838,18 @@ class Gadget:
         log.br()
         try:
             # trying if all nested keys set
-            self.p.init["candidate_parent_algorithm"]["params"]["k"]
+            self.p.p_user["candidate_parent_algorithm"]["params"]["K_f"]
             log(f"time predicted: {round(self.p.time_use_estimate['C'])}s")
         except KeyError:
-            if self.p["run_mode"]["name"] == "budget":
+            c = "candidate_parent_algorithm"  # to shorten next rows
+            if (
+                self.p["run_mode"]["name"] == "budget"
+                and self.p[c]["name"] == "greedy"
+            ):
                 log.br()
-                log(f"Adjusted for time budget: k = {stats['C']['k']}")
-                k = "candidate_parent_algorithm"  # to shorten next row
+                log(f"Adjusted for time budget: k = {stats['C']['K_f']}")
                 log(
-                    f"time budgeted: {round(self.p[k]['params']['t_budget'])}s"
+                    f"time budgeted: {round(self.p[c]['params']['t_budget'])}s"
                 )
         log(f"time used: {round(self._stats['candp']['time_used'])}s")
         log.br(2)
@@ -1655,7 +1974,8 @@ class Gadget:
             K=self.p["constraints"]["K"],
             cc_tolerance=self.p["catastrophic_cancellation"]["tolerance"],
             cc_cache_size=self.p["catastrophic_cancellation"]["cache_size"],
-            pruning_eps=self.p["constraints"]["pruning_eps"],
+            pruning_eps=self.p["pruning_tolerance"],
+            score_sum_eps=self.p["scoresum_tolerance"],
             silent=self.log.silent(),
             debug=DEBUG,
         )
@@ -1680,7 +2000,7 @@ class Gadget:
                 localscore=self.l_score,
                 C=self.C,
                 d=self.p["constraints"]["d"],
-                eps=self.p["constraints"]["score_sum_eps"],
+                eps=self.p["scoresum_tolerance"],
             )
             del self.l_score
 
@@ -1692,33 +2012,30 @@ class Gadget:
 
         self.mcmc = list()
 
-        for i in range(self.p["mcmc"]["n_indep"]):
+        for i in range(self.p["mcmc"]["n_independent"]):
 
-            if self.p["metropolis_coupling_scheme"]["params"]["M"] == 1:
+            if self.p["metropolis_coupling"]["params"]["M"] == 1:
                 self.mcmc.append(
                     PartitionMCMC(
                         self.C,
                         self.score,
                         self.p["constraints"]["d"],
                         move_weights=self.p["mcmc"]["move_weights"],
-                        R=self.p["initial_rootpartition"],
+                        R=self.p["mcmc"]["initial_rootpartition"],
                     )
                 )
 
-            elif self.p["metropolis_coupling_scheme"]["params"]["M"] > 1:
-                scheme = self.p["metropolis_coupling_scheme"]["name"]
-                if scheme == "adaptive":
+            elif self.p["metropolis_coupling"]["params"]["M"] > 1:
+                if self.p["metropolis_coupling"]["name"] == "adaptive":
                     inv_temps = MC3.get_inv_temperatures(
                         "inv_linear",
-                        self.p["metropolis_coupling_scheme"]["params"]["M"],
-                        self.p["metropolis_coupling_scheme"]["params"][
-                            "delta_t_init"
-                        ],
+                        self.p["metropolis_coupling"]["params"]["M"],
+                        self.p["metropolis_coupling"]["params"]["delta_init"],
                     )
-                else:
+                else:  # static
                     inv_temps = MC3.get_inv_temperatures(
-                        scheme,
-                        self.p["metropolis_coupling_scheme"]["params"]["M"],
+                        self.p["metropolis_coupling"]["params"]["heating"],
+                        self.p["metropolis_coupling"]["params"]["M"],
                     )
                 self.mcmc.append(
                     MC3(
@@ -1729,39 +2046,37 @@ class Gadget:
                                 self.p["constraints"]["d"],
                                 inv_temp=inv_temps[i],
                                 move_weights=self.p["mcmc"]["move_weights"],
-                                R=self.p["initial_rootpartition"],
+                                R=self.p["mcmc"]["initial_rootpartition"],
                             )
                             for i in range(
-                                self.p["metropolis_coupling_scheme"]["params"][
-                                    "M"
-                                ]
+                                self.p["metropolis_coupling"]["params"]["M"]
                             )
                         ],
-                        scheme,
-                        **self.p["metropolis_coupling_scheme"]["params"],
+                        self.p["metropolis_coupling"]["name"],
+                        **self.p["metropolis_coupling"]["params"],
                     )
                 )
 
     def _mcmc_run_normal(self):
-        def burn_in_cond():
+        def burnin_cond():
             return (
                 self._stats["mcmc"]["target_chain_iter_count"]
-                < self.p["mcmc"]["n_target_chain_iters"]
-                * self.p["mcmc"]["burn_in"]
+                < self.p["run_mode"]["params"]["n_target_chain_iters"]
+                * self.p["mcmc"]["burnin"]
             )
 
         def mcmc_cond():
             return (
                 self._stats["mcmc"]["target_chain_iter_count"]
-                < self.p["mcmc"]["n_target_chain_iters"]
+                < self.p["run_mode"]["params"]["n_target_chain_iters"]
             )
 
         def dag_sampling_cond():
             return (
                 self._stats["after_burnin"]["target_chain_iter_count"]
             ) >= (
-                self.p["mcmc"]["n_target_chain_iters"]
-                * (1 - self.p["mcmc"]["burn_in"])
+                self.p["run_mode"]["params"]["n_target_chain_iters"]
+                * (1 - self.p["mcmc"]["burnin"])
             ) / self.p[
                 "mcmc"
             ][
@@ -1770,7 +2085,7 @@ class Gadget:
                 self.dags
             )
 
-        self._mcmc_run_burnin(burn_in_cond=burn_in_cond)
+        self._mcmc_run_burnin(burnin_cond=burnin_cond)
         self._mcmc_run_dag_sampling(
             mcmc_cond=mcmc_cond,
             dag_sampling_cond=dag_sampling_cond,
@@ -1778,12 +2093,12 @@ class Gadget:
 
     def _mcmc_run_time_budget(self):
         self._stats["burnin"]["deadline"] = (
-            time.time() + self.p.left() * self.p["mcmc"]["burn_in"]
+            time.time() + self.p.left() * self.p["mcmc"]["burnin"]
         )
         self._stats["mcmc"]["deadline"] = time.time() + self.p.left()
         self.p.budget["mcmc"] = self.p.left()
 
-        def burn_in_cond():
+        def burnin_cond():
             return time.time() < self._stats["burnin"]["deadline"]
 
         def mcmc_cond():
@@ -1799,7 +2114,7 @@ class Gadget:
                 / self._stats["mcmc"]["time_per_dag"]
             )
 
-        self._mcmc_run_burnin(burn_in_cond=burn_in_cond)
+        self._mcmc_run_burnin(burnin_cond=burnin_cond)
         self._stats["mcmc"]["time_per_dag"] = (
             self._stats["mcmc"]["deadline"] - time.time()
         ) / self.p["mcmc"]["n_dags"]
@@ -1809,7 +2124,7 @@ class Gadget:
         )
 
     def _mcmc_run_anytime(self):
-        def burn_in_cond():
+        def burnin_cond():
             return True
 
         def mcmc_cond():
@@ -1835,7 +2150,7 @@ class Gadget:
                 self._stats["mcmc"]["thinning"] *= 2
 
         try:
-            self._mcmc_run_burnin(burn_in_cond=burn_in_cond)
+            self._mcmc_run_burnin(burnin_cond=burnin_cond)
         except KeyboardInterrupt:
             self._stats["burnin"]["iter_count"] = sum(
                 mcmc.describe()["iter_count"] for mcmc in self.mcmc
@@ -1893,12 +2208,12 @@ class Gadget:
     def _mcmc_run_burnin(
         self,
         *,
-        burn_in_cond=None,
+        burnin_cond=None,
     ):
 
         self._stats["burnin"]["time_start"] = time.time()
-        while burn_in_cond():
-            for i in range(self.p["mcmc"]["n_indep"]):
+        while burnin_cond():
+            for i in range(self.p["mcmc"]["n_independent"]):
                 R, R_score = self.mcmc[i].sample()
                 if (
                     self._stats["highest_scoring_rootpartition"] is None
@@ -1936,7 +2251,7 @@ class Gadget:
         self.log.br(2)
 
         while mcmc_cond():
-            for i in range(self.p["mcmc"]["n_indep"]):
+            for i in range(self.p["mcmc"]["n_independent"]):
                 R, R_score = self.mcmc[i].sample()
                 if (
                     self._stats["highest_scoring_rootpartition"] is None
@@ -1992,7 +2307,7 @@ class LocalScore:
         self.score = score
         if score is None:
             # TODO: decouple from Defaults
-            self.score = Defaults()["score"](self.data.discrete)
+            self.score = Defaults()["score"](self.data)
         self.prior = prior
         self.priorf = {"fair": self._prior_fair, "unif": self._prior_unif}
         self.maxid = maxid

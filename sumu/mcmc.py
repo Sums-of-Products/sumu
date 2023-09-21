@@ -4,7 +4,7 @@ import warnings
 import numpy as np
 
 from .bnet import partition
-from .mcmc_moves import DAG_edgerev, R_basic_move, R_swap_any
+from .mcmc_moves import DAG_edge_reversal, R_split_merge, R_swap_node_pair
 from .stats import Describable
 
 
@@ -18,7 +18,11 @@ class PartitionMCMC(Describable):
         score,
         d,
         inv_temp=1.0,
-        move_weights=[1, 1, 2],
+        move_weights={
+            "R_split_merge": 1,
+            "R_swap_node_pair": 1,
+            "DAG_edge_reversal": 2,
+        },
         R=None,
     ):
 
@@ -29,11 +33,11 @@ class PartitionMCMC(Describable):
         self.d = d
         self.stay_prob = 0.01
         self._all_moves = [
-            self.R_basic_move,
-            self.R_swap_any,
-            self.DAG_edgerev,
+            self.R_split_merge,
+            self.R_swap_node_pair,
+            self.DAG_edge_reversal,
         ]
-        self._move_weights = list(move_weights)
+        self._move_weights = move_weights
 
         # These should be in self._stats
         self.proposed = {move.__name__: 0 for move in self._all_moves}
@@ -66,9 +70,14 @@ class PartitionMCMC(Describable):
 
     def _init_moves(self):
         # This needs to be called if self.inv_temp changes from/to 1.0
-        move_weights = self._move_weights
+        move_weights = [
+            self._move_weights[k.__name__] for k in self._all_moves
+        ]
         if self.inv_temp != 1:
-            move_weights = self._move_weights[:-1]
+            # NOTE: dropping edge reversal. This now depends on the order in
+            #       self._all_moves .
+            # TODO: refactor to something less fragile.
+            move_weights = move_weights[:-1]
         # Each move is repeated weights[move] times to allow uniform sampling
         # from the list (np.random.choice can be very slow).
         self._moves = [
@@ -85,15 +94,15 @@ class PartitionMCMC(Describable):
             R=self.R,
         )
 
-    def R_basic_move(self, **kwargs):
+    def R_split_merge(self, **kwargs):
         # NOTE: Is there value in having these as methods?
-        return R_basic_move(**kwargs)
+        return R_split_merge(**kwargs)
 
-    def R_swap_any(self, **kwargs):
-        return R_swap_any(**kwargs)
+    def R_swap_node_pair(self, **kwargs):
+        return R_swap_node_pair(**kwargs)
 
-    def DAG_edgerev(self, **kwargs):
-        return DAG_edgerev(**kwargs)
+    def DAG_edge_reversal(self, **kwargs):
+        return DAG_edge_reversal(**kwargs)
 
     def _valid(self, R):
         if sum(len(R[i]) for i in range(len(R))) != self.n:
@@ -223,7 +232,7 @@ class PartitionMCMC(Describable):
         # NOTE: Multiple points of return, consider refactoring.
         if np.random.rand() > self.stay_prob:
             move = self._moves[np.random.randint(len(self._moves))]
-            if move.__name__ == "DAG_edgerev":
+            if move == self.DAG_edge_reversal:
                 DAG, _ = self.score.sample_DAG(self.R)
                 # NOTE: DAG equals DAG_prime after this, since no copy
                 #       is made. If necessary, make one.
@@ -241,7 +250,7 @@ class PartitionMCMC(Describable):
                     rescore=self._rescore(self.R, R_prime),
                 )
 
-            elif move.__name__[0] == "R":
+            elif move in {self.R_split_merge, self.R_swap_node_pair}:
                 return_value = move(R=self.R)
                 if return_value is False:
                     return [self.R], np.array([self.R_score])
@@ -284,7 +293,7 @@ class PartitionMCMC(Describable):
 
 
 class MC3(Describable):
-    def __init__(self, chains, scheme, **params):
+    def __init__(self, chains, mode, **params):
 
         self._stats = {
             "target_chain_iter_count": 0,
@@ -292,14 +301,14 @@ class MC3(Describable):
             "proposed": np.array([0 for c in chains[:-1]]),
             "accepted": np.array([0 for c in chains[:-1]]),
             "local_accept_history": [
-                np.zeros(params["local_accept_history_size"], dtype=np.int8)
+                np.zeros(params["sliding_window"], dtype=np.int8)
                 for c in chains[:-1]
             ],
         }
 
         self.chains = chains
         self.params = params
-        self.scheme = scheme
+        self.mode = mode
         self.__dict__.update(params)
 
     def describe(self):
@@ -344,7 +353,7 @@ class MC3(Describable):
                                 )
                             )
                             / np.minimum(
-                                self.params["local_accept_history_size"],
+                                self.params["sliding_window"],
                                 self._stats["proposed"],
                             )
                         ),
@@ -370,7 +379,7 @@ class MC3(Describable):
         return np.array([c.inv_temp for c in self.chains])
 
     @staticmethod
-    def get_inv_temperatures(scheme, M, step=1):
+    def get_inv_temperatures(heating, M, step=1):
         """Returns the inverse temperatures in descending order."""
         linear = [i / (M - 1) for i in range(M)]
         quadratic = [1 - ((M - 1 - i) / (M - 1)) ** 2 for i in range(M)]
@@ -383,7 +392,7 @@ class MC3(Describable):
             + [1.0]
         )
         inv_linear = [1 / (1 + (M - 1 - i) * step) for i in range(M)]
-        return locals()[scheme][::-1]
+        return locals()[heating][::-1]
 
     @staticmethod
     def get_swap_acceptance_prob(chains, i, j):
@@ -414,7 +423,7 @@ class MC3(Describable):
         self._stats["proposed"] = np.append(self._stats["proposed"], 0)
         self._stats["accepted"] = np.append(self._stats["accepted"], 0)
         self._stats["local_accept_history"].append(
-            np.zeros(self.local_accept_history_size, dtype=np.int8)
+            np.zeros(self.sliding_window, dtype=np.int8)
         )
 
     def _decrement_chains(self):
@@ -458,8 +467,7 @@ class MC3(Describable):
 
     def sample(self):
         local_history_index = (
-            self._stats["target_chain_iter_count"]
-            % self.local_accept_history_size
+            self._stats["target_chain_iter_count"] % self.sliding_window
         )
         self._stats["target_chain_iter_count"] += 1
         for c in self.chains:
@@ -476,11 +484,11 @@ class MC3(Describable):
             self._stats["local_accept_history"][i][local_history_index] = 0
 
         if (
-            self.scheme == "adaptive"
-            and self._stats["target_chain_iter_count"] % self.update_freq == 0
+            self.mode == "adaptive"
+            and self._stats["target_chain_iter_count"] % self.update_n == 0
         ):
             self.adapt_temperatures()
-            self.update_freq = round(self.slowdown * self.update_freq)
+            self.update_n = round(self.slowdown * self.update_n)
 
         return [c.R for c in self.chains], np.array(
             [sum(c.R_node_scores) for c in self.chains]

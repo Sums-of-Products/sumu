@@ -9,7 +9,8 @@ def test_pairwise_causal_estimation():
     bn = sumu.GaussianBNet.random(n, enb=2)
     data = bn.sample(20000)
     dags, meta = sumu.Gadget(
-        data=data, mcmc={"n_target_chain_iters": 10000}
+        data=data,
+        run_mode={"name": "normal", "params": {"n_target_chain_iters": 10000}},
     ).sample()
     causal_effects = sumu.Beeps(dags=dags, data=data).sample_pairwise()
     mean_causal_effects = causal_effects.mean(axis=0)

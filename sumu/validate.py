@@ -115,7 +115,7 @@ _run_mode_args = {
     "_arg_names": ["name", "params"],
     "_names": ["normal", "budget", "anytime"],
     "_params_keys": {
-        "normal": [],
+        "normal": ["n_target_chain_iters"],
         "anytime": [],
         "budget": ["t", "t_share", "mem"]},
 }
@@ -123,25 +123,51 @@ _run_mode_args.update(
     {
 
         f"parameters should be in {_run_mode_args['_arg_names']}":
-        lambda p: keys_in_list_error_if_not(
-            _run_mode_args["_arg_names"], *p
-        ),
+        lambda p:
+        keys_in_list_error_if_not(_run_mode_args["_arg_names"], *p),
 
         f"run_mode name should be one of {_run_mode_args['_names']}":
-        lambda p: keys_in_list_error_if_not(
-            _run_mode_args["_names"], p["name"]
-        )
-        if "name" in p
-        else True,
+        lambda p:
+        "name" not in p or
+        keys_in_list_error_if_not(_run_mode_args["_names"], p["name"]),
 
         (
             f"valid 'params' keys for different run modes are "
             f"{_run_mode_args['_params_keys']}"
-        ): lambda p: keys_in_list_error_if_not(
+        ):
+        lambda p:
+        "name" not in p or "params" not in p or
+        keys_in_list_error_if_not(
             _run_mode_args["_params_keys"][p["name"]], *p["params"]
-        )
-        if "name" in p and "params" in p
-        else True,
+        ),
+
+        "n_target_chain_iters should be non-negative integer":
+        lambda p:
+        not nested_in_dict(p, "params", "n_target_chain_iters") or
+        is_nonneg_int(p["params"]["n_target_chain_iters"]),
+
+        "t parameter (number of seconds) should be a non-negative integer":
+        lambda p:
+        not nested_in_dict(p, "params", "t") or
+        is_nonneg_int(p["params"]["t"]),
+
+        "mem parameter (megabytes) should be a non-negative integer":
+        lambda p:
+        not nested_in_dict(p, "params", "mem") or
+        is_nonneg_int(p["params"]["mem"]),
+
+        (
+            "t_share should be a dict with a subset of the keys C, K, d "
+            "holding float values in the range (0, 1) "
+            "that also sum the to the range"
+        ):
+        lambda p:
+        not nested_in_dict(p, "params", "t_share") or
+        type(p["params"]["t_share"]) == dict and
+        set(p["params"]["t_share"]).issubset({"C", "K", "d"}) and
+        all(type(v) == float for v in p["params"]["t_share"].values()) and
+        all((v > 0 and v < 1) for v in p["params"]["t_share"].values()) and
+        sum(p["params"]["t_share"].values()) < 1
 
     }
 )
@@ -149,9 +175,9 @@ _run_mode_args.update(
 
 _mcmc_args = {
     "_arg_names": [
-        "n_indep",
-        "n_target_chain_iters",
-        "burn_in",
+        "initial_rootpartition",
+        "n_independent",
+        "burnin",
         "n_dags",
         "move_weights",
     ]
@@ -160,140 +186,135 @@ _mcmc_args.update(
     {
 
         f"parameters should be in {_mcmc_args['_arg_names']}":
-        lambda p: keys_in_list_error_if_not(
-            _mcmc_args["_arg_names"], *p
-        ),
+        lambda p:
+        keys_in_list_error_if_not(_mcmc_args["_arg_names"], *p),
 
-        "n_indep should be non-negative integer":
-        lambda p: is_nonneg_int(p["n_indep"])
-        if "n_indep" in p
-        else True,
-
-        "n_target_chain_iters should be non-negative integer":
-        lambda p: is_nonneg_int(
-            p["n_target_chain_iters"]
-        )
-        if "n_target_chain_iters" in p
-        else True,
+        "n_independent should be non-negative integer":
+        lambda p:
+        "n_independent" not in p
+        or is_nonneg_int(p["n_independent"]),
 
         "burn_in should be a float in range [0, 1]":
-        lambda p: is_float(p["burn_in"])
-        and in_range(p["burn_in"], 0, 1)
-        if "burn_in" in p
-        else True,
+        lambda p:
+        "burn_in" not in p or
+        is_float(p["burn_in"]) and in_range(p["burn_in"], 0, 1),
 
         "n_dags should be non-negative integer":
-        lambda p: is_nonneg_int(p["n_dags"])
-        if "n_dags" in p
-        else True,
+        lambda p:
+        "n_dags" not in p or
+        is_nonneg_int(p["n_dags"]),
 
-        "move_weights should be a list of 3 non-negative integers":
-        lambda p: all(
+        (
+            "move_weights should be a dictionary of 3 non-negative integers"
+            "under the keys R_split_merge, R_swap_node_pair, DAG_edge_reversal"
+        ):
+        lambda p:
+        "move_weights" not in p or
+        all(
             [
-                type(p["move_weights"]) == list,
-                len(p["move_weights"]) == 3,
-                all([is_nonneg_int(w) for w in p["move_weights"]]),
+                type(p["move_weights"]) == dict,
+                set(p["move_weights"]) == {
+                    "R_split_merge",
+                    "R_swap_node_pair",
+                    "DAG_edge_reversal"
+                },
+                all([is_nonneg_int(w) for w in p["move_weights"].values()]),
             ]
-        )
-        if "move_weights" in p
-        else True,
+        ),
 
     }
 )
 
 
-_metropolis_coupling_scheme_args = {
-    "_arg_names": {
-        "name": ["adaptive", "linear", "inv_linear", "quadratic", "sigmoid"],
-        "params": [
+_metropolis_coupling_args = {
+    "_arg_names": ["name", "params"],
+    "_name": ["adaptive", "static"],
+    "_params_keys": {
+        "adaptive": [
             "M",
             "p_target",
-            "delta_t_init",
-            "local_accept_history_size",
-            "update_freq",
+            "delta_init",
+            "sliding_window",
+            "update_n",
             "smoothing",
             "slowdown",
         ],
-    }
+        "static": ["M", "heating", "sliding_window"],
+    },
 }
-_metropolis_coupling_scheme_args.update(
+
+_metropolis_coupling_args.update(
     {
 
         (
             f"parameters should be in "
-            f"{list(_metropolis_coupling_scheme_args['_arg_names'].keys())}"):
-        lambda p: keys_in_list_error_if_not(
-            list(_metropolis_coupling_scheme_args["_arg_names"]), *p
+            f"{_metropolis_coupling_args['_arg_names']}"):
+        lambda p:
+        keys_in_list_error_if_not(
+            _metropolis_coupling_args["_arg_names"], *p
         ),
 
         (
             f"name should be in "
-            f"{_metropolis_coupling_scheme_args['_arg_names']['name']}"
+            f"{_metropolis_coupling_args['_name']}"
         ):
-        lambda p: keys_in_list_error_if_not(
-            _metropolis_coupling_scheme_args["_arg_names"]["name"], p["name"]
-        )
-        if "name" in p
-        else True,
+        lambda p:
+        "name" not in p or
+        keys_in_list_error_if_not(
+            _metropolis_coupling_args["_name"], p["name"]
+        ),
 
         (
-            f"'params' keys should be in "
-            f"{list(_metropolis_coupling_scheme_args['_arg_names']['params'])}"
+            f"valid 'params' keys for different mc^3 modes are "
+            f"{_metropolis_coupling_args['_params_keys']}"
         ):
-        lambda p: keys_in_list_error_if_not(
-            _metropolis_coupling_scheme_args["_arg_names"]["params"],
+        lambda p:
+        "name" not in p or "params" not in p or
+        keys_in_list_error_if_not(
+            _metropolis_coupling_args["_params_keys"][p["name"]],
             *p["params"]
-        )
-        if "params" in p
-        else True,
+        ),
 
         "M should be a non-negative integer":
-        lambda p: is_nonneg_int(p["params"]["M"])
-        if nested_in_dict(p, "params", "M")
-        else True,
+        lambda p:
+        not nested_in_dict(p, "params", "M") or
+        is_nonneg_int(p["params"]["M"]),
+
+        "heating should be in 'linear', 'quadratic' or 'sigmoid'":
+        lambda p:
+        not nested_in_dict(p, "params", "heating") or
+        p["params"]["heating"] in ['linear', 'quadratic', 'sigmoid'],
 
         "p_target should be a float in range [0, 1]":
-        lambda p: is_float(
-            p["params"]["p_target"]
-        )
-        and in_range(p["params"]["p_target"], 0, 1)
-        if nested_in_dict(p, "params", "p_target")
-        else True,
+        lambda p:
+        not nested_in_dict(p, "params", "p_target") or
+        is_float(p["params"]["p_target"])
+        and in_range(p["params"]["p_target"], 0, 1),
 
-        "delta_t_init should be a positive number":
-        lambda p: is_pos_num(
-            p["params"]["delta_t_init"]
-        )
-        if nested_in_dict(p, "params", "delta_t_init")
-        else True,
+        "delta_init should be a positive number":
+        lambda p:
+        not nested_in_dict(p, "params", "delta_t_init") or
+        is_pos_num(p["params"]["delta_t_init"]),
 
-        "local_accept_history_size should be a positive integer":
-        lambda p: is_pos_int(
-            p["params"]["local_accept_history_size"]
-        )
-        if nested_in_dict(p, "params", "local_accept_history_size")
-        else True,
+        "sliding_window should be a positive integer":
+        lambda p:
+        not nested_in_dict(p, "params", "local_accept_history_size") or
+        is_pos_int(p["params"]["local_accept_history_size"]),
 
-        "update_freq should be a positive integer":
-        lambda p: is_pos_int(
-            p["params"]["update_freq"]
-        )
-        if nested_in_dict(p, "params", "update_freq")
-        else True,
+        "update_n should be a positive integer":
+        lambda p:
+        not nested_in_dict(p, "params", "update_freq") or
+        is_pos_int(p["params"]["update_freq"]),
 
         "smoothing should be a non-negative number":
-        lambda p: is_nonneg_num(
-            p["params"]["smoothing"]
-        )
-        if nested_in_dict(p, "params", "smoothing")
-        else True,
+        lambda p:
+        not nested_in_dict(p, "params", "smoothing") or
+        is_nonneg_num(p["params"]["smoothing"]),
 
         "slowdown should be a non-negative number":
-        lambda p: is_nonneg_num(
-            p["params"]["slowdown"]
-        )
-        if nested_in_dict(p, "params", "slowdown")
-        else True,
+        lambda p:
+        not nested_in_dict(p, "params", "slowdown") or
+        is_nonneg_num(p["params"]["slowdown"]),
 
     }
 )
@@ -308,33 +329,29 @@ _score_args.update(
     {
 
         f"parameters should be in {_score_args['_arg_names']}":
-        lambda p: keys_in_list_error_if_not(
-            _score_args["_arg_names"], *p
-        ),
+        lambda p:
+        keys_in_list_error_if_not(_score_args["_arg_names"], *p),
 
         f"name should be in {_score_args['_names']}":
-        lambda p: keys_in_list_error_if_not(
-            _score_args["_names"], p["name"]
-        )
-        if "name" in p
-        else True,
+        lambda p:
+        "name" not in p or
+        keys_in_list_error_if_not(_score_args["_names"], p["name"]),
 
         (
             f"valid 'params' keys for different scores are "
             f"{_score_args['_params_keys']}"
         ):
-        lambda p: keys_in_list_error_if_not(
-            _score_args["_params_keys"][p["name"]], *p["params"]
-        )
-        if "name" in p and "params" in p
-        else True,
+        lambda p:
+        "name" not in p or "params" not in p or
+        keys_in_list_error_if_not(
+            _score_args["_params_keys"][p["name"]],
+            *p["params"]
+        ),
 
         "ess should be a non-negative number":
-        lambda p: is_nonneg_num(
-            p["params"]["ess"]
-        )
-        if nested_in_dict(p, "params", "ess")
-        else True,
+        lambda p:
+        not nested_in_dict(p, "params", "ess") or
+        is_nonneg_num(p["params"]["ess"]),
 
     }
 )
@@ -349,26 +366,27 @@ _structure_prior_args.update(
     {
 
         f"parameters should be in {_structure_prior_args['_arg_names']}":
-        lambda p: keys_in_list_error_if_not(
+        lambda p:
+        keys_in_list_error_if_not(
             _structure_prior_args["_arg_names"], *p
         ),
 
         f"name should be in {_structure_prior_args['_names']}":
-        lambda p: keys_in_list_error_if_not(
+        lambda p:
+        "name" not in p or
+        keys_in_list_error_if_not(
             _structure_prior_args["_names"], p["name"]
-        )
-        if "name" in p
-        else True,
+        ),
 
         (
             f"valid 'params' keys for structure priors are "
             f"{_structure_prior_args['_params_keys']}"
         ):
-        lambda p: keys_in_list_error_if_not(
+        lambda p:
+        "name" not in p or "params" not in p or
+        keys_in_list_error_if_not(
             _structure_prior_args["_params_keys"][p["name"]], *p["params"]
-        )
-        if "name" in p and "params" in p
-        else True,
+        ),
 
     }
 )
@@ -382,57 +400,53 @@ _constraints_args.update(
     {
 
         f"parameters should be in {_constraints_args['_arg_names']}":
-        lambda p: all(
+        lambda p:
+        all(
             [type(_constraints_args["_arg_names"].index(k)) == int for k in p]
         ),
 
         "max_id should be a positive integer or -1 (for no limit on indegree)":
-        lambda p: is_int(
-            p["max_id"]
-        )
-        and (p["max_id"] == -1 or p["max_id"] > 0)
-        if "max_id" in p
-        else True,
+        lambda p:
+        "max_id" not in p or
+        is_int(p["max_id"]) and (p["max_id"] == -1 or p["max_id"] > 0),
 
         "K should be a positive integer":
-        lambda p: is_pos_int(p["K"])
-        if "K" in p
-        else True,
+        lambda p:
+        "K" not in p or
+        is_pos_int(p["K"]),
 
         "d should be non-negative integer":
-        lambda p: is_nonneg_int(p["d"])
-        if "d" in p
-        else True,
+        lambda p:
+        "d" not in p or
+        is_nonneg_int(p["d"]),
 
         "K_min should be a non-negative integer":
-        lambda p: is_nonneg_int(p["K_min"])
-        if "K_min" in p
-        else True,
+        lambda p:
+        "K_min" not in p or
+        is_nonneg_int(p["K_min"]),
 
         "d_min should be a non-negative integer":
-        lambda p: is_nonneg_int(p["d_min"])
-        if "d_min" in p
-        else True,
+        lambda p:
+        "d_min" not in p or
+        is_nonneg_int(p["d_min"]),
 
         "can give only one of K, K_min":
-        lambda p: not ("K" in p and "K_min" in p),
+        lambda p:
+        not ("K" in p and "K_min" in p),
 
         "can give only one of d, d_min":
-        lambda p: not ("d" in p and "d_min" in p),
+        lambda p:
+        not ("d" in p and "d_min" in p),
 
         "pruning_eps should be a non-negative number":
-        lambda p: is_nonneg_num(
-            p["pruning_eps"]
-        )
-        if "pruning_eps" in p
-        else True,
+        lambda p:
+        "pruning_eps" not in p or
+        is_nonneg_num(p["pruning_eps"]),
 
         "score_sum_eps should be a non-negative number":
-        lambda p: is_nonneg_num(
-            p["score_sum_eps"]
-        )
-        if "score_sum_eps" in p
-        else True,
+        lambda p:
+        "score_sum_eps" not in p or
+        is_nonneg_num(p["score_sum_eps"]),
 
     }
 )
@@ -440,8 +454,12 @@ _constraints_args.update(
 
 _candidate_parent_algorithm_args = {
     "_arg_names": ["name", "params"],
-    "_names": ["greedy", "opt", "rnd"],
-    "_params_keys": {"greedy": ["k", "criterion"], "opt": [], "rnd": []},
+    "_names": ["greedy", "optimal", "random"],
+    "_params_keys": {
+        "greedy": ["K_f", "association_measure"],
+        "optimal": [],
+        "random": []
+    },
 }
 _candidate_parent_algorithm_args.update(
     {
@@ -450,32 +468,33 @@ _candidate_parent_algorithm_args.update(
             f"parameters should be in "
             f"{_candidate_parent_algorithm_args['_arg_names']}"
         ):
-        lambda p: keys_in_list_error_if_not(
+        lambda p:
+        keys_in_list_error_if_not(
             _candidate_parent_algorithm_args["_arg_names"], *p
         ),
 
         f"name should be in {_candidate_parent_algorithm_args['_names']}":
-        lambda p: keys_in_list_error_if_not(
+        lambda p:
+        "name" not in p or
+        keys_in_list_error_if_not(
             _candidate_parent_algorithm_args["_names"], p["name"]
-        )
-        if "name" in p
-        else True,
+        ),
 
         (
             f"valid 'params' keys for candidate parent algorithms are "
             f"{_candidate_parent_algorithm_args['_params_keys']}"
         ):
-        lambda p: keys_in_list_error_if_not(
+        lambda p:
+        "name" not in p or "params" not in p or
+        keys_in_list_error_if_not(
             _candidate_parent_algorithm_args["_params_keys"][p["name"]],
             *p["params"]
-        )
-        if "name" in p and "params" in p
-        else True,
+        ),
 
         "k should be a positive integer":
-        lambda p: is_pos_int(p["params"]["k"])
-        if nested_in_dict(p, "params", "k")
-        else True,
+        lambda p:
+        not nested_in_dict(p, "params", "k") or
+        is_pos_int(p["params"]["k"]),
 
     }
 )
@@ -489,56 +508,56 @@ _catastrophic_cancellation_args.update(
             f"parameters should be in"
             f"{_catastrophic_cancellation_args['_arg_names']}"
         ):
-        lambda p: keys_in_list_error_if_not(
+        lambda p:
+        keys_in_list_error_if_not(
             _catastrophic_cancellation_args["_arg_names"], *p
         ),
 
         "tolerance should be a positive number":
-        lambda p: is_pos_num(p["tolerance"])
-        if "tolerance" in p
-        else True,
+        lambda p:
+        "tolerance" not in p or
+        is_pos_num(p["tolerance"]),
 
         "cache_size should be a positive integer":
-        lambda p: is_pos_int(p["cache_size"])
-        if "cache_size" in p
-        else True,
+        lambda p:
+        "cache_size" not in p or
+        is_pos_int(p["cache_size"]),
 
     }
 )
 
 
 _logging_args = {
-    "_arg_names": ["silent", "verbose_prefix", "stats_period", "overwrite"]
+    "_arg_names": ["silent", "verbose_prefix", "period", "overwrite"]
 }
 _logging_args.update(
     {
 
         f"parameters should be in {_logging_args['_arg_names']}":
-        lambda p: keys_in_list_error_if_not(
+        lambda p:
+        keys_in_list_error_if_not(
             _logging_args["_arg_names"], *p
         ),
 
         "silent should be a boolean":
-        lambda p: type(p["silent"]) == bool
-        if "silent" in p
-        else True,
+        lambda p:
+        "silent" not in p or
+        type(p["silent"]) == bool,
 
         "verbose_prefix should be a string":
-        lambda p: type(p["verbose_prefix"]) == str
-        if "verbose_prefix" in p
-        else True,
+        lambda p:
+        "verbose_prefix" not in p or
+        type(p["verbose_prefix"]) == str,
 
         "overwrite should be a boolean":
-        lambda p: type(p["overwrite"]) == bool
-        if "overwrite" in p
-        else True,
+        lambda p:
+        "overwrite" not in p or
+        type(p["overwrite"]) == bool,
 
-        "stats_period should be a positive number":
-        lambda p: is_pos_num(
-            p["stats_period"]
-        )
-        if "stats_period" in p
-        else True,
+        "period should be a positive number":
+        lambda p:
+        "period" not in p or
+        is_pos_num(p["period"]),
 
     }
 )
@@ -546,7 +565,8 @@ _logging_args.update(
 
 _rootpartition = {
     "should be a list partitioning integers 0..n to sets":
-    lambda R: all([
+    lambda R:
+    all([
         type(R) == list,
         all([type(R_i) == set for R_i in R]),
         all([is_int(u) for R_i in R for u in R_i]),
@@ -562,7 +582,8 @@ _dag = {
         "should be in the format [(int, set()), ...] "
         "where int is a node label and the set contains its parents' labels"
     ):
-    lambda dag: all(
+    lambda dag:
+    all(
         [
             type(dag) == list,
             all([type(f) == tuple for f in dag]),
@@ -579,7 +600,8 @@ _dag = {
 _candidates = {
 
     "should be given as tuples of ints in a dict":
-    lambda C: all(
+    lambda C:
+    all(
         [
             type(C) == dict,
             all(type(v) == tuple for v in C.values()),
@@ -589,30 +611,24 @@ _candidates = {
     ),
 
     "the candidates dict should have keys (node labels) from 0 to n":
-    lambda C: sorted(
-        C.keys()
-    )
-    == list(range(max(C) + 1)),
+    lambda C:
+    sorted(C.keys()) == list(range(max(C) + 1)),
 
     "there should be from 1 to n-1 candidate parents for each node":
-    lambda C: all(
-        len(v) > 0 and len(v) < len(C) for v in C.values()
-    ),
+    lambda C:
+    all(len(v) > 0 and len(v) < len(C) for v in C.values()),
 
     "nodes should be given equal number of candidate parents":
-    lambda C: all(
-        len(v) == len(C[0]) for v in C.values()
-    ),
+    lambda C:
+    all(len(v) == len(C[0]) for v in C.values()),
 
     "candidate parents for a node should not contain duplicates":
-    lambda C: all(
-        len(set(v)) == len(v) for v in C.values()
-    ),
+    lambda C:
+    all(len(set(v)) == len(v) for v in C.values()),
 
     "candidate parents for each node should be a subset of the other nodes":
-    lambda C: all(
-        set(v).issubset(set(C).difference({k})) for k, v in C.items()
-    ),
+    lambda C:
+    all(set(v).issubset(set(C).difference({k})) for k, v in C.items()),
 
 }
 

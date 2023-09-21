@@ -187,10 +187,10 @@ setup(
     author_email="jussi.viinikka@helsinki.fi",
     license="BSD",
     packages=["sumu", "sumu.utils", "sumu.scores"],
-    install_requires=["numpy", "scipy>=1.6"],
+    install_requires=["numpy", "scipy>=1.6", "psutil"],
     package_data={"sumu": ["sources.bib"]},
     include_package_data=True,
-    extras_require={"plotext": ["plotext==4.1.3"], "test": ["psutil"]},
+    extras_require={"plotext": ["plotext==4.1.3"]},
     cmdclass=cmdclass,
     ext_modules=cythonize(
         exts, language_level="3", compiler_directives=COMPILER_DIRECTIVES

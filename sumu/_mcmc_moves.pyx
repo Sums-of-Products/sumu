@@ -6,7 +6,7 @@ from .bnet import transitive_closure
 from .utils.math_utils import comb, subsets
 
 
-def DAG_edgerev(**kwargs):
+def DAG_edge_reversal(**kwargs):
 
     DAG = kwargs["DAG"]
     R = kwargs["R"]
@@ -77,7 +77,7 @@ def DAG_edgerev(**kwargs):
     return DAG, scoreratio, edge
 
 
-def R_basic_move(**kwargs):
+def R_split_merge(**kwargs):
     """Splits or merges a root-partition :footcite:`kuipers:2017`.
 
     Args:
@@ -138,7 +138,7 @@ def R_basic_move(**kwargs):
     return R_prime, q, q_prime, rescore
 
 
-def R_swap_any(**kwargs):
+def R_swap_node_pair(**kwargs):
 
     R = kwargs["R"]
     m = len(R)

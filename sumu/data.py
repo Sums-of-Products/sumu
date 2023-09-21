@@ -68,6 +68,10 @@ class Data:
         return self.data.shape[0]
 
     @property
+    def shape(self):
+        return self.data.shape
+
+    @property
     def arities(self):
         return np.count_nonzero(np.diff(np.sort(self.data.T)), axis=1) + 1
 

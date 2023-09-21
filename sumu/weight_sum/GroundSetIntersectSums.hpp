@@ -20,19 +20,20 @@ inline int  popcount  (bm32 S){ int c = 0; while (S) { c += (S & 1L); S >>= 1; }
 class GroundSetIntersectSums {
 
 public:
-  GroundSetIntersectSums(int K0, double* w, double eps0);
-  ~GroundSetIntersectSums();
-  Treal scan_sum(bm32 U, bm32 T);
-  Treal scan_sum(bm32 U);
-  std::pair<bm32, double> scan_rnd(bm32 U, bm32 T, double wcum);
-  std::pair<bm32, double> scan_rnd(bm32 U, double wcum);
-  std::vector<ws32>	s;	// Scores, pairs (set, weight) sorted by weight.
+	GroundSetIntersectSums(int K0, double* w, double eps_pruning, double eps_score_sum);
+	~GroundSetIntersectSums();
+	Treal scan_sum(bm32 U, bm32 T);
+	Treal scan_sum(bm32 U);
+	std::pair<bm32, double> scan_rnd(bm32 U, bm32 T, double wcum);
+	std::pair<bm32, double> scan_rnd(bm32 U, double wcum);
+	std::vector<ws32>	s;	// Scores, pairs (set, weight) sorted by weight.
 
 private:
-  int				K;	// Size of the ground set.
-  double 			eps;// Tolerated relative error.
-  void prune(double *w);
-  void init(double *w);
+	int				K;	// Size of the ground set.
+	double 			eps_pruning;// Tolerated relative error.
+	double 			eps_score_sum;
+	void prune(double *w);
+	void init(double *w);
 };
 
 #endif
