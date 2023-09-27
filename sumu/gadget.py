@@ -448,10 +448,10 @@ class GadgetParameters:
 
     def _complete_user_given_parameters(self):
         def complete(default, p):
-            if all(type(p[k]) != dict for k in p):
+            if all(type(p[k]) is not dict for k in p):
                 return dict(default, **p)
             for k in p:
-                if type(p[k]) == dict:
+                if type(p[k]) is dict:
                     p[k] = complete(default[k], p[k])
             return dict(default, **p)
 
@@ -459,12 +459,12 @@ class GadgetParameters:
             if k not in self.default:
                 continue
             if (
-                type(self.p[k]) == dict
+                type(self.p[k]) is dict
                 and "name" in self.p[k]
                 and self.p[k]["name"] != self.default[k]["name"]
             ):
                 continue
-            if type(self.p[k]) == dict:
+            if type(self.p[k]) is dict:
                 self.p[k] = complete(self.default[k], self.p[k])
             elif self.p[k] is None:
                 self.p[k] = self.default[k]
@@ -782,7 +782,7 @@ class Logger:
                 print(string, file=f, flush=True)
 
     def unlink(self):
-        if type(self._logfile) == pathlib.PosixPath:
+        if type(self._logfile) is pathlib.PosixPath:
             self._logfile.unlink()
 
     def silent(self):
@@ -791,7 +791,7 @@ class Logger:
     def dict(self, data):
         def pretty_dict(d, n=0, string=""):
             for k in d:
-                if type(d[k]) in (dict, Stats):
+                if type(d[k]) is dict:  # in (dict, Stats):
                     string += f"{' '*n}{k}\n"
                 else:
                     string += f"{' '*n}{k}: {d[k]}\n"

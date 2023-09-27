@@ -44,11 +44,11 @@ import numpy as np
 
 
 def is_int(val):
-    return type(val) == int or np.issubdtype(type(val), np.integer)
+    return type(val) is int or np.issubdtype(type(val), np.integer)
 
 
 def is_float(val):
-    return type(val) == float or np.issubdtype(type(val), np.floating)
+    return type(val) is float or np.issubdtype(type(val), np.floating)
 
 
 def is_num(val):
@@ -72,11 +72,11 @@ def is_pos_num(val):
 
 
 def is_boolean(val):
-    return type(val) == bool
+    return type(val) is bool
 
 
 def is_string(val):
-    return type(val) == str
+    return type(val) is str
 
 
 def in_range(val, min_val, max_val, min_incl=True, max_incl=True):
@@ -163,9 +163,9 @@ _run_mode_args.update(
         ):
         lambda p:
         not nested_in_dict(p, "params", "t_share") or
-        type(p["params"]["t_share"]) == dict and
+        type(p["params"]["t_share"]) is dict and
         set(p["params"]["t_share"]).issubset({"C", "K", "d"}) and
-        all(type(v) == float for v in p["params"]["t_share"].values()) and
+        all(type(v) is float for v in p["params"]["t_share"].values()) and
         all((v > 0 and v < 1) for v in p["params"]["t_share"].values()) and
         sum(p["params"]["t_share"].values()) < 1
 
@@ -212,7 +212,7 @@ _mcmc_args.update(
         "move_weights" not in p or
         all(
             [
-                type(p["move_weights"]) == dict,
+                type(p["move_weights"]) is dict,
                 set(p["move_weights"]) == {
                     "R_split_merge",
                     "R_swap_node_pair",
@@ -542,17 +542,17 @@ _logging_args.update(
         "silent should be a boolean":
         lambda p:
         "silent" not in p or
-        type(p["silent"]) == bool,
+        type(p["silent"]) is bool,
 
         "verbose_prefix should be a string":
         lambda p:
         "verbose_prefix" not in p or
-        type(p["verbose_prefix"]) == str,
+        type(p["verbose_prefix"]) is str,
 
         "overwrite should be a boolean":
         lambda p:
         "overwrite" not in p or
-        type(p["overwrite"]) == bool,
+        type(p["overwrite"]) is bool,
 
         "period should be a positive number":
         lambda p:
@@ -567,8 +567,8 @@ _rootpartition = {
     "should be a list partitioning integers 0..n to sets":
     lambda R:
     all([
-        type(R) == list,
-        all([type(R_i) == set for R_i in R]),
+        type(R) is list,
+        all([type(R_i) is set for R_i in R]),
         all([is_int(u) for R_i in R for u in R_i]),
         sorted([u for R_i in R for u in R_i])
         == list(range(max([max(R_i) for R_i in R]) + 1))
@@ -585,11 +585,11 @@ _dag = {
     lambda dag:
     all(
         [
-            type(dag) == list,
-            all([type(f) == tuple for f in dag]),
+            type(dag) is list,
+            all([type(f) is tuple for f in dag]),
             all([len(f) == 2 for f in dag]),
             all([isinstance(f[0], (np.integer, int))] for f in dag),
-            all([type(f[1]) == set for f in dag]),
+            all([type(f[1]) is set for f in dag]),
             all([isinstance(p, (np.integer, int)) for f in dag for p in f[1]]),
         ]
     )
@@ -603,8 +603,8 @@ _candidates = {
     lambda C:
     all(
         [
-            type(C) == dict,
-            all(type(v) == tuple for v in C.values()),
+            type(C) is dict,
+            all(type(v) is tuple for v in C.values()),
             all(is_int(vi)
                 for v in C.values() for vi in v),
         ]
@@ -642,7 +642,7 @@ class ValidationError(Exception):
 def _make_validator(validator, validator_name, only_check_is_valid=False):
     def validate(item):
         for f in validator:
-            if type(f) == str and f[0] == "_":
+            if type(f) is str and f[0] == "_":
                 continue
             try:
                 if not validator[f](item):

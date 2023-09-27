@@ -17,14 +17,14 @@ class Data:
     def __init__(self, data_or_path):
 
         # Copying existing Data object
-        if type(data_or_path) == Data:
+        if type(data_or_path) is Data:
             self.data = data_or_path.data
             self.discrete = data_or_path.discrete
             self.data_path = data_or_path.data_path
             return
 
         # Initializing from np.array
-        if type(data_or_path) == np.ndarray:
+        if type(data_or_path) is np.ndarray:
             # TODO: Should cast all int types to np.int32 as that is what bdeu
             # scorer expects. Also make sure float is np.float64, not
             # np.float32 or so?
@@ -34,7 +34,7 @@ class Data:
             return
 
         # Initializing from path
-        if type(data_or_path) == str:
+        if type(data_or_path) is str:
             self.data_path = data_or_path
             with open(data_or_path) as f:
                 # . is assumed to be a decimal separator

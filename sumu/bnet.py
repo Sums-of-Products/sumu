@@ -235,7 +235,7 @@ class DiscreteBNet:
             data = np.array([], dtype=np.int32).reshape(0, len(nodes))
 
         for i, node in enumerate(nodes):
-            if type(arity) == list:
+            if type(arity) is list:
                 node.arity = arity[i]
             else:
                 node.arity = arity
@@ -373,7 +373,7 @@ class DiscreteBNet:
     def __getitem__(self, node_name_or_index):
 
         # TODO: bn["node1", "node2"].sample()
-        is_name = type(node_name_or_index) == str
+        is_name = type(node_name_or_index) is str
 
         try:
             if is_name:
