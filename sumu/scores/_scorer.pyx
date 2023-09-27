@@ -131,7 +131,7 @@ cdef class BDeu:
         cdef int v, i, n, K
         n = len(C)
         K = len(C[0])
-        cdef np.ndarray score_array = np.full((n, 2**K), -np.inf)
+        cdef np.ndarray score_array = np.full((n, int(2**K)), -np.inf)
         memview_C = C
         for v in np.arange(memview_C.shape[0], dtype=np.int32):
             self.thisptr.fami(v, & memview_C[v, 0],
