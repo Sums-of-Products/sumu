@@ -30,7 +30,7 @@ env:
   CIBW_TEST_EXTRAS: "test"
   CIBW_TEST_COMMAND: pytest -n 3 {project}/sumu/tests
   # Trying to deal with https://github.com/scipy/scipy/issues/16308
-  CIBW_BEFORE_ALL_LINUX: sudo rm -rf /var/cache/yum/ & yum -y update & yum -y install openblas-devel
+  CIBW_BEFORE_ALL_LINUX: su -c 'rm -rf /var/cache/yum/' & yum -y update & yum -y install openblas-devel
 
 jobs:
   
