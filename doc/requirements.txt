@@ -3,6 +3,7 @@ sphinxcontrib-bibtex
 Cython>=0.29.17
 numpy
 scipy
+sphinx-rtd-theme
 
 # Relative to cwd, NOT this file. Required for RTD to build sumu in a
 # way which allows it to find compiled extensions.
