@@ -8,7 +8,7 @@ from .gadget import Data
 class Beeps:
     def __init__(self, *, dags, data):
         self.dags = dags
-        if not type(self.dags[0]) == np.ndarray:
+        if type(self.dags[0]) is not np.ndarray:
             self.dags = [family_sequence_to_adj_mat(d) for d in self.dags]
         self.data = Data(data)
         n = self.data.n

@@ -29,7 +29,8 @@ env:
   CIBW_TEST_REQUIRES: pytest pytest-xdist
   CIBW_TEST_EXTRAS: "test"
   CIBW_TEST_COMMAND: pytest -n 3 {project}/sumu/tests
-
+  # Trying to deal with https://github.com/scipy/scipy/issues/16308
+  CIBW_BEFORE_BUILD_LINUX: yum clean all & yum -y update & yum -y install openblas-devel
 
 jobs:
   
