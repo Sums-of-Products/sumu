@@ -4,7 +4,7 @@ Sumu
 .. image:: https://badge.fury.io/py/sumu.svg
     :target: https://badge.fury.io/py/sumu
 
-.. image:: https://github.com/jussiviinikka/sumu/workflows/build/badge.svg
+.. image:: https://github.com/jussiviinikka/sumu/actions/workflows/github-deploy.yml/badge.svg
 
 .. image:: https://codecov.io/gh/jussiviinikka/sumu/branch/master/graph/badge.svg?token=2QFOVD3BBD
 	   :target: https://codecov.io/gh/jussiviinikka/sumu
