@@ -1,7 +1,7 @@
 Sumu
 ===============================================================================
 
-<a href="https://badge.fury.io/py/sumu" class="reference external image-reference"><img src="https://badge.fury.io/py/sumu.svg" alt="https://badge.fury.io/py/sumu.svg" /></a> ![](https://github.com/jussiviinikka/sumu/workflows/build/badge.svg)<a href="https://codecov.io/gh/jussiviinikka/sumu" class="reference external image-reference"><img src="https://codecov.io/gh/jussiviinikka/sumu/branch/master/graph/badge.svg?token=2QFOVD3BBD" alt="https://codecov.io/gh/jussiviinikka/sumu/branch/master/graph/badge.svg?token=2QFOVD3BBD" /></a> ![](https://img.shields.io/pypi/dm/sumu.svg)
+<a href="https://badge.fury.io/py/sumu" class="reference external image-reference"><img src="https://badge.fury.io/py/sumu.svg" alt="https://badge.fury.io/py/sumu.svg" /></a> ![](https://github.com/jussiviinikka/sumu/actions/workflows/github-deploy.yml/badge.svg)<a href="https://codecov.io/gh/jussiviinikka/sumu" class="reference external image-reference"><img src="https://codecov.io/gh/jussiviinikka/sumu/branch/master/graph/badge.svg?token=2QFOVD3BBD" alt="https://codecov.io/gh/jussiviinikka/sumu/branch/master/graph/badge.svg?token=2QFOVD3BBD" /></a> ![](https://img.shields.io/pypi/dm/sumu.svg)
 
 Python library for working with probabilistic and causal graphical models.
 
